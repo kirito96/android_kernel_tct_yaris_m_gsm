@@ -1,0 +1,1 @@
+cmd_mediatek/kernel/drivers/conn_soc/common/mtk_stp_wmt.ko := arm-linux-androideabi-ld.bfd -EL -r  -T /local/build/autotest-release/GPL/kernel/scripts/module-common.lds --build-id  -o mediatek/kernel/drivers/conn_soc/common/mtk_stp_wmt.ko mediatek/kernel/drivers/conn_soc/common/mtk_stp_wmt.o mediatek/kernel/drivers/conn_soc/common/mtk_stp_wmt.mod.o
