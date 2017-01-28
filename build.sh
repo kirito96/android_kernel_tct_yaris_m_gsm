@@ -23,7 +23,7 @@ yellow='\033[0;33m'
 red='\033[0;31m'
 nocol='\033[0m'
 # Modify the following variable if you want to build
-export CROSS_COMPILE="/home/kirito9/android/toolchain/arm-eabi-4.6/bin/arm-eabi-"
+export CROSS_COMPILE="/home/kirito9/android/toolchain/arm-cortex-linux-gnueabi-linaro_5.2-2015.11-2/bin/arm-cortex-linux-gnueabi-"
 
 compile_kernel ()
 {
