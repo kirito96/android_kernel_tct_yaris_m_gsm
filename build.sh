@@ -14,7 +14,7 @@
  #
  # Please maintain this if you use this script or any part of it
  #
-toolchain=/home/kirito9/android/toolchain/arm-cortex-linux-gnueabi-linaro_5.2-2015.11-2/bin
+toolchain=/home/kirito9/android/toolchain/arm-eabi-5.3/bin
 kernel="Phoenix"
 variant="v1"
 toolchain2="arm-eabi-"
@@ -40,6 +40,7 @@ echo -e "***********************************************$nocol"
 export KBUILD_BUILD_USER="kirito9"
 export KBUILD_BUILD_HOST="team-Panther"
 cd kernel
+export USE_CCACHE=1
 export TARGET_PRODUCT=$codename MTK_ROOT_CUSTOM=../mediatek/custom/ MTK_PATH_PLATFORM=../mediatek/platform/mt6572/kernel/ MTK_PATH_SOURCE=../mediatek/kernel/
 make $jobcount
 $KERNEL_DIR/mediatek/build/tools/mkimage $KERNEL_DIR/kernel/arch/arm/boot/zImage KERNEL > $KERNEL_DIR/kernel/zip-creator/tools/zImage
