@@ -64,7 +64,7 @@ MODULE_LICENSE("GPLv2");
 
 /* Tuneables */
 #define DT2W_DEBUG         0
-#define DT2W_DEFAULT       1
+#define DT2W_DEFAULT       0
 
 #define DT2W_PWRKEY_DUR   60
 #define DT2W_FEATHER      50
@@ -245,7 +245,7 @@ static void dt2w_input_event(struct input_handle *handle, unsigned int type,
 
 	if (code == ABS_MT_POSITION_X) {
 		touch_x = value;
-	touch_x_called = true;
+		touch_x_called = true;
 	}
 
 	if (code == ABS_MT_POSITION_Y) {

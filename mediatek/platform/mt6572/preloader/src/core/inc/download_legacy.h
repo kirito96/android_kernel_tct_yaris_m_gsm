@@ -1,15 +1,57 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ * 
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ * 
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #ifndef DOWNLOAD_LEGACY_H
 #define DOWNLOAD_LEGACY_H
 
 #include "typedefs.h"
 
+/**************************************************************************
+ *  DEBUG CONTROL
+ **************************************************************************/
 #define DM_DBG_LOG                      0
 #define DM_UNIT_TEST_NAND_ERASE         0
 #define DM_CAL_CKSM_FROM_USB_BUFFER     1
 #define DM_CAL_CKSM_FROM_NAND_FLASH     0           
 #define DM_TIME_ANALYSIS                0
 
+/**************************************************************************
+ *  SIZE DEFINITION
+ **************************************************************************/
 /* only the starting 28 bytes of spare data is valid */
 #define DM_SZ_SPARE_OFFSET      (64-28)
 #define DM_SZ_PL_INFO_PKT       sizeof(DM_PL_INFO_PACKET)
@@ -23,6 +65,9 @@
 #define DM_BUF_MAX_SIZE         (COMMON_BUFFER_MAX_SIZE)
 #define DM_CMD_MAX_SIZE         (128)
 
+/**************************************************************************
+*  CONSTANT DEFINITION
+**************************************************************************/
 /* Note : all the following constant definition                  */
 /*        must be sych with tool side, once any one modifies it  */
 /*        remember to inform any guy doing the same modification */
@@ -45,6 +90,9 @@
 #define DM_PARTITION_INFO_PKT_PATN      0x504E5450  /* Partition Info Packet pattern */
                                                     /* = ascii value of "PTNP" */
                                                         
+/**************************************************************************
+*  STRUCTURE DEFINITION
+**************************************************************************/
 /* Note : all the following structure and enumeration definition */
 /*        must be sych with tool side, once any one modifies it  */
 /*        remember to inform any guy doing the same modification */
@@ -120,6 +168,11 @@ typedef struct _DM_PATCH_CMD_PACKET
 } DM_PATCH_CMD_PACKET;
 
 
+/**************************************************************************
+*  PARTITION PART
+*  : Tool team also refers to this data structure
+*  : So, DO NOT modify the image type !!
+**************************************************************************/
 typedef enum
 {
     DM_IMG_TYPE_LOGO                = 0,
@@ -183,6 +236,9 @@ typedef struct _DM_EXT_IMAGE_INFO_PACKET
 } DM_EXT_IMAGE_INFO_PACKET;
 #pragma pack()
 
+/**************************************************************************
+ *  Download Mode STRing
+ **************************************************************************/
 #define DM_STR_READY                "READY"     /* Ready Signal */
 #define DM_STR_DOWNLOAD_REQ         "DOWNLOAD"  /* Download Request */
 #define DM_STR_DOWNLOAD_ACK         "DAOLNWOD"  /* Download Ack Response */
@@ -214,12 +270,18 @@ typedef struct _DM_EXT_IMAGE_INFO_PACKET
 
 #define DM_SZ_IMG_HPBUF             10          /* max protocol buffer size */
 
+/**************************************************************************
+*  HANDSHAKE SYNC TIME
+**************************************************************************/
 #if (CFG_BOARD_ID == MT6516_EVB)
 #define DM_WAIT_SYNCH_TIME          3000        /* in ms */
 #else
 #define DM_WAIT_SYNCH_TIME          2500        /* in ms */
 #endif
 
+/**************************************************************************
+*  STRUCTURE DECLARATION
+**************************************************************************/
 typedef enum
 {
     DM_PKT_DWNL                     = 0,        /* dwonload string packet */
@@ -280,6 +342,9 @@ typedef struct
 #endif
 } DM_CONTEXT;
 
+/**************************************************************************
+*  EXPORT FUNCTION PROTOTYPE
+**************************************************************************/
 extern void download_mode_detection (void);
 extern void reset_dm_descriptor (void);
 extern u32  get_part_range (DM_IMG_TYPE img_type);

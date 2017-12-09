@@ -21,7 +21,7 @@
 static struct task_struct *mcdi_task_0;
 static struct task_struct *mcdi_task_1;
 
-static struct mtk_irq_mask MCDI_cpu_irq_mask;
+//static struct mtk_irq_mask MCDI_cpu_irq_mask;
 extern u32 MCDI_Test_Mode;
 
 #define read_cntp_cval(cntp_cval_lo, cntp_cval_hi) \
@@ -947,5 +947,4 @@ void spm_mcdi_LDVT_sodi(void)
     clc_notice("spm_mcdi_LDVT_01() end.\n");
 
 }
-
 

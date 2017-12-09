@@ -102,6 +102,13 @@ class AudioDigitalControl : public AudioDigitalControlInterface
         virtual status_t SetI2SAdcEnable(bool bEnable);
 
         /**
+        * a function fo Set2ndI2SOutAttribute
+        * @param sampleRate
+        * @return status_t
+        */
+        virtual status_t Set2ndI2SOutAttribute(uint32_t sampleRate);
+
+        /**
         * a function fo Set2ndI2SOut
         * @param mDigitalI2S
         * @return status_t
@@ -121,6 +128,13 @@ class AudioDigitalControl : public AudioDigitalControlInterface
         * @return status_t
         */
         virtual status_t Set2ndI2SEnable(bool bEnable);
+
+        /**
+        * a function fo SetI2SSoftReset
+        * @param bEnable
+        * @return status_t
+        */
+        virtual status_t SetI2SSoftReset(bool bEnable);
 
         /**
         * a function to GetAfeOn , this is a afe bit , turn on will caise digital part start.
@@ -166,10 +180,9 @@ class AudioDigitalControl : public AudioDigitalControlInterface
         */
         virtual status_t SetDAIBTEnable(bool bEnable);
 
-        // function implememnt
-        status_t SetMemoryPathEnable(uint32 Memory_Interface, bool bEnable);
-        status_t SetMemDuplicateWrite(uint32 Memory_Interface, int dupwrite);
-        status_t SetMemMonoChannel(uint32 Memory_Interface, bool channel);
+        virtual void BT_SCO_SetMode(uint32_t mode);
+
+        virtual uint32_t BT_SCO_GetMode(void);
 
         /**
         * this function will  tansform SampleRate into hardware samplerate format
@@ -181,11 +194,6 @@ class AudioDigitalControl : public AudioDigitalControlInterface
         * @return AudioDigtalI2S::I2S_SAMPLERATE
         */
         virtual AudioDigtalI2S::I2S_SAMPLERATE I2SSampleRateTransform(unsigned int sampleRate);
-        /**
-        * this function will check all afe digital block return true if any digital block is running
-        * @return bool
-        */
-        bool GetAfeDigitalStatus(void);
 
         /**
         * this functionis to set Hw digital gain
@@ -193,6 +201,11 @@ class AudioDigitalControl : public AudioDigitalControlInterface
         */
         virtual status_t SetHwDigitalGain(uint32 Gain , AudioDigitalType::Hw_Digital_Gain GainType);
 
+        /**
+        * this functionis to set Hw digital current gain
+        * @return status_t
+        */
+        virtual status_t SetHwDigitalCurrentGain(uint32 Gain , AudioDigitalType::Hw_Digital_Gain GainType);
 
         /**
         * this functionis to set HwDigitalGainMode with sampleRate and step with how many samples
@@ -211,6 +224,13 @@ class AudioDigitalControl : public AudioDigitalControlInterface
         * @return status_t
         */
         virtual status_t SetHwDigitalGainEnable(AudioDigitalType::Hw_Digital_Gain GainType, bool Enable);
+        /**
+        * this functionis to set HwDigitalGainMode with sampleRate and step with how many samples, w/o Ramp Up
+        * @param GainType
+        * @param Enable
+        * @return status_t
+        */
+        virtual status_t SetHwDigitalGainEnableByPassRampUp(AudioDigitalType::Hw_Digital_Gain GainType, bool Enable);
 
         /**
         * this functionis to set modem pcm attribute.
@@ -250,19 +270,18 @@ class AudioDigitalControl : public AudioDigitalControlInterface
         virtual status_t EnableSideToneHw(uint32 connection , bool direction, bool  Enable);
 
         /**
+	 * this functionis to set Sinetone Ouput LR
+        * @return status_t
+        */
+        virtual status_t SetSinetoneOutputLR(bool bLR);
+
+        /**
         * this functionis to get device by device
         * @param Device
         * @return uint32
         */
         virtual uint32 DlPolicyByDevice(uint32_t Device);
 
-        /**
-        * this functionis Set FM Chip to output I2S by sampling rate, Master/Slave Mode. GPIO
-        * @param enable
-        * @return status_t
-        */
-        virtual status_t SetFmChip(bool enable);
-        
         /**
         * a function to Set MrgI2S Enable
         * @param bEnable
@@ -279,60 +298,32 @@ class AudioDigitalControl : public AudioDigitalControlInterface
         virtual status_t ResetFmChipMrgIf(void);
 
         /**
-        * this functionis Get I2S status
-        * @param void
-        * @return bool
-        */
-        virtual bool GetI2SConnectStatus(void);
-        
-        /**
-        * this functionis Set Fm Digital Status
-        * @param bEnable
-        * @return status_t
-        */
-//zhao.li@tcl atv		
-#ifdef NMI5625		
-		virtual status_t SetMATVI2SConnectStatus(bool bEnable);
-		virtual status_t SetMATVDigitalStatus(bool bEnable);
-		virtual bool GetMATVDigitalStatus(void);
-#endif
-//zhao.li@tcl atv end	
-        virtual status_t SetFmDigitalStatus(bool bEnable);
-
-        /**
-        * this functionis Get Fm Digital Status
-        * @param void
-        * @return bool
-        */
-        virtual bool GetFmDigitalStatus(void);
-
-		/**
         * a function to Set I2SASRC Config
         * @param bIsUseASRC
         * @param dToSampleRate
-        * @return status_t                
+        * @return status_t
         */
-        virtual status_t SetI2SASRCConfig(bool bIsUseASRC,unsigned int dToSampleRate);
-		/**
+        virtual status_t SetI2SASRCConfig(bool bIsUseASRC, unsigned int dToSampleRate);
+        /**
         * a function fo SetI2SASRCEnable
         * @param bEnable
         * @return status_t
         */
         virtual status_t SetI2SASRCEnable(bool bEnable);
-		/**
+        /**
         * a function to Set Set2ndI2SIn Config
         * @param sampleRate
         * @param bIsSlaveMode
-        * @return status_t                
+        * @return status_t
         */
-        virtual status_t Set2ndI2SInConfig(unsigned int sampleRate,bool bIsSlaveMode);
-		/**
+        virtual status_t Set2ndI2SInConfig(unsigned int sampleRate, bool bIsSlaveMode);
+        /**
         * a function fo Set2ndI2SIn
         * @param mDigitalI2S
         * @return status_t
         */
         virtual status_t Set2ndI2SIn(AudioDigtalI2S *mDigitalI2S);
-		/**
+        /**
         * a function fo Set2ndI2SInEnable
         * @param bEnable
         * @return status_t
@@ -344,8 +335,23 @@ class AudioDigitalControl : public AudioDigitalControlInterface
         * @return status_t
         */
         virtual status_t Set2ndI2SOutEnable(bool bEnable);
-        
+
+        virtual status_t SetMemIfFetchFormatPerSample(uint32 InterfaceType, AudioMEMIFAttribute::FETCHFORMATPERSAMPLE eFetchFormat);
+        virtual AudioMEMIFAttribute::FETCHFORMATPERSAMPLE GetMemIfFetchFormatPerSample(uint32 InterfaceType);
+        virtual status_t SetoutputConnectionFormat(AudioDigitalType::OUTPUT_DATA_FORMAT ConnectionFormat,AudioDigitalType::InterConnectionOutput Output);
+        virtual AudioDigitalType::OUTPUT_DATA_FORMAT GetoutputConnectionFormat(AudioDigitalType::InterConnectionOutput Output);
+
     private:
+
+        /**
+        * this function will check all afe digital block return true if any digital block is running
+        * @return bool
+        */
+        bool GetAfeDigitalStatus(void);
+        // function implememnt
+        status_t SetMemoryPathEnable(uint32 Memory_Interface, bool bEnable);
+        status_t SetMemDuplicateWrite(uint32 Memory_Interface, int dupwrite);
+        status_t SetMemMonoChannel(uint32 Memory_Interface, bool channel);
 
         static AudioDigitalControl *UniqueDigitalInstance;
         AudioDigitalControl();
@@ -366,17 +372,14 @@ class AudioDigitalControl : public AudioDigitalControlInterface
         AudioDigitalPCM mModemPcm1;  // slave only pcm
         AudioDigitalPCM mModemPcm2;  // slave,master pcm
         AudioDigitalDAIBT mDaiBt;
+        AudioMrgIf mMrgIf;
         Mutex mLock;
 
         int mAudioDigitalBlock[AudioDigitalType::NUM_OF_DIGITAL_BLOCK];
-        bool mI2SConnectStatus;
         bool mMicInverse;
-        bool mFmDigitalStatus;
-#ifdef NMI5625		
-		bool mMatvDigitalStatus;  //zhao.li@tcl atv
-#endif	
         bool mSideToneFilterOn;
-		bool mUseI2SADCInStatus;
+        bool mUseI2SADCInStatus;
+        uint32 BT_mode;
 };
 
 }

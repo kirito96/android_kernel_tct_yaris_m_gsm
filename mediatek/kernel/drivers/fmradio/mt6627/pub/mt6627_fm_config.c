@@ -1,3 +1,25 @@
+/* mt6627_fm_config.c
+ *
+ * (C) Copyright 2011
+ * MediaTek <www.MediaTek.com>
+ * hongcheng <hongcheng.xia@MediaTek.com>
+ *
+ * FM Radio Driver
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 #include <linux/string.h>
 #include <linux/slab.h>
 
@@ -26,6 +48,7 @@ static fm_s32 MT6627fm_cust_config_print(fm_cust_cfg *cfg)
     WCN_DBG(FM_NTC | MAIN, "de_emphasis:\t%d\n", cfg->rx_cfg.deemphasis);
     WCN_DBG(FM_NTC | MAIN, "osc_freq:\t%d\n", cfg->rx_cfg.osc_freq);
 
+    WCN_DBG(FM_NTC | MAIN, "aud path[%d]I2S state[%d]mode[%d]rate[%d]\n", cfg->aud_cfg.aud_path,cfg->aud_cfg.i2s_info.status,cfg->aud_cfg.i2s_info.mode,cfg->aud_cfg.i2s_info.rate);
     return 0;
 }
 
@@ -99,6 +122,12 @@ static fm_s32 MT6627fm_cust_config_default(fm_cust_cfg *cfg)
     cfg->rx_cfg.smg_th = FM_RX_SMG_TH_MT6627;
     cfg->rx_cfg.deemphasis = FM_RX_DEEMPHASIS_MT6627;
 	cfg->rx_cfg.osc_freq = FM_RX_OSC_FREQ_MT6627;
+	
+    cfg->aud_cfg.aud_path = FM_AUD_I2S;
+    cfg->aud_cfg.i2s_info.status = FM_I2S_OFF;
+    cfg->aud_cfg.i2s_info.mode = FM_I2S_MASTER;
+    cfg->aud_cfg.i2s_info.rate = FM_I2S_32K;
+    cfg->aud_cfg.i2s_pad = FM_I2S_PAD_CONN;
 
     return 0;
 }

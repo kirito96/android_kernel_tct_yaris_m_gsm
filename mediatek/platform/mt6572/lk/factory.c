@@ -14,6 +14,11 @@
 
 #define MODULE_NAME "[FACTORY]"
 
+#ifndef MT65XX_FACTORY_KEY
+#define MT65XX_FACTORY_KEY 0
+#endif 
+
+
 BOOL factory_check_key_trigger(void)
 {
 #if 1

@@ -82,9 +82,7 @@
 #include <trace/events/task.h>
 
 #include "mtlbprof/mtlbprof.h"
-#ifdef CONFIG_MT_PRIO_TRACER
- #include <linux/prio_tracer.h>
-#endif
+
 
 /*
  * Protected counters by write_lock_irq(&tasklist_lock)
@@ -285,22 +283,22 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
 	prepare_to_copy(orig);
 
 	tsk = alloc_task_struct_node(node);
-    if (!tsk){
-        printk("[%d:%s] fork fail at alloc_tsk_node, please check kmem_cache_alloc_node()\n", current->pid, current->comm);
+	if (!tsk){
+		printk("[%d:%s] fork fail at alloc_tsk_node, please check kmem_cache_alloc_node()\n", current->pid, current->comm);
 		return NULL;
-    }
+	}
 	ti = alloc_thread_info_node(tsk, node);
 	if (!ti) {
-        printk("[%d:%s] fork fail at alloc_t_info_node, please check alloc_pages_node()\n", current->pid, current->comm);
+		printk("[%d:%s] fork fail at alloc_t_info_node, please check alloc_pages_node()\n", current->pid, current->comm);
 		free_task_struct(tsk);
 		return NULL;
 	}
 
 	err = arch_dup_task_struct(tsk, orig);
-    if (err){
-        printk("[%d:%s] fork fail at arch_dup_task_struct, err:%d \n", current->pid, current->comm, err);
+	if (err){
+		printk("[%d:%s] fork fail at arch_dup_task_struct, err:%d \n", current->pid, current->comm, err);
 		goto out;
-    }
+	}
 	tsk->stack = ti;
 
 	setup_thread_stack(tsk, orig);
@@ -385,7 +383,7 @@ static int dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
 				goto fail_nomem;
 			charge = len;
 		}
-		tmp = kmem_cache_alloc(vm_area_cachep, GFP_KERNEL);
+		tmp = kmem_cache_zalloc(vm_area_cachep, GFP_KERNEL);
 		if (!tmp)
 			goto fail_nomem;
 		*tmp = *mpnt;
@@ -438,6 +436,7 @@ static int dup_mmap(struct mm_struct *mm, struct mm_struct *oldmm)
 		rb_link = &tmp->vm_rb.rb_right;
 		rb_parent = &tmp->vm_rb;
 
+		uksm_vma_add_new(tmp);
 		mm->map_count++;
 		retval = copy_page_range(mm, oldmm, mpnt);
 
@@ -872,9 +871,6 @@ static int copy_mm(unsigned long clone_flags, struct task_struct *tsk)
 	int retval;
 
 	tsk->min_flt = tsk->maj_flt = 0;
-#ifdef CONFIG_ZRAM
-    tsk->fm_flt = tsk->swap_in = tsk->swap_out = 0;
-#endif
 	tsk->nvcsw = tsk->nivcsw = 0;
 #ifdef CONFIG_DETECT_HUNG_TASK
 	tsk->last_switch_count = tsk->nvcsw + tsk->nivcsw;
@@ -1053,6 +1049,11 @@ static int copy_signal(unsigned long clone_flags, struct task_struct *tsk)
 	sig->nr_threads = 1;
 	atomic_set(&sig->live, 1);
 	atomic_set(&sig->sigcnt, 1);
+
+	/* list_add(thread_node, thread_head) without INIT_LIST_HEAD() */
+	sig->thread_head = (struct list_head)LIST_HEAD_INIT(tsk->thread_node);
+	tsk->thread_node = (struct list_head)LIST_HEAD_INIT(sig->thread_head);
+
 	init_waitqueue_head(&sig->wait_chldexit);
 	if (clone_flags & CLONE_NEWPID)
 		sig->flags |= SIGNAL_UNKILLABLE;
@@ -1133,6 +1134,32 @@ static void posix_cpu_timers_init(struct task_struct *tsk)
 	INIT_LIST_HEAD(&tsk->cpu_timers[2]);
 }
 
+#ifdef CONFIG_MTK_SCHED_CMP_TGS
+static void mt_init_thread_group(struct task_struct *p){
+#ifdef CONFIG_MT_SCHED_INFO
+	struct task_struct *tg = p->group_leader;
+#endif
+
+	p->thread_group_info[0].cfs_nr_running = 0;
+	p->thread_group_info[0].nr_running = 0 ;
+	p->thread_group_info[0].load_avg_ratio = 0;
+	p->thread_group_info[1].cfs_nr_running = 0;
+	p->thread_group_info[1].nr_running = 0;
+	p->thread_group_info[1].load_avg_ratio = 0;
+
+#ifdef CONFIG_MT_SCHED_INFO
+	mt_sched_printf("fork %d:%s %d:%s %lu %lu %lu, %lu %lu %lu",
+	   tg->pid, tg->comm, p->pid, p->comm,
+	   tg->thread_group_info[0].nr_running,
+	   tg->thread_group_info[0].cfs_nr_running,
+	   tg->thread_group_info[0].load_avg_ratio,
+	   tg->thread_group_info[1].cfs_nr_running,
+	   tg->thread_group_info[1].nr_running,
+	   tg->thread_group_info[1].load_avg_ratio);
+#endif
+}
+#endif
+
 /*
  * This creates a new process as a copy of the old one,
  * but does not actually start it yet.
@@ -1151,7 +1178,6 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 {
 	int retval;
 	struct task_struct *p;
-	int cgroup_callbacks_done = 0;
 
     if ((clone_flags & (CLONE_NEWNS|CLONE_FS)) == (CLONE_NEWNS|CLONE_FS)){
         printk("[%d:%s] fork fail at cpp 1, clone_flags:0x%x\n", current->pid, current->comm, (unsigned int)clone_flags);
@@ -1201,6 +1227,9 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	ftrace_graph_init_task(p);
 
 	rt_mutex_init_task(p);
+#ifdef CONFIG_MTK_SCHED_CMP_TGS
+	raw_spin_lock_init(&p->thread_group_info_lock);
+#endif
 
 #ifdef CONFIG_PROVE_LOCKING
 	DEBUG_LOCKS_WARN_ON(!p->hardirqs_enabled);
@@ -1250,6 +1279,11 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 #if defined(SPLIT_RSS_COUNTING)
 	memset(&p->rss_stat, 0, sizeof(p->rss_stat));
 #endif
+
+	/*
+	 * Save current task's (not effective) timer slack value as default
+	 * timer slack value for new task.
+	 */
 
 	p->default_timer_slack_ns = current->timer_slack_ns;
 
@@ -1321,7 +1355,7 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 		goto bad_fork_cleanup_policy;
 	retval = audit_alloc(p);
 	if (retval)
-		goto bad_fork_cleanup_policy;
+		goto bad_fork_cleanup_perf;
 	/* copy all the process information */
 	retval = copy_semundo(clone_flags, p);
 	if (retval)
@@ -1417,12 +1451,10 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	 */
 	p->group_leader = p;
 	INIT_LIST_HEAD(&p->thread_group);
-
-	/* Now that the task is set up, run cgroup callbacks if
-	 * necessary. We need to run them before the task is visible
-	 * on the tasklist. */
-	cgroup_fork_callbacks(p);
-	cgroup_callbacks_done = 1;
+    INIT_HLIST_HEAD(&p->task_works);
+#ifdef CONFIG_MTK_SCHED_CMP_TGS
+	mt_init_thread_group(p);
+#endif
 
 	/* Need tasklist lock for parent etc handling! */
 	write_lock_irq(&tasklist_lock);
@@ -1454,14 +1486,6 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 		goto bad_fork_free_pid;
 	}
 
-	if (clone_flags & CLONE_THREAD) {
-		current->signal->nr_threads++;
-		atomic_inc(&current->signal->live);
-		atomic_inc(&current->signal->sigcnt);
-		p->group_leader = current->group_leader;
-		list_add_tail_rcu(&p->thread_group, &p->group_leader->thread_group);
-	}
-
 	if (likely(p->pid)) {
 		ptrace_init_task(p, (clone_flags & CLONE_PTRACE) || trace);
 
@@ -1476,6 +1500,15 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 			list_add_tail(&p->sibling, &p->real_parent->children);
 			list_add_tail_rcu(&p->tasks, &init_task.tasks);
 			__this_cpu_inc(process_counts);
+		} else {
+			current->signal->nr_threads++;
+			atomic_inc(&current->signal->live);
+			atomic_inc(&current->signal->sigcnt);
+			p->group_leader = current->group_leader;
+			list_add_tail_rcu(&p->thread_group,
+					  &p->group_leader->thread_group);
+			list_add_tail_rcu(&p->thread_node,
+					  &p->signal->thread_head);
 		}
 		attach_pid(p, PIDTYPE_PID, pid);
 		nr_threads++;
@@ -1483,7 +1516,9 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 
 	total_forks++;
 	spin_unlock(&current->sighand->siglock);
+	syscall_tracepoint_update(p);
 	write_unlock_irq(&tasklist_lock);
+
 	proc_fork_connector(p);
 	cgroup_post_fork(p);
 	if (clone_flags & CLONE_THREAD)
@@ -1520,15 +1555,16 @@ bad_fork_cleanup_semundo:
 	exit_sem(p);
 bad_fork_cleanup_audit:
 	audit_free(p);
-bad_fork_cleanup_policy:
+bad_fork_cleanup_perf:
 	perf_event_free_task(p);
+bad_fork_cleanup_policy:
 #ifdef CONFIG_NUMA
 	mpol_put(p->mempolicy);
 bad_fork_cleanup_cgroup:
 #endif
 	if (clone_flags & CLONE_THREAD)
 		threadgroup_change_end(current);
-	cgroup_exit(p, cgroup_callbacks_done);
+	cgroup_exit(p, 0);
 	delayacct_tsk_free(p);
 	module_put(task_thread_info(p)->exec_domain->module);
 bad_fork_cleanup_count:
@@ -1598,19 +1634,19 @@ long do_fork(unsigned long clone_flags,
 	 * actually start allocating stuff
 	 */
 	if (clone_flags & CLONE_NEWUSER) {
-        if (clone_flags & CLONE_THREAD){
-            printk("[%d:%s] fork fail at clone_thread, flags:0x%x\n", current->pid, current->comm, (unsigned int)clone_flags);
+		if (clone_flags & CLONE_THREAD){
+			printk("[%d:%s] fork fail at clone_thread, flags:0x%x\n", current->pid, current->comm, (unsigned int)clone_flags);
 			return -EINVAL;
-        }
+		}
 		/* hopefully this check will go away when userns support is
 		 * complete
 		 */
 		if (!capable(CAP_SYS_ADMIN) || !capable(CAP_SETUID) ||
-                !capable(CAP_SETGID)){
-            printk("[%d:%s] fork fail at capable not match, flags:0x%x\n", current->pid, current->comm, (unsigned int)clone_flags);
+			!capable(CAP_SETGID)){
+			printk("[%d:%s] fork fail at capable not match, flags:0x%x\n", current->pid, current->comm, (unsigned int)clone_flags);
 			return -EPERM;
+		}
 	}
-    }
 	/*
 	 * Determine whether and which event to report to ptracer.  When
 	 * called from kernel_thread or CLONE_UNTRACED is explicitly
@@ -1652,9 +1688,9 @@ long do_fork(unsigned long clone_flags,
 		}
 
 #ifdef CONFIG_SCHEDSTATS
-        /* mt shceduler profiling*/
-        save_mtproc_info(p, sched_clock());	
-        printk(KERN_DEBUG "[%d:%s] fork [%d:%s]\n", current->pid, current->comm, p->pid, p->comm);
+		/* mt shceduler profiling*/
+		save_mtproc_info(p, sched_clock());
+		printk(KERN_DEBUG "[%d:%d:%s] fork [%d:%d:%s] flag=0x%lx\n", current->tgid, current->pid, current->comm, p->tgid, p->pid, p->comm, clone_flags);
 #endif
 		wake_up_new_task(p);
 
@@ -1666,13 +1702,10 @@ long do_fork(unsigned long clone_flags,
 			if (!wait_for_vfork_done(p, &vfork))
 				ptrace_event(PTRACE_EVENT_VFORK_DONE, nr);
 		}
-#ifdef CONFIG_MT_PRIO_TRACER
-		create_prio_tracer(task_pid_nr(p));
-		update_prio_tracer(task_pid_nr(p), p->prio, p->policy, 1);
-#endif
+
 	} else {
 		nr = PTR_ERR(p);
-        printk("[%d:%s] fork fail:[0x%x, %d]\n", current->pid, current->comm, (unsigned int)p,(int) nr);
+		printk("[%d:%s] fork fail:[0x%x, %d]\n", current->pid, current->comm, (unsigned int)p,(int) nr);
 	}
 	return nr;
 }

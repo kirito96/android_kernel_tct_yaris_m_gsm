@@ -12,7 +12,7 @@
 #define LUMA_HIST_STEP      32
 #define LUMA_HIST_MAX       511
 
-#define LUMA_CURVE_POINT    17
+#define LUMA_CURVE_POINT    33
 #define LUMA_CURVE_STEP     32
 #define LUMA_CURVE_MAX      511
 

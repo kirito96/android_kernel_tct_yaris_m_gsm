@@ -99,5 +99,17 @@ typedef struct
     unsigned int 		u4Length;
 } VP8_DECODER_INPUT_UNIT_T;
 
+typedef struct 
+{
+    unsigned int u4Address;
+    unsigned int u4Length;
+} HEVC_DECODER_PAYLOAD_INFO_T;
+
+typedef struct
+{
+	unsigned int u4PayloadNumber;
+	HEVC_DECODER_PAYLOAD_INFO_T* pu1Payload;
+} HEVC_DECODER_INPUT_PARAM_T;
+
 #endif /* VCODEC_DEC_DEMUXER_IF_H */ 
 

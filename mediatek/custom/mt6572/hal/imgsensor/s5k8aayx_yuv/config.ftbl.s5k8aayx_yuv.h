@@ -1,10 +1,12 @@
-
 //#ifndef _MTK_CUSTOM_PROJECT_HAL_IMGSENSOR_SRC_CONFIGFTBL__H_
 //#define _MTK_CUSTOM_PROJECT_HAL_IMGSENSOR_SRC_CONFIGFTBL__H_
 #if 1
 //
 
 
+/*******************************************************************************
+ *
+ ******************************************************************************/
 FTABLE_DEFINITION(SENSOR_DRVNAME_S5K8AAYX_YUV)
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 FTABLE_SCENE_INDEP()
@@ -140,13 +142,21 @@ FTABLE_SCENE_INDEP()
 #endif
     //==========================================================================
 #if 1
-    //  Video Snapshot
+#if(1 == VSS_SUPPORTED)
+    FTABLE_CONFIG_AS_TYPE_OF_USER(
+        KEY_AS_(MtkCameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED), 
+        SCENE_AS_DEFAULT_SCENE(
+            ITEM_AS_DEFAULT_(MtkCameraParameters::TRUE), 
+        ), 
+    )
+#else
     FTABLE_CONFIG_AS_TYPE_OF_USER(
         KEY_AS_(MtkCameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED), 
         SCENE_AS_DEFAULT_SCENE(
             ITEM_AS_DEFAULT_(MtkCameraParameters::FALSE), 
         ), 
     )
+#endif
 #endif
     //==========================================================================
 #if 1
@@ -210,6 +220,9 @@ FTABLE_SCENE_INDEP()
     //==========================================================================
 END_FTABLE_SCENE_INDEP()
 //------------------------------------------------------------------------------
+/*******************************************************************************
+ *
+ ******************************************************************************/
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 FTABLE_SCENE_DEP()
     //==========================================================================
@@ -337,6 +350,9 @@ END_FTABLE_SCENE_DEP()
 END_FTABLE_DEFINITION()
 
 
+/*******************************************************************************
+ *
+ ******************************************************************************/
 #endif
 //#endif //_MTK_CUSTOM_PROJECT_HAL_IMGSENSOR_SRC_CONFIGFTBL__H_
 

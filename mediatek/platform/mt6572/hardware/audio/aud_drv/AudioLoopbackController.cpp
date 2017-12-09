@@ -1,29 +1,33 @@
 #include "AudioLoopbackController.h"
 #include "AudioBTCVSDControl.h"
+#include "AudioUtility.h"
+#include "AudioMTKStreamManager.h"
+
+#include "WCNChipController.h"
 
 #define LOG_TAG "AudioLoopbackController"
 #ifndef ANDROID_DEFAULT_CODE
-    #include <cutils/xlog.h>
-    #ifdef ALOGE
-    #undef ALOGE
-    #endif
-    #ifdef ALOGW
-    #undef ALOGW
-    #endif ALOGI
-    #undef ALOGI
-    #ifdef ALOGD
-    #undef ALOGD
-    #endif
-    #ifdef ALOGV
-    #undef ALOGV
-    #endif
-    #define ALOGE XLOGE
-    #define ALOGW XLOGW
-    #define ALOGI XLOGI
-    #define ALOGD XLOGD
-    #define ALOGV XLOGV
+#include <cutils/xlog.h>
+#ifdef ALOGE
+#undef ALOGE
+#endif
+#ifdef ALOGW
+#undef ALOGW
+#endif ALOGI
+#undef ALOGI
+#ifdef ALOGD
+#undef ALOGD
+#endif
+#ifdef ALOGV
+#undef ALOGV
+#endif
+#define ALOGE XLOGE
+#define ALOGW XLOGW
+#define ALOGI XLOGI
+#define ALOGD XLOGD
+#define ALOGV XLOGV
 #else
-    #include <utils/Log.h>
+#include <utils/Log.h>
 #endif
 
 // for use max gain for audio loopback
@@ -32,7 +36,8 @@
 namespace android
 {
 
-#if defined(BTCVSD_LOOPBACK_WITH_CODEC)
+//#if defined(BTCVSD_LOOPBACK_WITH_CODEC)
+#if 1 //0902
 static android_audio_legacy::AudioStreamOut *streamOutput;
 #endif
 
@@ -41,7 +46,8 @@ static const float kMaxMasterVolume = 1.0;
 // too big gain might cause "Bee~" tone due to the output sound is collected by input
 static const int kPreAmpGainMapValue[] = {30, 24, 18, 12, 6, 0}; // Map to AUDPREAMPGAIN: (000) 2dB, (001) 8dB, (010) 14dB, ..., (101) 32dB
 
-enum preamp_gain_index_t {
+enum preamp_gain_index_t
+{
     PREAMP_GAIN_2_DB  = 0,
     PREAMP_GAIN_8_DB  = 1,
     PREAMP_GAIN_14_DB = 2,
@@ -55,7 +61,8 @@ enum preamp_gain_index_t {
 AudioLoopbackController *AudioLoopbackController::mAudioLoopbackController = NULL;
 AudioLoopbackController *AudioLoopbackController::GetInstance()
 {
-    if (mAudioLoopbackController == NULL) {
+    if (mAudioLoopbackController == NULL)
+    {
         mAudioLoopbackController = new AudioLoopbackController();
     }
     ASSERT(mAudioLoopbackController != NULL);
@@ -78,9 +85,9 @@ AudioLoopbackController::AudioLoopbackController()
     mMasterVolumeCopy  = 1.0;
     mMicAmpLchGainCopy = 0;
     mMicAmpRchGainCopy = 0;
-	mBtLoopbackWithCodec = 0;
-	mBtLoopbackWithoutCodec = 0;
-	mUseBtCodec = 1;
+    mBtLoopbackWithCodec = 0;
+    mBtLoopbackWithoutCodec = 0;
+    mUseBtCodec = 1;
 }
 
 AudioLoopbackController::~AudioLoopbackController()
@@ -99,59 +106,67 @@ status_t AudioLoopbackController::OpenAudioLoopbackControlFlow(const audio_devic
     mAudioResourceManager->EnableAudioClock(AudioResourceManagerInterface::CLOCK_AUD_ANA, true);
 
     // set sampling rate
-    mAudioAnalogInstance->SetFrequency(AudioAnalogType::DEVICE_OUT_DAC, dl_samplerate);
-    mAudioAnalogInstance->SetFrequency(AudioAnalogType::DEVICE_IN_ADC, ul_samplerate);
+    mAudioResourceManager->SetFrequency(AudioResourceManagerInterface::DEVICE_OUT_DAC, dl_samplerate);
+    mAudioResourceManager->SetFrequency(AudioResourceManagerInterface::DEVICE_IN_ADC, ul_samplerate);
 
     // set device
     mAudioResourceManager->setDlOutputDevice(output_device);
     mAudioResourceManager->setUlInputDevice(input_device);
 
+#if 0 //0902
 #if !defined(BTCVSD_LOOPBACK_WITH_CODEC)
-	mUseBtCodec = 0; // always without codec
+    mUseBtCodec = 0; // always without codec
+#endif
 #endif
 
     // Open ADC/DAC I2S, or DAIBT
     ALOGD("+%s(), bt_device_on = %d, mUseBtCodec = %d, mBtLoopbackWithoutCodec: %d, mBtLoopbackWithCodec: %d",
-    					__FUNCTION__, bt_device_on, mUseBtCodec, mBtLoopbackWithoutCodec, mBtLoopbackWithCodec);
-    if (bt_device_on == true) 
-	{ // DAIBT
-#ifdef BT_SW_CVSD
-		if(!mUseBtCodec)
-		{
-			mBtLoopbackWithoutCodec = 1;
-			mFd2 = 0;
-			mFd2 = ::open(kBTDeviceName, O_RDWR);
-			ALOGD("+%s(), CVSD AP loopback without codec, mFd2: %d, AP errno: %d",__FUNCTION__, mFd2, errno);
-			::ioctl(mFd2, ALLOCATE_FREE_BTCVSD_BUF, 0); //allocate TX working buffers in kernel
-			::ioctl(mFd2, ALLOCATE_FREE_BTCVSD_BUF, 2); //allocate TX working buffers in kernel
-			::ioctl(mFd2, SET_BTCVSD_STATE, BT_SCO_TXSTATE_DIRECT_LOOPBACK); //set state to kernel
-		}
-		else
-		{
-#if defined(BTCVSD_LOOPBACK_WITH_CODEC)
-			int format = AUDIO_FORMAT_PCM_16_BIT;
-			uint32_t channels = AUDIO_CHANNEL_OUT_MONO;
-			uint32_t sampleRate = 8000;
-			status_t status;
-			mBtLoopbackWithCodec = 1;
-			streamOutput = mAudioHardware->openOutputStream(0, &format, &channels, &sampleRate, &status);
-			ALOGD("+%s(), CVSD AP loopback with codec, streamOutput: %d",__FUNCTION__, streamOutput);
-			mBTCVSDLoopbackThread = new AudioMTKLoopbackThread();
-			if (mBTCVSDLoopbackThread.get()) 
-			{
-				mBTCVSDLoopbackThread->run();
-			}
+          __FUNCTION__, bt_device_on, mUseBtCodec, mBtLoopbackWithoutCodec, mBtLoopbackWithCodec);
+    if (bt_device_on == true)
+    {
+        // DAIBT
+        if (WCNChipController::GetInstance()->BTUseCVSDRemoval() == true)
+        {
+        if (!mUseBtCodec)
+        {
+            mBtLoopbackWithoutCodec = 1;
+            mFd2 = 0;
+            mFd2 = ::open(kBTDeviceName, O_RDWR);
+            ALOGD("+%s(), CVSD AP loopback without codec, mFd2: %d, AP errno: %d", __FUNCTION__, mFd2, errno);
+            ::ioctl(mFd2, ALLOCATE_FREE_BTCVSD_BUF, 0); //allocate TX working buffers in kernel
+            ::ioctl(mFd2, ALLOCATE_FREE_BTCVSD_BUF, 2); //allocate TX working buffers in kernel
+            ::ioctl(mFd2, SET_BTCVSD_STATE, BT_SCO_TXSTATE_DIRECT_LOOPBACK); //set state to kernel
+        }
+        else
+        {
+//#if defined(BTCVSD_LOOPBACK_WITH_CODEC)
+#if 1 //0902
+            int format = AUDIO_FORMAT_PCM_16_BIT;
+            uint32_t channels = AUDIO_CHANNEL_OUT_MONO;
+            uint32_t sampleRate = 8000;
+            status_t status;
+            mBtLoopbackWithCodec = 1;
+            streamOutput = AudioMTKStreamManager::getInstance()->openOutputStream(output_device, &format, &channels, &sampleRate, &status);
+            ALOGD("+%s(), CVSD AP loopback with codec, streamOutput: %d", __FUNCTION__, streamOutput);
+            mBTCVSDLoopbackThread = new AudioMTKLoopbackThread();
+            if (mBTCVSDLoopbackThread.get())
+            {
+                mBTCVSDLoopbackThread->run();
+            }
 #endif
-		}
-#else
+        }
+        }
+        else
+        {
         mAudioDigitalInstance->SetinputConnection(AudioDigitalType::Connection, AudioDigitalType::I02, AudioDigitalType::O02); // DAIBT_IN -> DAIBT_OUT
 
         SetDAIBTAttribute(dl_samplerate);
 
         mAudioDigitalInstance->SetDAIBTEnable(true);
-#endif
+        }
     }
-    else { // ADC/DAC I2S
+    else // ADC/DAC I2S
+    {
         mAudioDigitalInstance->SetinputConnection(AudioDigitalType::Connection, AudioDigitalType::I03, AudioDigitalType::O03); // ADC_I2S_IN_L -> DAC_I2S_OUT_L
         mAudioDigitalInstance->SetinputConnection(AudioDigitalType::Connection, AudioDigitalType::I03, AudioDigitalType::O04); // ADC_I2S_IN_L -> DAC_I2S_OUT_R
 
@@ -181,14 +196,50 @@ status_t AudioLoopbackController::OpenAudioLoopbackControlFlow(const audio_devic
     // adjust uplink volume for current mode and routes
     mMicAmpLchGainCopy = mAudioAnalogInstance->GetAnalogGain(AudioAnalogType::VOLUME_MICAMPL);
     mMicAmpRchGainCopy = mAudioAnalogInstance->GetAnalogGain(AudioAnalogType::VOLUME_MICAMPR);
-    if (output_device == AUDIO_DEVICE_OUT_SPEAKER) {
+#ifdef ENHENCE_MIC_GAIN
+    if (output_device == AUDIO_DEVICE_OUT_SPEAKER)
+    {
+        mAudioAnalogInstance->SetAnalogGain(AudioAnalogType::VOLUME_MICAMPL, kPreAmpGainMapValue[PREAMP_GAIN_32_DB]);
+        mAudioAnalogInstance->SetAnalogGain(AudioAnalogType::VOLUME_MICAMPR, kPreAmpGainMapValue[PREAMP_GAIN_32_DB]);
+    }
+#else
+    if (output_device == AUDIO_DEVICE_OUT_SPEAKER)
+    {
         mAudioAnalogInstance->SetAnalogGain(AudioAnalogType::VOLUME_MICAMPL, kPreAmpGainMapValue[PREAMP_GAIN_2_DB]);
         mAudioAnalogInstance->SetAnalogGain(AudioAnalogType::VOLUME_MICAMPR, kPreAmpGainMapValue[PREAMP_GAIN_2_DB]);
     }
-    else {
+#endif
+    #ifdef AP_HEADSET_MIC_AFE_LOOPBACK_GAIN
+    else if( (input_device==AUDIO_DEVICE_IN_WIRED_HEADSET)&&
+		     (output_device == AUDIO_DEVICE_OUT_WIRED_HEADSET) )
+    {
+        ALOGD("headset mic afe loopback: input_device=0x%x ; output_device=0x%x ;mic gain=%d",input_device&(~0x80000000),output_device,AP_HEADSET_MIC_AFE_LOOPBACK_GAIN);
+        mAudioAnalogInstance->SetAnalogGain(AudioAnalogType::VOLUME_MICAMPL, kPreAmpGainMapValue[AP_HEADSET_MIC_AFE_LOOPBACK_GAIN]);
+        mAudioAnalogInstance->SetAnalogGain(AudioAnalogType::VOLUME_MICAMPR, kPreAmpGainMapValue[AP_HEADSET_MIC_AFE_LOOPBACK_GAIN]);
+    }
+    #endif
+    #ifdef AP_MAIN_MIC_AFE_LOOPBACK_GAIN
+    else if( (input_device==AUDIO_DEVICE_IN_BUILTIN_MIC)&&
+		     (output_device == AUDIO_DEVICE_OUT_EARPIECE) )
+    {
+        ALOGD("main mic afe loopback: input_device=0x%x ; output_device=0x%x ;mic gain=%d",input_device&(~0x80000000),output_device,AP_MAIN_MIC_AFE_LOOPBACK_GAIN);
+        mAudioAnalogInstance->SetAnalogGain(AudioAnalogType::VOLUME_MICAMPL, kPreAmpGainMapValue[AP_MAIN_MIC_AFE_LOOPBACK_GAIN]);
+        mAudioAnalogInstance->SetAnalogGain(AudioAnalogType::VOLUME_MICAMPR, kPreAmpGainMapValue[AP_MAIN_MIC_AFE_LOOPBACK_GAIN]);
+    }
+    #endif
+#ifdef ENHENCE_MIC_GAIN
+    else
+    {
+        mAudioAnalogInstance->SetAnalogGain(AudioAnalogType::VOLUME_MICAMPL, kPreAmpGainMapValue[PREAMP_GAIN_32_DB]);
+        mAudioAnalogInstance->SetAnalogGain(AudioAnalogType::VOLUME_MICAMPR, kPreAmpGainMapValue[PREAMP_GAIN_32_DB]);
+    }
+#else
+    else
+    {
         mAudioAnalogInstance->SetAnalogGain(AudioAnalogType::VOLUME_MICAMPL, kPreAmpGainMapValue[PREAMP_GAIN_20_DB]);
         mAudioAnalogInstance->SetAnalogGain(AudioAnalogType::VOLUME_MICAMPR, kPreAmpGainMapValue[PREAMP_GAIN_20_DB]);
     }
+#endif
 #endif
 
     ALOGD("-%s(), input_device = 0x%x, output_device = 0x%x ul_sr %d, dl_sr %d", __FUNCTION__, input_device, output_device, ul_samplerate, dl_samplerate);
@@ -202,11 +253,33 @@ status_t AudioLoopbackController::OpenAudioLoopbackControlFlow(const audio_devic
     // check BT device
     const bool bt_device_on = android_audio_legacy::AudioSystem::isBluetoothScoDevice((android_audio_legacy::AudioSystem::audio_devices)output_device);
     // set sample rate
-#if defined(MTK_DIGITAL_MIC_SUPPORT)
-    const int  sample_rate  = (bt_device_on == true) ? 8000 : 32000;
-#else
-    const int  sample_rate  = (bt_device_on == true) ? 8000 : 48000;
-#endif
+    int  sample_rate;
+
+    if (bt_device_on == true)
+    {
+        if (WCNChipController::GetInstance()->BTChipSamplingRate() == 0)
+        {
+            sample_rate = 8000;
+
+        }
+        else
+        {
+            sample_rate = 16000;
+        }
+    }
+    else
+    {
+        if (IsAudioSupportFeature(AUDIO_SUPPORT_DMIC))
+        {
+            sample_rate  = 32000;
+        }
+        else
+        {
+            sample_rate  = 48000;
+        }
+    }
+
+
     return OpenAudioLoopbackControlFlow(input_device, output_device, sample_rate, sample_rate);
 }
 
@@ -222,41 +295,47 @@ status_t AudioLoopbackController::CloseAudioLoopbackControlFlow()
     const bool bt_device_on = android_audio_legacy::AudioSystem::isBluetoothScoDevice((android_audio_legacy::AudioSystem::audio_devices)output_device);
 
     ALOGD("%s(), bt_device_on = %d, mBtLoopbackWithoutCodec: %d, mBtLoopbackWithCodec: %d",
-    					__FUNCTION__, bt_device_on, mBtLoopbackWithoutCodec, mBtLoopbackWithCodec);
+          __FUNCTION__, bt_device_on, mBtLoopbackWithoutCodec, mBtLoopbackWithCodec);
 
-    if (bt_device_on) {
-#ifdef BT_SW_CVSD
-		if(	mBtLoopbackWithoutCodec	)
-		{
-			::ioctl(mFd2, ALLOCATE_FREE_BTCVSD_BUF, 1); //allocate TX working buffers in kernel
-			::ioctl(mFd2, ALLOCATE_FREE_BTCVSD_BUF, 3); //allocate TX working buffers in kernel
-			::ioctl(mFd2, SET_BTCVSD_STATE, BT_SCO_TXSTATE_IDLE); //set state to kernel
-			mBtLoopbackWithoutCodec = 0;
-		}
-		else if(mBtLoopbackWithCodec)
-		{ 
-#if defined(BTCVSD_LOOPBACK_WITH_CODEC) 
-			streamOutput->standby();
-			if (mBTCVSDLoopbackThread.get()) 
-			{
-				int ret = 0;
-				//ret = mBTCVSDLoopbackThread->requestExitAndWait();
-				//if (ret == WOULD_BLOCK) 
-				{
-					mBTCVSDLoopbackThread->requestExit();
-				}
-				mBTCVSDLoopbackThread.clear();
-			}
-			mAudioHardware->closeOutputStream(streamOutput);
-			mBtLoopbackWithCodec = 0;
+    if (bt_device_on)
+    {
+        if (WCNChipController::GetInstance()->BTUseCVSDRemoval() == true)
+        {
+            if (mBtLoopbackWithoutCodec)
+            {
+                ::ioctl(mFd2, ALLOCATE_FREE_BTCVSD_BUF, 1); //allocate TX working buffers in kernel
+                ::ioctl(mFd2, ALLOCATE_FREE_BTCVSD_BUF, 3); //allocate TX working buffers in kernel
+                ::ioctl(mFd2, SET_BTCVSD_STATE, BT_SCO_TXSTATE_IDLE); //set state to kernel
+                mBtLoopbackWithoutCodec = 0;
+            }
+            else if (mBtLoopbackWithCodec)
+            {
+//#if defined(BTCVSD_LOOPBACK_WITH_CODEC)
+#if 1 //0902
+                streamOutput->standby();
+                if (mBTCVSDLoopbackThread.get())
+                {
+                    int ret = 0;
+                    //ret = mBTCVSDLoopbackThread->requestExitAndWait();
+                    //if (ret == WOULD_BLOCK)
+                    {
+                        mBTCVSDLoopbackThread->requestExit();
+                    }
+                    mBTCVSDLoopbackThread.clear();
+                }
+                AudioMTKStreamManager::getInstance()->closeOutputStream(streamOutput);
+                mBtLoopbackWithCodec = 0;
 #endif
-		}
-#else
-        mAudioDigitalInstance->SetDAIBTEnable(false);
-        mAudioDigitalInstance->SetinputConnection(AudioDigitalType::DisConnect, AudioDigitalType::I02, AudioDigitalType::O02); // DAIBT_IN -> DAIBT_OUT
-#endif
+            }
+        }
+        else
+        {
+            mAudioDigitalInstance->SetDAIBTEnable(false);
+            mAudioDigitalInstance->SetinputConnection(AudioDigitalType::DisConnect, AudioDigitalType::I02, AudioDigitalType::O02); // DAIBT_IN -> DAIBT_OUT
+        }
     }
-    else {
+    else
+    {
         mAudioDigitalInstance->SetI2SDacEnable(false);
         mAudioDigitalInstance->SetI2SAdcEnable(false);
 
@@ -268,8 +347,8 @@ status_t AudioLoopbackController::CloseAudioLoopbackControlFlow()
     mAudioDigitalInstance->SetAfeEnable(false);
 
     // recover sampling rate
-    mAudioAnalogInstance->SetFrequency(AudioAnalogType::DEVICE_OUT_DAC, 44100);
-    mAudioAnalogInstance->SetFrequency(AudioAnalogType::DEVICE_IN_ADC, 44100);
+    mAudioResourceManager->SetFrequency(AudioResourceManagerInterface::DEVICE_OUT_DAC, 44100);
+    mAudioResourceManager->SetFrequency(AudioResourceManagerInterface::DEVICE_IN_ADC, 44100);
 
 #ifdef AUDIO_LOOPBACK_USE_MAX_GAIN
     // recover volume for current mode and routes
@@ -291,7 +370,13 @@ status_t AudioLoopbackController::SetApBTCodec(bool enable_codec)
 {
     ALOGD("+%s(), enable_codec = %d", __FUNCTION__, enable_codec);
     mUseBtCodec = enable_codec;
-	return NO_ERROR;
+    return NO_ERROR;
+}
+
+bool AudioLoopbackController::IsAPBTLoopbackWithCodec(void)
+{
+    ALOGD("+%s(), mBtLoopbackWithCodec = %d", __FUNCTION__, mBtLoopbackWithCodec);
+    return mBtLoopbackWithCodec;
 }
 
 status_t AudioLoopbackController::SetDACI2sOutAttribute(int sample_rate)
@@ -334,37 +419,30 @@ status_t AudioLoopbackController::SetDAIBTAttribute(int sample_rate)
     AudioDigitalDAIBT daibt_attribute;
     memset((void *)&daibt_attribute, 0, sizeof(daibt_attribute));
 
-#if defined(MTK_MERGE_INTERFACE_SUPPORT)
-    daibt_attribute.mUSE_MRGIF_INPUT = AudioDigitalDAIBT::FROM_MGRIF;
-#else
-    daibt_attribute.mUSE_MRGIF_INPUT = AudioDigitalDAIBT::FROM_BT;
-#endif
+    if (WCNChipController::GetInstance()->IsBTMergeInterfaceSupported() == true)
+    {
+        daibt_attribute.mUSE_MRGIF_INPUT = AudioDigitalDAIBT::FROM_MGRIF;
+    }
+    else
+    {
+        daibt_attribute.mUSE_MRGIF_INPUT = AudioDigitalDAIBT::FROM_BT;
+    }
     daibt_attribute.mDAI_BT_MODE = (sample_rate == 8000) ? AudioDigitalDAIBT::Mode8K : AudioDigitalDAIBT::Mode16K;
     daibt_attribute.mDAI_DEL = AudioDigitalDAIBT::HighWord; // suggest always HighWord
-    daibt_attribute.mBT_LEN  = 0;
+    daibt_attribute.mBT_LEN  = WCNChipController::GetInstance()->BTChipSyncLength();
     daibt_attribute.mDATA_RDY = true;
-    daibt_attribute.mBT_SYNC = AudioDigitalDAIBT::Short_Sync;
+    daibt_attribute.mBT_SYNC = WCNChipController::GetInstance()->BTChipSyncFormat();
     daibt_attribute.mBT_ON = true;
     daibt_attribute.mDAIBT_ON = false;
     mAudioDigitalInstance->SetDAIBBT(&daibt_attribute);
     return NO_ERROR;
 }
-
-void AudioLoopbackController::SetHardwarePointer(void *pAudioHardware)
-{
-    if (pAudioHardware == NULL) {
-        ALOGW(" SetHardwarePointer paudioHardware ==NULL");
-    }
-    else {
-        mAudioHardware = (AudioMTKHardware *)pAudioHardware;
-    }
-}
-
-#if defined(BTCVSD_LOOPBACK_WITH_CODEC) 
+//#if defined(BTCVSD_LOOPBACK_WITH_CODEC)
+#if 1 //0902
 
 extern void CVSDLoopbackResetBuffer();
-extern void CVSDLoopbackReadDataDone( uint32_t len );
-extern void CVSDLoopbackGetReadBuffer( uint8_t **buffer, uint32_t *buf_len );
+extern void CVSDLoopbackReadDataDone(uint32_t len);
+extern void CVSDLoopbackGetReadBuffer(uint8_t **buffer, uint32_t *buf_len);
 extern int32_t CVSDLoopbackGetDataCount();
 
 AudioLoopbackController::AudioMTKLoopbackThread::AudioMTKLoopbackThread()
@@ -391,25 +469,25 @@ status_t  AudioLoopbackController::AudioMTKLoopbackThread::readyToRun()
 
 bool AudioLoopbackController::AudioMTKLoopbackThread::threadLoop()
 {
-	uint8_t *pReadBuffer;
-	uint32_t uReadByte, uWriteDataToBT;
-	CVSDLoopbackResetBuffer();
-    while (!(exitPending() == true)) 
-	{
-		ALOGD("BT_SW_CVSD AP loopback threadLoop(+)");
-		uWriteDataToBT = 0;
+    uint8_t *pReadBuffer;
+    uint32_t uReadByte, uWriteDataToBT;
+    CVSDLoopbackResetBuffer();
+    while (!(exitPending() == true))
+    {
+        ALOGD("BT_SW_CVSD AP loopback threadLoop(+)");
+        uWriteDataToBT = 0;
         CVSDLoopbackGetReadBuffer(&pReadBuffer, &uReadByte);
-		uReadByte &= 0xFFFFFFFE;
-		if(uReadByte)
-		{
-			uWriteDataToBT = streamOutput->write(pReadBuffer, uReadByte);
-			CVSDLoopbackReadDataDone(uWriteDataToBT);
-		}
-		else
-		{
-	 		usleep(5*1000); //5ms
-		}
-		ALOGD("BT_SW_CVSD AP loopback threadLoop(-), uReadByte: %d, uWriteDataToBT: %d", uReadByte, uWriteDataToBT);
+        uReadByte &= 0xFFFFFFFE;
+        if (uReadByte)
+        {
+            uWriteDataToBT = streamOutput->write(pReadBuffer, uReadByte);
+            CVSDLoopbackReadDataDone(uWriteDataToBT);
+        }
+        else
+        {
+            usleep(5 * 1000); //5ms
+        }
+        ALOGD("BT_SW_CVSD AP loopback threadLoop(-), uReadByte: %d, uWriteDataToBT: %d", uReadByte, uWriteDataToBT);
     }
     ALOGD("BT_SW_CVSD AP loopback threadLoop exit");
     return false;

@@ -1,6 +1,13 @@
 #ifndef __LCM_DRV_H__
 #define __LCM_DRV_H__
 
+//BEGIN: add by fangjie for Pixi3-4 GL
+//#1st:hx8379c_wvga_dsi_vdo_TDT_6572 typeID: 00bit
+//#2nd:ili9806e_wvga_dsi_vdo_TXD_6572 typeID: 10bit
+//#3rd:hx8379c_wvga_dsi_vdo_dijing_6572 typdID: 11bit
+#define GPIO_LCM_ID1	        GPIO18 
+#define GPIO_LCM_ID2  	GPIO19 
+//END:  add by fangjie for Pixi3-4 GL
 
 // ---------------------------------------------------------------------------
 
@@ -52,6 +59,7 @@ typedef enum
 
 typedef enum
 {    
+   LCM_DRIVING_CURRENT_DEFAULT,
    LCM_DRIVING_CURRENT_8MA       = (1 << 0),
    LCM_DRIVING_CURRENT_4MA       = (1 << 1),
    LCM_DRIVING_CURRENT_2MA       = (1 << 2),
@@ -59,9 +67,25 @@ typedef enum
    LCM_DRIVING_CURRENT_6575_4MA  = (1 << 4),
    LCM_DRIVING_CURRENT_6575_8MA  = (3 << 4),
    LCM_DRIVING_CURRENT_6575_12MA  = (2 << 4),
-   LCM_DRIVING_CURRENT_6575_16MA  = (4 << 4)
+   LCM_DRIVING_CURRENT_6575_16MA  = (4 << 4),
+   LCM_DRIVING_CURRENT_6MA,
+   LCM_DRIVING_CURRENT_12MA,
+   LCM_DRIVING_CURRENT_16MA
 } LCM_DRIVING_CURRENT;
 
+typedef enum{
+	LCM_INTERFACE_NOTDEFINED = 0,
+	LCM_INTERFACE_DSI0,
+	LCM_INTERFACE_DSI1,
+	LCM_INTERFACE_DSI_DUAL,
+	LCM_INTERFACE_DPI0,
+	LCM_INTERFACE_DPI1,
+	LCM_INTERFACE_DBI0	
+}LCM_INTERFACE_ID;
+
+typedef enum{
+	LCM_IOCTL_NULL = 0,
+}LCM_IOCTL;
 
 /* DBI related enumerations */
 
@@ -210,6 +234,60 @@ typedef enum
     LCM_PACKED_PS_18BIT_RGB666=3		
 } LCM_PS_TYPE;
 
+typedef enum
+{
+	LCM_DSI_6589_PLL_CLOCK_NULL	  = 0,
+    LCM_DSI_6589_PLL_CLOCK_201_5  = 1,
+    LCM_DSI_6589_PLL_CLOCK_208	  = 2,
+    LCM_DSI_6589_PLL_CLOCK_214_5  = 3,
+    LCM_DSI_6589_PLL_CLOCK_221	  = 4,
+    LCM_DSI_6589_PLL_CLOCK_227_5  = 5,
+	LCM_DSI_6589_PLL_CLOCK_234	  = 6,
+    LCM_DSI_6589_PLL_CLOCK_240_5  = 7,
+    LCM_DSI_6589_PLL_CLOCK_247	  = 8,
+    LCM_DSI_6589_PLL_CLOCK_253_5  = 9,
+    LCM_DSI_6589_PLL_CLOCK_260	  = 10,
+    LCM_DSI_6589_PLL_CLOCK_266_5  = 11,
+	LCM_DSI_6589_PLL_CLOCK_273	  = 12,
+    LCM_DSI_6589_PLL_CLOCK_279_5  = 13,
+    LCM_DSI_6589_PLL_CLOCK_286	  = 14,
+    LCM_DSI_6589_PLL_CLOCK_292_5  = 15,
+    LCM_DSI_6589_PLL_CLOCK_299	  = 16,
+    LCM_DSI_6589_PLL_CLOCK_305_5  = 17,
+	LCM_DSI_6589_PLL_CLOCK_312	  = 18,
+    LCM_DSI_6589_PLL_CLOCK_318_5  = 19,
+    LCM_DSI_6589_PLL_CLOCK_325	  = 20,
+    LCM_DSI_6589_PLL_CLOCK_331_5  = 21,
+    LCM_DSI_6589_PLL_CLOCK_338	  = 22,
+    LCM_DSI_6589_PLL_CLOCK_344_5  = 23,
+	LCM_DSI_6589_PLL_CLOCK_351	  = 24,
+    LCM_DSI_6589_PLL_CLOCK_357_5  = 25,
+    LCM_DSI_6589_PLL_CLOCK_364	  = 26,
+    LCM_DSI_6589_PLL_CLOCK_370_5  = 27,
+    LCM_DSI_6589_PLL_CLOCK_377	  = 28,
+    LCM_DSI_6589_PLL_CLOCK_383_5  = 29,
+	LCM_DSI_6589_PLL_CLOCK_390	  = 30,
+    LCM_DSI_6589_PLL_CLOCK_396_5  = 31,
+    LCM_DSI_6589_PLL_CLOCK_403	  = 32,
+    LCM_DSI_6589_PLL_CLOCK_409_5  = 33,
+    LCM_DSI_6589_PLL_CLOCK_416	  = 34,
+    LCM_DSI_6589_PLL_CLOCK_422_5  = 35,
+	LCM_DSI_6589_PLL_CLOCK_429	  = 36,
+    LCM_DSI_6589_PLL_CLOCK_435_5  = 37,
+    LCM_DSI_6589_PLL_CLOCK_442	  = 38,
+    LCM_DSI_6589_PLL_CLOCK_448_5  = 39,
+    LCM_DSI_6589_PLL_CLOCK_455	  = 40,
+    LCM_DSI_6589_PLL_CLOCK_461_5  = 41,
+	LCM_DSI_6589_PLL_CLOCK_468	  = 42,
+    LCM_DSI_6589_PLL_CLOCK_474_5  = 43,
+    LCM_DSI_6589_PLL_CLOCK_481	  = 44,
+    LCM_DSI_6589_PLL_CLOCK_487_5  = 45,
+    LCM_DSI_6589_PLL_CLOCK_494	  = 46,
+    LCM_DSI_6589_PLL_CLOCK_500_5  = 47,
+	LCM_DSI_6589_PLL_CLOCK_507	  = 48,
+    LCM_DSI_6589_PLL_CLOCK_513_5  = 49,
+	LCM_DSI_6589_PLL_CLOCK_520	  = 50,
+} LCM_DSI_PLL_CLOCK;
 
 // ---------------------------------------------------------------------------
 
@@ -285,6 +363,7 @@ typedef struct
     LCM_DBI_DATA_FORMAT    data_format;
     LCM_DBI_CPU_WRITE_BITS cpu_write_bits;
     LCM_DRIVING_CURRENT    io_driving_current;
+    LCM_DRIVING_CURRENT    msb_io_driving_current;
     
     /* tearing control */
     LCM_DBI_TE_MODE              te_mode;
@@ -311,13 +390,18 @@ typedef struct
     unsigned int mipi_pll_clk_div1;  // 0..63
     unsigned int mipi_pll_clk_div2;  // 0..15
     unsigned int mipi_pll_clk_fbk_div;  //PCLK=> 8: 26MHz, 10: 35MHz, 12: 40MHz
-    unsigned int mipi_pll_clk_fbk_sel;
     unsigned int dpi_clk_div;        // 2..32
     unsigned int dpi_clk_duty;       // (dpi_clk_div - 1) .. 31
     unsigned int PLL_CLOCK;
+    unsigned int dpi_clock;
     unsigned int ssc_disable;
     unsigned int ssc_range;
 
+    unsigned int width;
+    unsigned int height;
+    unsigned int bg_width;
+    unsigned int bg_height;
+    
     /* polarity parameters */
     LCM_POLARITY clk_pol;
     LCM_POLARITY de_pol;
@@ -339,11 +423,13 @@ typedef struct
     unsigned int i2x_en;
     unsigned int i2x_edge;
     unsigned int embsync;
+	unsigned int lvds_tx_en;	
     /* intermediate buffers parameters */
     unsigned int intermediat_buffer_num; // 2..3
 
     /* iopad parameters */
     LCM_DRIVING_CURRENT io_driving_current;
+    LCM_DRIVING_CURRENT lsb_io_driving_current;
     
 } LCM_DPI_PARAMS;
 
@@ -378,6 +464,7 @@ typedef struct
     unsigned int		horizontal_frontporch;
     unsigned int		horizontal_blanking_pixel;
     unsigned int		horizontal_active_pixel;
+    unsigned int		horizontal_bllp;
     
     unsigned int		line_byte;
     unsigned int		horizontal_sync_active_byte;
@@ -408,7 +495,8 @@ typedef struct
     unsigned char		CLK_HS_POST;
     unsigned char       DA_HS_EXIT;
     unsigned char       CLK_HS_EXIT;
-    
+
+    unsigned int		pll_select;
     unsigned int		pll_div1;
     unsigned int		pll_div2;	
     unsigned int        fbk_div;
@@ -417,9 +505,12 @@ typedef struct
     unsigned int		rg_bic;
     unsigned int		rg_bp;
     unsigned int		PLL_CLOCK;
-    unsigned int		compatibility_for_nvk;
+    unsigned int		dsi_clock;
     unsigned int		ssc_disable;
     unsigned int		ssc_range;
+    unsigned int		compatibility_for_nvk;
+    unsigned int		cont_clock;
+    unsigned int		ufoe_enable;
     
     unsigned int		lcm_int_te_monitor;
     unsigned int		lcm_int_te_period;
@@ -438,7 +529,8 @@ typedef struct
 {
     LCM_TYPE type;
     LCM_CTRL ctrl;  //! how to control LCM registers
-
+    LCM_INTERFACE_ID lcm_if;
+	LCM_INTERFACE_ID lcm_cmd_if; 
     /* common parameters */
     unsigned int width;
     unsigned int height;
@@ -448,8 +540,10 @@ typedef struct
     LCM_DBI_PARAMS dbi;
     LCM_DPI_PARAMS dpi;
     LCM_DSI_PARAMS dsi;
-    unsigned int active_width;
-    unsigned int active_height;
+    unsigned int physical_width;
+    unsigned int physical_height;
+	unsigned int od_table_size;
+	void *od_table;
 } LCM_PARAMS;
 
 
@@ -496,7 +590,10 @@ typedef struct
     int (*set_gpio_pull_enable)(unsigned int pin, unsigned char pull_en);
     
 } LCM_UTIL_FUNCS;
-
+typedef enum
+{
+	LCM_DRV_IOCTL_ENABLE_CMD_MODE = 0x100,
+}LCM_DRV_IOCTL_CMD;
 
 typedef struct
 {
@@ -508,23 +605,29 @@ typedef struct
     void (*suspend)(void);
     void (*resume)(void);
 
-    void (*update)(unsigned int x, unsigned int y,
-                   unsigned int width, unsigned int height);
+    // for power-on sequence refinement
+    void (*init_power)(void);
+    void (*suspend_power)(void);
+    void (*resume_power)(void);
+
+    void (*update)(unsigned int x, unsigned int y, unsigned int width, unsigned int height);
     unsigned int (*compare_id)(void);
-///////////////////////////CABC backlight related function
+
+    ///////////////////////////CABC backlight related function
     void (*set_backlight)(unsigned int level);
     void (*set_pwm)(unsigned int divider);
     unsigned int (*get_pwm)(unsigned int divider);
     void (*set_backlight_mode)(unsigned int mode);
-///////////////////////////
+    ///////////////////////////
 
-/////////////ESD_RECOVERY//////////////////////
+    /////////////ESD_RECOVERY//////////////////////
     unsigned int (*esd_check)(void);
     unsigned int  (*esd_recover)(void);
     unsigned int (*check_status)(void);
-	void (*read_fb)(unsigned char *buffer);
-/////////////////////////////////////////////////
-
+    unsigned int (*ata_check)(unsigned char *buffer);
+	void (*read_fb)(unsigned char *buffer);	
+    int (*ioctl)(LCM_DRV_IOCTL_CMD cmd, unsigned int data);
+    /////////////////////////////////////////////////
 } LCM_DRIVER;
 
 
@@ -533,5 +636,6 @@ typedef struct
 // ---------------------------------------------------------------------------
 
 const LCM_DRIVER* LCM_GetDriver(void);
+unsigned char which_lcd_module_triple(void);
 
 #endif // __LCM_DRV_H__

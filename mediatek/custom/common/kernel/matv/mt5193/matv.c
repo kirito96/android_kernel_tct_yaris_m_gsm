@@ -1,5 +1,27 @@
+/* 
+ *
+ * (C) Copyright 2009 
+ * MediaTek <www.mediatek.com>
+ * Charlie Lu <charlie.lu@mediatek.com>
+ *
+ * MATV I2C Device Driver
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 #if 0
-#include <linux/autoconf.h>
+#include <generated/autoconf.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -14,6 +36,13 @@
 
 //#include "matv6326_sw.h"
 //#include "mt519xMATV_sw.h" // 20100319
+/*
+#ifdef CONFIG_MATV_DCT
+#include "matv_drv.h"
+#else
+#include "matv_drv_nodct.h"
+#endif
+*/
 #include <mach/mt6516_gpio.h>
 #include <linux/kthread.h>
 #include <linux/wakelock.h>
@@ -32,17 +61,19 @@
 #include "matv.h"
 #endif
 
-//#define MTK_MT6572V1_PHONE_POWER_REWORK
-#ifdef MTK_MT6572V1_PHONE_POWER_REWORK
-//mediatek\platform\mt6572\kernel\core\include\mach\mt_pm_ldo.h
-#include "mach/mt_pm_ldo.h"
-#endif
-
-
+/*****************************************************************************
+ * Definition
+****************************************************************************/
 #define _NEW_I2C_DRV_
 
+/**
+ * _MATV_HIGH_SPEED_    : Set I2C Clock as 400kHz
+ **/
 #define _MATV_HIGH_SPEED_
 
+/**
+ * _MATV_HIGH_SPEED_DMA_: Set I2C Clock as 400kHz & Enable DMA Mode
+ **/
 //#define _MATV_HIGH_SPEED_DMA_
 
 
@@ -72,6 +103,11 @@ int matv_out_data[2] = {1,1};
 int matv_lcdbk_data[1] = {1};
 
 
+/**********************************************************
+  *
+  *   [I2C Slave Setting] 
+  *
+  *********************************************************/
 #define mt519x_SLAVE_ADDR_WRITE	0x82
 #define mt519x_SLAVE_ADDR_Read	0x83
 #define mt519x_SLAVE_ADDR_FW_Update 0xfa
@@ -98,6 +134,11 @@ extern void tpd_switch_normal_mode(void);
 extern int kdCheckSensorPowerOn(void);
 
 
+/**********************************************************
+  *
+  *   [I2C Function For Read/Write MATV]
+  *
+  *********************************************************/
 ssize_t mt519x_read_byte(u8 cmd, u8 *returnData)
 {
     char     cmd_buf[1]={0x00};
@@ -382,6 +423,12 @@ ssize_t mt519x_dma_write_m_byte(u8 cmd, u8 *writeData_va, u32 writeData_pa,U16 l
 
 #endif
 
+/*
+kal_bool Check_MATV_Ready(void)
+{
+	return MATV_Ready;
+}
+*/
 void matv_driver_init(void)
 {
     /* Get MATV6326 ECO version */
@@ -413,8 +460,8 @@ void matv_driver_init(void)
 
 }
 
-//#define GPIO_MAIN_CAMERA_12V_POWER_CTRL_PIN GPIO108 //
-//#define GPIO_CAMERA_SERIAL_CLK_PIN GPIO61 //
+#define GPIO_MAIN_CAMERA_12V_POWER_CTRL_PIN GPIO108 //
+#define GPIO_CAMERA_SERIAL_CLK_PIN GPIO61 //
 
 static long matv_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
@@ -507,42 +554,41 @@ static long matv_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             {
                mt_set_gpio_out(GPIO_MATV_PWR_ENABLE, GPIO_OUT_ONE);
 
-//			   mt_set_gpio_mode(GPIO_MAIN_CAMERA_12V_POWER_CTRL_PIN,0);
-//			   mt_set_gpio_dir(GPIO_MAIN_CAMERA_12V_POWER_CTRL_PIN,GPIO_DIR_OUT);
-//			   mt_set_gpio_out(GPIO_MAIN_CAMERA_12V_POWER_CTRL_PIN,1);	
-
+#if 0
+			   mt_set_gpio_mode(GPIO_MAIN_CAMERA_12V_POWER_CTRL_PIN,0);
+			   mt_set_gpio_dir(GPIO_MAIN_CAMERA_12V_POWER_CTRL_PIN,GPIO_DIR_OUT);
+			   mt_set_gpio_out(GPIO_MAIN_CAMERA_12V_POWER_CTRL_PIN,1);	
+#endif
 			   
                #ifdef GPIO_ANT_SW_PIN
-               #ifdef MTK_MT6572V1_PHONE_POWER_REWORK			   
-               hwPowerOn(MT6323_POWER_LDO_VGP2,VOL_2800,"matv");
-               #endif			   
 			   mt_set_gpio_mode(GPIO_ANT_SW_PIN,GPIO_ANT_SW_PIN_M_GPIO);
 			   mt_set_gpio_dir(GPIO_ANT_SW_PIN,GPIO_DIR_OUT);
 			   mt_set_gpio_out(GPIO_ANT_SW_PIN,GPIO_OUT_ONE);
 			   printk("GPIO_ANT_SW_PIN switch to 1 \n");
                #endif
-			
-//               mt_set_gpio_mode(GPIO_CAMERA_SERIAL_CLK_PIN,GPIO_MODE_02);	
+#if 0			
+               mt_set_gpio_mode(GPIO_CAMERA_SERIAL_CLK_PIN,GPIO_MODE_02);	
+#endif               
             }
             else
             {
                mt_set_gpio_out(GPIO_MATV_PWR_ENABLE, GPIO_OUT_ZERO);
 
-//			   mt_set_gpio_mode(GPIO_MAIN_CAMERA_12V_POWER_CTRL_PIN,0);
-//			   mt_set_gpio_dir(GPIO_MAIN_CAMERA_12V_POWER_CTRL_PIN,GPIO_DIR_OUT);
-//			   mt_set_gpio_out(GPIO_MAIN_CAMERA_12V_POWER_CTRL_PIN,0);
-
+#if 0
+			   mt_set_gpio_mode(GPIO_MAIN_CAMERA_12V_POWER_CTRL_PIN,0);
+			   mt_set_gpio_dir(GPIO_MAIN_CAMERA_12V_POWER_CTRL_PIN,GPIO_DIR_OUT);
+			   mt_set_gpio_out(GPIO_MAIN_CAMERA_12V_POWER_CTRL_PIN,0);
+#endif
 			   
-               #ifdef GPIO_ANT_SW_PIN			   
+               #ifdef GPIO_ANT_SW_PIN
                mt_set_gpio_mode(GPIO_ANT_SW_PIN,GPIO_ANT_SW_PIN_M_GPIO);
                mt_set_gpio_dir(GPIO_ANT_SW_PIN,GPIO_DIR_OUT);
                mt_set_gpio_out(GPIO_ANT_SW_PIN,GPIO_OUT_ZERO);
-               #ifdef MTK_MT6572V1_PHONE_POWER_REWORK
-               hwPowerDown(MT6323_POWER_LDO_VGP2,"matv");
-               #endif
                #endif
 						   
-//               mt_set_gpio_mode(GPIO_CAMERA_SERIAL_CLK_PIN,GPIO_MODE_01);								
+#if 0						   
+               mt_set_gpio_mode(GPIO_CAMERA_SERIAL_CLK_PIN,GPIO_MODE_01);								
+#endif               
 			}
 #endif            
             break;
@@ -563,7 +609,6 @@ static long matv_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			ret = copy_from_user(matv_in_data, user_data_addr, sizeof(int));
 #ifdef GPIO_MATV_I2S_DAT_PIN            
             if(matv_in_data[0]==0){
-				
                //Enable I2D Data pin and pull low
                mt_set_gpio_mode(GPIO_MATV_I2S_DAT_PIN,GPIO_MODE_00);
                mt_set_gpio_dir(GPIO_MATV_I2S_DAT_PIN, GPIO_DIR_OUT);
@@ -587,6 +632,10 @@ static long matv_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
                #ifdef GPIO_MATV_I2S_DAT_PIN_M_I2S_IN_DAT
                mt_set_gpio_mode(GPIO_MATV_I2S_DAT_PIN,GPIO_MATV_I2S_DAT_PIN_M_I2S_IN_DAT);
+               #endif
+
+               #ifdef GPIO_MATV_I2S_DAT_PIN_M_I2SIN1_DATA_IN
+               mt_set_gpio_mode(GPIO_MATV_I2S_DAT_PIN,GPIO_MATV_I2S_DAT_PIN_M_I2SIN1_DATA_IN);
                #endif
 			   
                mt_set_gpio_pull_enable(GPIO_MATV_I2S_DAT_PIN,false);
@@ -815,6 +864,9 @@ struct i2c_driver matv_i2c_driver = {
 
 
 
+/* 
+ * Register platform driver
+ */
 static int matv_probe(struct platform_device *dev)
 { 
     MATV_LOGD(KERN_ERR "[MATV] probe done\n");

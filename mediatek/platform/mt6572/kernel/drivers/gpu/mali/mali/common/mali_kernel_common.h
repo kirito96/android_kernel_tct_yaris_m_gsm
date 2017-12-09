@@ -1,23 +1,24 @@
 /*
- * Copyright (C) 2010, 2012 ARM Limited. All rights reserved.
- * 
- * This program is free software and is provided to you under the terms of the GNU General Public License version 2
- * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
- * A copy of the licence is included with the program, and can also be obtained from Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * This confidential and proprietary software may be used only as
+ * authorised by a licensing agreement from ARM Limited
+ * (C) COPYRIGHT 2007-2010, 2012-2013 ARM Limited
+ * ALL RIGHTS RESERVED
+ * The entire notice above must be reproduced on all authorised
+ * copies and copies may only be made to the extent permitted
+ * by a licensing agreement from ARM Limited.
  */
 
 #ifndef __MALI_KERNEL_COMMON_H__
 #define __MALI_KERNEL_COMMON_H__
 
+#include "mtk_mali_kernel.h" /*Mediatek custom routine for Mali*/
 #include "mali_osk.h"
 
 /* Make sure debug is defined when it should be */
 #ifndef DEBUG
-	#if defined(_DEBUG)
-		#define DEBUG
-	#endif
+#if defined(_DEBUG)
+#define DEBUG
+#endif
 #endif
 
 /* The file include several useful macros for error checking, debugging and printing.
@@ -38,15 +39,15 @@
  * [5:6] Is messages with low priority, used during extensive debugging.
  */
 
- /**
- *  Fundamental error macro. Reports an error code. This is abstracted to allow us to
- *  easily switch to a different error reporting method if we want, and also to allow
- *  us to search for error returns easily.
- *
- *  Note no closing semicolon - this is supplied in typical usage:
- *
- *  MALI_ERROR(MALI_ERROR_OUT_OF_MEMORY);
- */
+/**
+*  Fundamental error macro. Reports an error code. This is abstracted to allow us to
+*  easily switch to a different error reporting method if we want, and also to allow
+*  us to search for error returns easily.
+*
+*  Note no closing semicolon - this is supplied in typical usage:
+*
+*  MALI_ERROR(MALI_ERROR_OUT_OF_MEMORY);
+*/
 #define MALI_ERROR(error_code) return (error_code)
 
 /**
@@ -111,7 +112,8 @@
 	MALI_PRINTF(("Mali: ERR: %s\n" ,__FILE__)); \
 	MALI_PRINTF(("           %s()%4d\n           ", __FUNCTION__, __LINE__)) ; \
 	MALI_PRINTF(args); \
-	MALI_PRINTF(("\n")); \
+	MALI_PRINTF(("\n"));   \
+	MTKMALI_DumpRegister();\
 	} while(0)
 
 #define MALI_PRINT(args) do{ \

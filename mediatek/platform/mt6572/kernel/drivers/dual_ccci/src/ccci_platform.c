@@ -1,7 +1,4 @@
-#include <ccci.h>
-#include <mach/emi_mpu.h>
 #include <linux/delay.h>
-#include <mach/sec_osal.h>
 #include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -15,13 +12,15 @@
 #include <linux/delay.h>
 #include <linux/semaphore.h>
 #include <linux/version.h>
-#include <ccci_cfg.h>
-#include <ccci_rpc.h>
-#include <ccci_common.h>
 #include <linux/fs.h>
 #include <mach/mt_pm_ldo.h>
 #include <mach/mtk_rtc.h>
 #include <mach/bus_fabric.h>
+#include <mach/emi_mpu.h>
+#include <mach/sec_osal.h>
+#include <mach/mt_sec_export.h>
+#include <ccci_common.h>
+#include <ccci_platform.h>
 
 
 /* -------------ccci initial status define----------------------*/
@@ -71,6 +70,10 @@ static int	img_is_dbg_ver[MAX_MD_NUM];
 
 static char	md_image_post_fix[MAX_MD_NUM][12];
 
+#ifdef ENABLE_MD_IMG_SECURITY_FEATURE
+	static int	masp_inited = 0;
+#endif
+
 //===============================================
 // modem hardware control section
 //===============================================
@@ -98,7 +101,7 @@ static atomic_t			wdt_irq_en_count[MAX_MD_NUM];
 
 /* -------------power on/off md function----------------*/
 static DEFINE_SPINLOCK(md1_power_change_lock);
-static int             md1_power_on_cnt;
+static int		md1_power_on_cnt;
 
 /*--------------MD WDT recover ----------------------*/
 static DEFINE_SPINLOCK(md1_wdt_mon_lock);
@@ -119,11 +122,16 @@ EXPORT_SYMBOL(ccci_msg_mask);
 //#define DEBUG_SETTING_DEFAULT	(DBG_FLAG_DEBUG)
 static unsigned int debug_settting_flag = DEBUG_SETTING_DEFAULT;
 
+/* -------------ccci sbp feature define---------------------*/
+#ifdef MTK_MD_SBP_CUSTOM_VALUE
+static unsigned int md_sbp_value[MAX_MD_NUM];
+#endif // MTK_MD_SBP_CUSTOM_VALUE
 
 /*********************************************************************************/
 /*  API about getting md information                                                                                   */
 /*                                                                                                                                   */
 /*********************************************************************************/
+#if 0
 static unsigned int get_chip_version(void)
 {
 	#ifdef ENABLE_CHIP_VER_CHECK
@@ -137,6 +145,7 @@ static unsigned int get_chip_version(void)
 	return CHIP_SW_VER_01;
 	#endif
 }
+#endif
 
 static void ccci_get_platform_ver(char * ver)
 {
@@ -171,6 +180,7 @@ int get_ccif_hw_info(int md_id, ccif_hw_info_t *ccif_hw_info)
 	{
 		case MD_SYS1:
 			ccif_hw_info->reg_base = AP_CCIF0_BASE;
+			ccif_hw_info->md_reg_base = MD_CCIF0_BASE;
 			ccif_hw_info->irq_id = MT_CCIF0_AP_IRQ_ID;
 			ccif_hw_info->type = CCIF_STD_V1;
 			ccif_hw_info->irq_attr = 0;
@@ -183,6 +193,24 @@ int get_ccif_hw_info(int md_id, ccif_hw_info_t *ccif_hw_info)
 }
 EXPORT_SYMBOL(get_ccif_hw_info);
 
+
+#ifdef MTK_MD_SBP_CUSTOM_VALUE
+int ccci_set_md_sbp(int md_id, unsigned int md_sbp)
+{
+	CCCI_MSG_INF(md_id, "ctl", "ccci_set_md_sbp(%d, 0x%x)\n", md_id, md_sbp);
+
+	switch(md_id)
+	{
+		case MD_SYS1: 
+			md_sbp_value[MD_SYS1] = md_sbp;
+			return 0;
+
+		default:
+			return -1;
+	}
+}
+EXPORT_SYMBOL(ccci_set_md_sbp);
+#endif // MTK_MD_SBP_CUSTOM_VALUE
 
 void config_misc_info(int md_id, unsigned int base[], unsigned int size)
 {
@@ -212,6 +240,17 @@ void config_misc_info(int md_id, unsigned int base[], unsigned int size)
 		#else
 		misc_info.support_mask |= (FEATURE_NOT_SUPPORT<<(MISC_32K_LESS*2));
 		#endif
+
+		//--- Feature SBP support
+#ifdef MTK_MD_SBP_CUSTOM_VALUE
+		CCCI_MSG_INF(md_id, "ctl", "config_misc_info() md_id:%d, sbp_code:0x%x\n", md_id, md_sbp_value[md_id]);
+		if (md_sbp_value[md_id] > 0) {
+			misc_info.support_mask |= (FEATURE_SUPPORT<<(MISC_MD_SBP_SETTING * 2));
+			misc_info.feature_4_val[0] = md_sbp_value[md_id];
+		}
+#else
+		CCCI_MSG_INF(md_id, "ctl", "config_misc_info() NOT support MISC_MD_SBP_SETTING\n");
+#endif // MTK_MD_SBP_CUSTOM_VALUE
 
 		memcpy(base, &misc_info, sizeof(misc_info_t));
 	}
@@ -337,21 +376,52 @@ void send_battery_info(int md_id)
 EXPORT_SYMBOL(send_battery_info);
 
 
+int enable_get_sim_type(int md_id, unsigned int enable)
+{
+	int ret = 0;
+	unsigned int msg_id = MD_SIM_TYPE;
+	unsigned int   resv = enable;
+	ret = notify_md_by_sys_msg(md_id, msg_id, resv);
+
+	CCCI_DBG_MSG(md_id,  "ctl", "enable_get_sim_type(%d): %d\n", resv, ret);
+
+	return ret;
+}
+EXPORT_SYMBOL(enable_get_sim_type);
+
+
+int sim_type = 0xEEEEEEEE;	//sim_type(MCC/MNC) send by MD wouldn't be 0xEEEEEEEE
+int set_sim_type(int md_id, int data)
+{
+	int ret = 0;
+	sim_type = data;
+	
+	CCCI_DBG_MSG(md_id,  "ctl", "set_sim_type(%d): %d\n", sim_type, ret);
+
+	return ret;
+}
+EXPORT_SYMBOL(set_sim_type);
+
+
+int get_sim_type(int md_id, int *p_sim_type)
+{
+	//CCCI_DBG_MSG(md_id,  "ctl", "get_sim_type(%d): %d\n", ret);
+
+	*p_sim_type = sim_type;
+	if (sim_type == 0xEEEEEEEE)
+	{
+		CCCI_MSG_INF(md_id, "ctl", "md has not send sim type yet(%d)", sim_type);
+		return -1;
+	}
+	return 0;
+}
+EXPORT_SYMBOL(get_sim_type);
+
+
 /*********************************************************************************/
 /* ccci rpc helper function for RPC Section                                                                             */
 /*                                                                                                                                   */
 /*********************************************************************************/
-#ifdef ENABLE_MD_IMG_SECURITY_FEATURE
-typedef enum{
-    SECRO_MD1 = 0,
-    SECRO_MD2,    
-} SECRO_USER;
-extern unsigned char sec_secro_en(void);
-extern unsigned int sec_secro_md_len(unsigned char *md_info);
-extern unsigned int sec_secro_md_get_data(unsigned char *md_info, unsigned char *buf, unsigned int offset, unsigned int len);
-extern unsigned int sec_secro_blk_sz(void);
-#endif
-
 unsigned int res_len = 0; //<<KE, need check this
 
 
@@ -443,18 +513,18 @@ void ccci_rpc_work_helper(int md_id, int *p_pkt_num, RPC_PKT pkt[], RPC_BUF *p_r
 			}
 
 			#if (defined(ENABLE_MD_IMG_SECURITY_FEATURE) && defined(MTK_SEC_MODEM_NVRAM_ANTI_CLONE))
-			if(!SST_Secure_Init())
+			if(!masp_secure_algo_init())
 			{
-				CCCI_MSG_INF(md_id, "rpc", "SST_Secure_Init fail!\n");
+				CCCI_MSG_INF(md_id, "rpc", "masp_secure_algo_init fail!\n");
 				ASSERT(0);
 			}
 			
 			CCCI_RPC_MSG(md_id, "RPC_SECURE_ALGO_OP: Dir=0x%08X, Addr=0x%08X, Len=0x%08X, Seed=0x%016llX\n", 
 					Direction, ContentAddr, ContentLen, *(long long *)CustomSeed.sed);
-			SST_Secure_Algo(Direction, ContentAddr, ContentLen, CustomSeed.sed, ResText);
+			masp_secure_algo(Direction, ContentAddr, ContentLen, CustomSeed.sed, ResText);
 
-			if(!SST_Secure_DeInit())
-				CCCI_MSG_INF(md_id, "rpc", "SST_Secure_DeInit fail!\n");
+			if(!masp_secure_algo_deinit())
+				CCCI_MSG_INF(md_id, "rpc", "masp_secure_algo_deinit fail!\n");
 			#endif
 
 			pkt_num = 0;
@@ -523,13 +593,13 @@ void ccci_rpc_work_helper(int md_id, int *p_pkt_num, RPC_PKT pkt[], RPC_BUF *p_r
 			}
 				
 			req_len = *(unsigned int*)(pkt[0].buf);
-			if(sec_secro_en()) {
+			if(masp_secro_en()) {
 				//if(md_id == MD_SYS1) {
-				//	img_len = sec_secro_md_len("1_2g_n");
+				//	img_len = masp_secro_md_len(SECRO_MD1);
 				//} else {
-				//	img_len = sec_secro_md_len("2_2g_n");
+				//	img_len = masp_secro_md_len(SECRO_MD2);
 				//}
-				img_len = sec_secro_md_len(md_image_post_fix[md_id]);
+				img_len = masp_secro_md_len(md_image_post_fix[md_id]);
 
 				if((img_len > RPC1_MAX_BUF_SIZE) || (req_len > RPC1_MAX_BUF_SIZE)) {
 					pkt_num = 0;
@@ -566,7 +636,7 @@ void ccci_rpc_work_helper(int md_id, int *p_pkt_num, RPC_PKT pkt[], RPC_BUF *p_r
 				CCCI_MSG("<rpc>RPC_GET_SECRO_OP: save MD SECRO length: (%d) \n",img_len);
 				img_len_bak = img_len;
 	   
-				blk_sz = sec_secro_blk_sz();
+				blk_sz = masp_secro_blk_sz();
 				for(cnt = 0; cnt < blk_sz; cnt++) {
 					tmp = tmp*2;
 					if(tmp >= blk_sz)
@@ -577,11 +647,11 @@ void ccci_rpc_work_helper(int md_id, int *p_pkt_num, RPC_PKT pkt[], RPC_BUF *p_r
 
 				addr = p_rpc_buf->buf + 4*sizeof(unsigned int);
 				//if(md_id == MD_SYS1) {
-				//	tmp_data[0] = sec_secro_md_get_data("1_2g_n", addr, 0, img_len);
+				//	tmp_data[0] = masp_secro_md_get_data(SECRO_MD1, addr, 0, img_len);
 				//} else {
-				//	tmp_data[0] = sec_secro_md_get_data("2_2g_n", addr, 0, img_len);
+				//	tmp_data[0] = masp_secro_md_get_data(SECRO_MD2, addr, 0, img_len);
 				//}
-				tmp_data[0] = sec_secro_md_get_data(md_image_post_fix[md_id], addr, 0, img_len);
+				tmp_data[0] = masp_secro_md_get_data(md_image_post_fix[md_id], addr, 0, img_len);
 
 				/* TODO : please check it */
 				/* restore original modem secro length */
@@ -692,7 +762,7 @@ void ccci_rpc_work_helper(int md_id, int *p_pkt_num, RPC_PKT pkt[], RPC_BUF *p_r
 				pkt[pkt_num++].buf = (void*) &tmp_data[0];
 				break;
 	    }
-
+			
 		case IPC_RPC_GET_EMI_CLK_TYPE_OP:
 		{
 			int dram_type = 0;
@@ -912,7 +982,7 @@ void enable_mem_access_protection(int md_id)
 	//--------------+------------------------------------------------------
 	// AP/Conn Share  |    4   |No protect |Forbidden  |No protect    |Forbidden
 	//--------------+------------------------------------------------------
-	// AP         		|    5   |No protect |Forbidden     |Forbidden   |No protect
+	// AP         		|    5   |No protect |RO(S/NS)->Forbidden|Forbidden   |No protect
 	//==========================================================
 
 	switch(md_id)
@@ -941,7 +1011,7 @@ void enable_mem_access_protection(int md_id)
 	kernel_max_addr = 0;
 	#endif
 	ap_mem_mpu_id = 5;
-	ap_mem_mpu_attr = SET_ACCESS_PERMISSON(NO_PROTECTION, FORBIDDEN, FORBIDDEN, NO_PROTECTION);
+	ap_mem_mpu_attr = SET_ACCESS_PERMISSON(NO_PROTECTION, FORBIDDEN, SEC_R_NSEC_R, NO_PROTECTION);
 	
 	shr_mem_phy_start = md_layout->smem_region_phy_before_map;
 	shr_mem_phy_end   = md_layout->smem_region_phy_before_map + 0x200000;//md_layout->smem_region_size;
@@ -971,7 +1041,7 @@ void enable_mem_access_protection(int md_id)
 									shr_mem_mpu_id,       /*region*/
 									shr_mem_mpu_attr);
 
-	CCCI_MSG_INF(md_id, "ctl", "MPU Start protect AP region<%d:%08x:%08x>\n", 
+	CCCI_MSG_INF(md_id, "ctl", "MPU Start protect AP region<%d:%08x:%08x>(R)\n", 
 									ap_mem_mpu_id, kernel_base, rom_mem_phy_start); 
 	emi_mpu_set_region_protection(kernel_base,
 									rom_mem_phy_start,
@@ -979,7 +1049,7 @@ void enable_mem_access_protection(int md_id)
 									ap_mem_mpu_attr);
 
 	++ap_mem_mpu_id;
-	CCCI_MSG_INF(md_id, "ctl", "MPU Start protect AP region<%d:%08x:%08x>\n", 
+	CCCI_MSG_INF(md_id, "ctl", "MPU Start protect AP region<%d:%08x:%08x>(R)\n", 
 									ap_mem_mpu_id, shr_mem_phy_end, kernel_max_addr); 
 	emi_mpu_set_region_protection(shr_mem_phy_end,
 									kernel_max_addr,
@@ -993,6 +1063,51 @@ void enable_mem_access_protection(int md_id)
 EXPORT_SYMBOL(enable_mem_access_protection);
 
 
+//set md access ap region as forbidden
+static void set_ap_region_protection(int md_id)
+{
+	#ifdef ENABLE_EMI_PROTECTION
+	unsigned int rom_mem_phy_start, shr_mem_phy_end;
+	unsigned int ap_mem_mpu_id, ap_mem_mpu_attr;
+	unsigned int kernel_base, kernel_max_addr;
+	ccci_mem_layout_t	*md_layout;
+	
+	#ifdef ENABLE_DRAM_API
+	kernel_base = get_phys_offset();
+	kernel_max_addr = get_max_phys_addr();
+	#else
+	kernel_base = 0;
+	kernel_max_addr = 0;
+	#endif
+
+	md_layout = &md_mem_layout_tab[md_id];
+	rom_mem_phy_start = md_layout->md_region_phy;
+	shr_mem_phy_end   = md_layout->smem_region_phy_before_map + 0x200000;//md_layout->smem_region_size;
+
+	ap_mem_mpu_id = 5;
+	ap_mem_mpu_attr = SET_ACCESS_PERMISSON(NO_PROTECTION, FORBIDDEN, FORBIDDEN, NO_PROTECTION);
+
+	CCCI_MSG_INF(md_id, "ctl", "MPU Start protect AP region<%d:%08x:%08x>(F)\n", 
+									ap_mem_mpu_id, kernel_base, rom_mem_phy_start); 
+	emi_mpu_set_region_protection(kernel_base,
+									rom_mem_phy_start,
+									ap_mem_mpu_id,
+									ap_mem_mpu_attr);
+
+	++ap_mem_mpu_id;
+	CCCI_MSG_INF(md_id, "ctl", "MPU Start protect AP region<%d:%08x:%08x>(F)\n", 
+									ap_mem_mpu_id, shr_mem_phy_end, kernel_max_addr); 
+	emi_mpu_set_region_protection(shr_mem_phy_end,
+									kernel_max_addr,
+									ap_mem_mpu_id,
+									ap_mem_mpu_attr);
+
+	#endif
+	
+	return;
+}
+
+
 /*********************************************************************************/
 /*  API about security check                                                                                                */
 /*                                                                                                                                    */
@@ -1002,7 +1117,7 @@ int sec_lib_version_check(void)
 {
 	int ret = 0;
 
-	int sec_lib_ver = sec_ccci_version_info();
+	int sec_lib_ver = masp_ccci_version_info();
 	if(sec_lib_ver != CURR_SEC_CCCI_SYNC_VER){
 		CCCI_MSG("[Error]sec lib for ccci mismatch: sec_ver:%d, ccci_ver:%d\n", sec_lib_ver, CURR_SEC_CCCI_SYNC_VER);
 		ret = -1;
@@ -1016,8 +1131,8 @@ int sec_lib_version_check(void)
 #ifdef ENABLE_MD_IMG_SECURITY_FEATURE
 //--------------------------------------------------------------------------------------------------//
 // New signature check version. 2012-2-2. 
-// Change to use sec_ccci_signfmt_verify_file(char *file_path, unsigned int *data_offset, unsigned int *data_sec_len)
-//  sec_ccci_signfmt_verify_file parameter description
+// Change to use masp_ccci_signfmt_verify_file(char *file_path, unsigned int *data_offset, unsigned int *data_sec_len)
+//  masp_ccci_signfmt_verify_file parameter description
 //    @ file_path: such as etc/firmware/modem.img
 //    @ data_offset: the offset address that bypass signature header
 //    @ data_sec_len: length of signature header + tail
@@ -1028,7 +1143,7 @@ static int signature_check_v2(int md_id, char* file_path, unsigned int *sec_tail
 	unsigned int bypass_sec_header_offset = 0;
 	unsigned int sec_total_len = 0;
 
-	if( sec_ccci_signfmt_verify_file(file_path, &bypass_sec_header_offset, &sec_total_len) == 0 ){
+	if( masp_ccci_signfmt_verify_file(file_path, &bypass_sec_header_offset, &sec_total_len) == 0 ){
 		//signature lib check success
 		//-- check return value
 		//CCCI_MSG_INF(md_id, "ctl", "sign check ret value 0x%x, 0x%x!\n", bypass_sec_header_offset, sec_total_len);
@@ -1266,8 +1381,7 @@ static int check_md_header( int md_id,
 	if(ret) {
 		CCCI_MSG_INF(md_id, "ctl", "md check header not exist!\n");
 		ret = 0;
-	}
-	else {
+	} else {
 		if(head->header_verno != MD_HEADER_VER_NO) {
 			CCCI_MSG_INF(md_id, "ctl", "[Error]md check header version mis-match to AP:[%d]!\n", 
 				head->header_verno);
@@ -1321,8 +1435,7 @@ static int check_md_header( int md_id,
 
 			if(md_type_check && md_plat_check && md_sys_match && md_size_check) {
 				CCCI_MSG_INF(md_id, "ctl", "Modem header check OK!\n");
-			}
-			else {
+			} else {
 				CCCI_MSG_INF(md_id, "ctl", "[Error]Modem header check fail!\n");
 				if(!md_type_check)
 					CCCI_MSG_INF(md_id, "ctl", "[Reason]MD type(2G/3G) mis-match to AP!\n");
@@ -1341,8 +1454,21 @@ static int check_md_header( int md_id,
 
 			CCCI_MSG_INF(md_id, "ctl", "(MD)[type]=%s, (AP)[type]=%s\n",image->img_info.image_type, image->ap_info.image_type);
 			CCCI_MSG_INF(md_id, "ctl", "(MD)[plat]=%s, (AP)[plat]=%s\n",image->img_info.platform, image->ap_info.platform);
-			if(head->header_verno >= 2)
+			if(head->header_verno >= 2) {
 				CCCI_MSG_INF(md_id, "ctl", "(MD)[size]=%x, (AP)[size]=%x\n",image->img_info.mem_size, image->ap_info.mem_size);
+				if (head->md_img_size) {
+					if (image->size >= head->md_img_size)
+						image->size = head->md_img_size;
+					else {
+						CCCI_MSG_INF(md_id, "ctl", "[Reason]MD image size mis-match to AP!\n");
+						ret = -CCCI_ERR_LOAD_IMG_MD_CHECK;
+					}
+					image->ap_info.md_img_size = image->size;
+					image->img_info.md_img_size = head->md_img_size;
+				}
+				//image->size -= 0x1A0; //workaround for md not check in check header
+				CCCI_MSG_INF(md_id, "ctl", "(MD)[img_size]=%x, (AP)[img_size]=%x\n",head->md_img_size, image->size);
+			}
 			CCCI_MSG_INF(md_id, "ctl", "(MD)[build_ver]=%s, [build_time]=%s\n",image->img_info.build_ver, image->img_info.build_time);
 			CCCI_MSG_INF(md_id, "ctl", "(MD)[product_ver]=%s\n",image->img_info.product_ver);
 		}
@@ -1375,7 +1501,7 @@ static int load_cipher_firmware_v2( int md_id,
 		goto out;
 	}
 
-	if(SEC_OK != sec_ccci_decrypt_cipherfmt(fp_id, cipher_img_offset, (char*)addr, cipher_img_len, &data_offset) ) {
+	if(SEC_OK != masp_ccci_decrypt_cipherfmt(fp_id, cipher_img_offset, (char*)addr, cipher_img_len, &data_offset) ) {
 		CCCI_MSG_INF(md_id, "ctl", "cipher image decrypt fail!\n");
 		ret = -CCCI_ERR_LOAD_IMG_CIPHER_FAIL;
 		goto unmap_out;
@@ -1450,10 +1576,9 @@ static int load_std_firmware(int md_id,
 		if((check_ret = check_md_header(md_id, end_addr, img)) < 0) {
 			ret = check_ret;
 			goto error;
-		}
+		} 
 		iounmap(start);
-	}
-	else if(img->type == DSP_INDEX) {
+	} else if(img->type == DSP_INDEX) {
 		start = ioremap_nocache(load_addr, size);
 		if((check_ret = check_dsp_header(md_id, (unsigned int)start, img))<0){
 			ret = check_ret;
@@ -1463,7 +1588,7 @@ static int load_std_firmware(int md_id,
 	}
 
 	set_fs(curr_fs);
-	CCCI_MSG_INF(md_id, "ctl", "Load %s (size=0x%x) to 0x%lx\n", img->file_name, read_size, load_addr);
+	CCCI_MSG_INF(md_id, "ctl", "Load %s (size=0x%x) to 0x%lx\n", img->file_name, img->size, load_addr);
 
 	return read_size;
 
@@ -1601,8 +1726,30 @@ static int find_img_to_open(int md_id, int img_type, char found_name[])
 		return -CCCI_ERR_INVALID_PARAM;
 	}
 
+	CCCI_MSG_INF(md_id, "ctl","Find img @CIP\n");
 	for(i=0; i<3; i++) {
 		CCCI_MSG_INF(md_id, "ctl","try to open %s ...\n", img_name[i]);
+		snprintf(full_path, 64, "%s%s", CONFIG_MODEM_FIRMWARE_CIP_PATH, img_name[i]);
+		filp = filp_open(full_path, O_RDONLY, 0644);
+		if (IS_ERR(filp)) {
+			continue;
+		} else { // Open image success
+			snprintf(found_name, 64, full_path);
+			filp_close(filp, current->files);
+			if(i==1) {
+				snprintf(md_image_post_fix[md_id], 12, "%s", post_fix);
+			} else if(i==0) {
+				snprintf(md_image_post_fix[md_id], 12, "%s", post_fix_ex);
+			} else {
+				md_image_post_fix[md_id][0] = '\0';
+			}
+			return 0;
+		}
+	}
+
+	CCCI_MSG_INF(md_id, "ctl","Find img @default\n");
+	for(i=0; i<3; i++) {
+		CCCI_MSG_INF(md_id, "ctl","try to open %s\n", img_name[i]);
 		snprintf(full_path, 64, "%s%s", CONFIG_MODEM_FIRMWARE_PATH, img_name[i]);
 		filp = filp_open(full_path, O_RDONLY, 0644);
 		if (IS_ERR(filp)) {
@@ -1636,6 +1783,24 @@ static int load_firmware_func(int md_id, struct image_info *img)
 	#ifdef ENABLE_MD_IMG_SECURITY_FEATURE
 	unsigned int	img_len=0;
 	#endif
+
+#ifdef ENABLE_MD_IMG_SECURITY_FEATURE
+	CCCI_MSG_INF(md_id, "ctl","load_firmware_func() masp_inited:%d\n", masp_inited);
+	if (!masp_inited) {
+		if ((ret = masp_boot_init()) !=0) {
+			CCCI_MSG("masp_boot_init fail: %d\n",ret);
+			ret= -EIO;
+			return ret;
+		}
+
+		if(sec_lib_version_check()!= 0) {
+			CCCI_MSG("sec lib version check error\n");
+			ret= -EIO;
+			return ret;
+		}
+		masp_inited = 1;
+	}
+#endif
 
 	if(find_img_to_open(md_id, img->type, img->file_name)<0) {
 		ret = -CCCI_ERR_LOAD_IMG_FILE_OPEN;
@@ -1675,7 +1840,7 @@ static int load_firmware_func(int md_id, struct image_info *img)
 
 		//step2:check if need to cipher
 		#ifdef ENABLE_MD_IMG_SECURITY_FEATURE       
-		if (sec_ccci_is_cipherfmt(fp_id,offset,&img_len)) {// Cipher image
+		if (masp_ccci_is_cipherfmt(fp_id,offset,&img_len)) {// Cipher image
 			CCCI_MSG_INF(md_id, "ctl", "cipher image\n");
 			//ret=load_cipher_firmware(filp,img,&cipher_header);
 			ret=load_cipher_firmware_v2(md_id, fp_id,img,offset, img_len);
@@ -1769,12 +1934,13 @@ int ccci_load_firmware(int md_id, unsigned int load_flag, char img_err_str[], in
 	}
 
 	/* Construct image information string */
-	sprintf(img_str, "MD:%s*%s*%s*%s*%s\nAP:%s*%s*%08x (MD)%08x\n",
+	sprintf(img_str, "MD:%s*%s*%s*%s*%s\nAP:%s*%s*%08x*%08x (MD)%08x*%08x\n",
 			img_ptr[MD_INDEX].img_info.image_type,img_ptr[MD_INDEX].img_info.platform, 
 			img_ptr[MD_INDEX].img_info.build_ver,img_ptr[MD_INDEX].img_info.build_time,
 			img_ptr[MD_INDEX].img_info.product_ver, img_ptr[MD_INDEX].ap_info.image_type,
 			img_ptr[MD_INDEX].ap_info.platform, img_ptr[MD_INDEX].ap_info.mem_size,
-			img_ptr[MD_INDEX].img_info.mem_size);
+			img_ptr[MD_INDEX].ap_info.md_img_size, 
+			img_ptr[MD_INDEX].img_info.mem_size, img_ptr[MD_INDEX].img_info.md_img_size);
 
 	// Image info ready
 	str = img_ptr[MD_INDEX].img_info.product_ver;
@@ -1831,6 +1997,7 @@ void md_boot_up_additional_operation(int md_id)
 {
 	//power on Audsys for DSP boot up
 	//AudSys_Power_On(TRUE);
+	set_ap_region_protection(md_id);
 }
 EXPORT_SYMBOL(md_boot_up_additional_operation);
 
@@ -1958,7 +2125,9 @@ void stop_md_wdt_recov_timer(int md_id)
 
 static irqreturn_t md_wdt_isr(int irq, void *data __always_unused)
 {
+#ifdef ENABLE_MD_WDT_DBG
 	unsigned int	sta = 0;
+#endif
 	int				md_id = -1;
 
 	#ifdef ENABLE_MD_WDT_PROCESS
@@ -1973,6 +2142,7 @@ static irqreturn_t md_wdt_isr(int irq, void *data __always_unused)
 				ccci_write32(WDT_MD_MODE(md1_rgu_base), WDT_MD_MODE_KEY);
 				#endif
 				md_id = MD_SYS1;
+				CCCI_MSG_INF(md_id, "ctl", "Now disable md wdt irq\n");
 				md_dsp_wdt_irq_dis(md_id);
 			}
 			break;
@@ -2220,7 +2390,7 @@ static int ungate_md1(void)
 	/* Power on MD MTCMOS*/
 	ccci_en_md1_clock();
 
-	/*disable md wdt */ 
+	/* disable md wdt */
 	ccci_write32(WDT_MD_MODE(md1_rgu_base), WDT_MD_MODE_KEY);
 
 	if(get_debug_mode_flag()&DBG_FLAG_JTAG)
@@ -2537,20 +2707,6 @@ int __init ccci_mach_init(void)
 	CCCI_MSG("kernel base:0x%08X, kernel max addr:0x%08X\n", get_phys_offset(), get_max_phys_addr());
 	#endif
 
-	#ifdef ENABLE_MD_IMG_SECURITY_FEATURE
-	if ((ret = sec_boot_init()) !=0) {
-		CCCI_MSG("sec_boot_init fail: %d\n",ret);
-		ret= -EIO;
-		return ret;
-	}
-
-	if(sec_lib_version_check()!= 0) {
-		CCCI_MSG("sec lib version check error\n");
-		ret= -EIO;
-		return ret;
-	}
-	#endif
-	
 	ccci_get_platform_ver(ap_platform);
 
 	ap_infra_base = INFRACFG_BASE;

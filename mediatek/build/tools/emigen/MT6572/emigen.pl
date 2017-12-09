@@ -1,72 +1,4 @@
 #!/usr/local/bin/perl
-#
-#*****************************************************************************
-#  Copyright Statement:
-#  --------------------
-#  This software is protected by Copyright and the information contained
-#  herein is confidential. The software may not be copied and the information
-#  contained herein may not be used or disclosed except with the written
-#  permission of MediaTek Inc. (C) 2008
-#
-#  BY OPENING THIS FILE, BUYER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
-#  THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
-#  RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO BUYER ON
-#  AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
-#  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
-#  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
-#  NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
-#  SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
-#  SUPPLIED WITH THE MEDIATEK SOFTWARE, AND BUYER AGREES TO LOOK ONLY TO SUCH
-#  THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. MEDIATEK SHALL ALSO
-#  NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE RELEASES MADE TO BUYER'S
-#  SPECIFICATION OR TO CONFORM TO A PARTICULAR STANDARD OR OPEN FORUM.
-#
-#  BUYER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND CUMULATIVE
-#  LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
-#  AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
-#  OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY BUYER TO
-#  MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
-#
-#  THE TRANSACTION CONTEMPLATED HEREUNDER SHALL BE CONSTRUED IN ACCORDANCE
-#  WITH THE LAWS OF THE STATE OF CALIFORNIA, USA, EXCLUDING ITS CONFLICT OF
-#  LAWS PRINCIPLES.  ANY DISPUTES, CONTROVERSIES OR CLAIMS ARISING THEREOF AND
-#  RELATED THERETO SHALL BE SETTLED BY ARBITRATION IN SAN FRANCISCO, CA, UNDER
-#  THE RULES OF THE INTERNATIONAL CHAMBER OF COMMERCE (ICC).
-#
-#****************************************************************************/
-#*
-#* Filename:
-#* ---------
-#*   emigen_sp.pl
-#*
-#* Project:
-#* --------
-#*
-#*
-#* Description:
-#* ------------
-#*   This script will
-#*       1. parse custom_MemoryDevice.h to get memory device type and part number
-#*       2. read a excel file to get appropriate emi setting based on the part number
-#*       3. based on the emi settings, generate custom_EMI.c if not exist
-#*       4. based on the emi settings, generate custom_EMI.h if not exist
-#*
-#* Author:
-#* -------
-#*
-#*============================================================================
-#*             HISTORY
-#* Below this line, this part is controlled by PVCS VM. DO NOT MODIFY!!
-#*------------------------------------------------------------------------------
-#* $Revision$
-#* $Modtime$
-#* $Log$
-#*
-#*
-#*------------------------------------------------------------------------------
-#* Upper this line, this part is controlled by PVCS VM. DO NOT MODIFY!!
-#*============================================================================
-#****************************************************************************/
 
 #****************************************************************************
 # Included Modules
@@ -152,7 +84,7 @@ my $CUSTOM_MEMORY_DEVICE_HDR  = $ARGV[0]; # src\custom\<project>, need full path
 my $MEMORY_DEVICE_LIST_XLS    = $ARGV[1];
 my $PLATFORM                  = $ARGV[2]; # MTxxxx
 my $PROJECT               = $ARGV[3];
-
+my $MTK_EMIGEN_OUT_DIR = "$ENV{MTK_ROOT_OUT}/EMIGEN";
 
 print "$CUSTOM_MEMORY_DEVICE_HDR\n$MEMORY_DEVICE_LIST_XLS\n$PLATFORM\n" if ($DebugPrint == 1);
 
@@ -180,15 +112,16 @@ my $INFO_TAG = $CUSTOM_MEMORY_DEVICE_HDR;
 
 if ($os eq "windows")
 {
-    $CUSTOM_EMI_H =~ s/custom_MemoryDevice.h$/output\\custom_emi\.h/i;
-    $CUSTOM_EMI_C =~ s/custom_MemoryDevice.h$/output\\custom_emi\.c/i;
-    `mkdir output` unless (-d "output");
+
+    $CUSTOM_EMI_H = "$MTK_EMIGEN_OUT_DIR/inc/custom_emi.h";
+	$CUSTOM_EMI_C = "$ENV{MTK_ROOT_OUT}/PRELOADER_OBJ/custom_emi.c";
+	`mkdir output` unless (-d "output");
 }
 elsif ($os eq "linux")
 {
-    $CUSTOM_EMI_H =~ s/custom_MemoryDevice.h$/custom_emi\.h/i;
-    $CUSTOM_EMI_C =~ s/inc\/custom_MemoryDevice.h$/custom_emi\.c/i;
-    $INFO_TAG     =~ s/inc\/custom_MemoryDevice.h$/MTK_Loader_Info\.tag/i;
+	$CUSTOM_EMI_H = "$MTK_EMIGEN_OUT_DIR/inc/custom_emi.h";
+	$CUSTOM_EMI_C = "$ENV{MTK_ROOT_OUT}/PRELOADER_OBJ/custom_emi.c";
+	$INFO_TAG     = "$MTK_EMIGEN_OUT_DIR/MTK_Loader_Info.tag";
 }
 PrintDependModule($0);
 print "$CUSTOM_EMI_H\n$CUSTOM_EMI_C\n$INFO_TAG\n" if ($DebugPrint ==1);
@@ -211,6 +144,7 @@ my @MCP_LIST;  # list of PART_NUMBER hash references
 my @MDL_INFO_LIST; 
 my %CUSTOM_MEM_DEV_OPTIONS;
 my $IDX_COUNT = 3;
+my $EMI_CLK;
 
 #****************************************************************************
 # parse custom_MemoryDevice.h to extract MEMORY_DEVICE_TYPE & PART_NUMBER
@@ -228,11 +162,22 @@ my $IDX_COUNT = 3;
 &Parse_MDL(\%CUSTOM_MEM_DEV_OPTIONS,\@MDL_INFO_LIST, \$MEMORY_DEVICE_LIST_XLS);
 
 #****************************************************************************
+# check emi setting valid
+#****************************************************************************
+&check_EMI_setting(\%CUSTOM_MEM_DEV_OPTIONS,\@MDL_INFO_LIST,\@MCP_LIST);
+
+
+#****************************************************************************
 # generate custom_EMI.c
 #****************************************************************************
 #if ($is_existed_c == 0)
 {
-    
+    if ($is_existed_c == 1)
+    {
+	unlink ($CUSTOM_EMI_C);
+    }
+    my $temp_path = `dirname $CUSTOM_EMI_C`;
+    `mkdir -p $temp_path`;
     open (CUSTOM_EMI_C, ">$CUSTOM_EMI_C") or &error_handler("$CUSTOM_EMI_C: file error!", __FILE__, __LINE__);
 
     print CUSTOM_EMI_C &copyright_file_header();
@@ -250,6 +195,13 @@ my $IDX_COUNT = 3;
 #****************************************************************************
 #if ($is_existed_h == 0)
 {
+    if ($is_existed_h == 1)
+    {
+        unlink ($CUSTOM_EMI_H);
+    }
+    my $temp_path = `dirname $CUSTOM_EMI_H`;
+    `mkdir -p $temp_path`;	
+	
     open (CUSTOM_EMI_H, ">$CUSTOM_EMI_H") or &error_handler("CUSTOM_EMI_H: file error!", __FILE__, __LINE__);
 
    print CUSTOM_EMI_H &copyright_file_header();
@@ -305,6 +257,43 @@ sub description_file_header
     my @stat_ar = stat $MEMORY_DEVICE_LIST_XLS;
     my ($day, $month, $year) = (localtime($stat_ar[9]))[3,4,5]; $month++; $year+=1900;
     my $template = <<"__TEMPLATE";
+/*****************************************************************************
+ *
+ * Filename:
+ * ---------
+ *   $filename
+ *
+ * Project:
+ * --------
+ *   Android
+ *
+ * Description:
+ * ------------
+ *   $description
+ *
+ * Author:
+ * -------
+ *  $author
+ *
+ *   Memory Device database last modified on $year/$month/$day
+ *
+ *============================================================================
+ *             HISTORY
+ * Below this line, this part is controlled by PVCS VM. DO NOT MODIFY!!
+ *------------------------------------------------------------------------------
+ * \$Revision\$
+ * \$Modtime\$
+ * \$Log\$
+ *
+ *------------------------------------------------------------------------------
+ * WARNING!!!  WARNING!!!   WARNING!!!  WARNING!!!  WARNING!!!  WARNING!!! 
+ * This file is generated by EMI Auto-gen Tool.
+ * Please do not modify the content directly!
+ * It could be overwritten!
+ *============================================================================
+ * Upper this line, this part is controlled by PVCS VM. DO NOT MODIFY!!
+ *============================================================================
+ ****************************************************************************/
 
 __TEMPLATE
 
@@ -319,15 +308,11 @@ sub custom_EMI_h_file_body
 {
 	  my ($CUSTOM_MEM_DEV_OPTIONS_LOCAL) = @_; 
     ###
-    my $EMI_CLK_STR ;
-    print "emi clk : $CUSTOM_MEM_DEV_OPTIONS_LOCAL->{EMI_CLK}\n";
-    $EMI_CLK_STR = sprintf("#define __EMI_CLK_%sHZ__", $CUSTOM_MEM_DEV_OPTIONS_LOCAL->{EMI_CLK});
     my $template = <<"__TEMPLATE";
     
 #ifndef __CUSTOM_EMI__
 #define __CUSTOM_EMI__
 
-$EMI_CLK_STR 
 
 
 #endif /* __CUSTOM_EMI__ */
@@ -335,6 +320,104 @@ $EMI_CLK_STR
 __TEMPLATE
 
     return $template;
+}
+#****************************************************************************
+# subroutine: check_EMI_setting
+# return:
+#****************************************************************************
+sub check_EMI_setting
+{
+    my ($CUSTOM_MEM_DEV_OPTIONS_LOCAL, $MDL_INFO_LIST_LOCAL, $MCP_LIST_LOCAL) = @_;
+    my $mem_type,$flash_id,$dram_vendor_id,$emi_size;
+    my $mem_type_cmp,$flash_id_cmp,$dram_vendor_id_cmp,$emi_size_cmp;
+    my $idx = 0;
+    for (1..$CUSTOM_MEM_DEV_OPTIONS_LOCAL->{COMBO_MEM_ENTRY_COUNT})
+    {
+        $mem_type = $MDL_INFO_LIST_LOCAL->[$_]->{$LPSDRAM_CHIP_SELECT}->{'Type'};
+        $flash_id = $MDL_INFO_LIST_LOCAL->[$_]->{$LPSDRAM_CHIP_SELECT}->{'NAND/eMMC ID'};
+        $emi_size = $MDL_INFO_LIST_LOCAL->[$_]->{$LPSDRAM_CHIP_SELECT}->{'Density (Mb)'};
+        $dram_vendor_id = $MDL_INFO_LIST_LOCAL->[$_]->{$LPSDRAM_CHIP_SELECT}->{'DRAM Vendor ID'};
+        if (!defined $MDL_INFO_LIST_LOCAL->[$_]->{$LPSDRAM_CHIP_SELECT}->{'DRAM Vendor ID'})
+        {
+            print "no DRAM Vendor ID column";
+            $dram_vendor_id = '0x0'
+        }
+
+
+#        print "1.count:$CUSTOM_MEM_DEV_OPTIONS_LOCAL->{COMBO_MEM_ENTRY_COUNT}";
+#        print "1.mem type :$mem_type\n";
+#        print "1.vendor ID :$dram_vendor_id\n";
+#        print "1.emi_size :$emi_size\n";
+#        print "1.flash_id :$flash_id\n";
+        for ($idx = ($_+1); $idx <=$CUSTOM_MEM_DEV_OPTIONS_LOCAL->{COMBO_MEM_ENTRY_COUNT}; $idx++)
+        {
+            $mem_type_cmp = $MDL_INFO_LIST_LOCAL->[$idx]->{$LPSDRAM_CHIP_SELECT}->{'Type'};
+            $flash_id_cmp = $MDL_INFO_LIST_LOCAL->[$idx]->{$LPSDRAM_CHIP_SELECT}->{'NAND/eMMC ID'};
+            $emi_size_cmp = $MDL_INFO_LIST_LOCAL->[$idx]->{$LPSDRAM_CHIP_SELECT}->{'Density (Mb)'};
+            $dram_vendor_id_cmp = $MDL_INFO_LIST_LOCAL->[$idx]->{$LPSDRAM_CHIP_SELECT}->{'DRAM Vendor ID'};
+            if (!defined $MDL_INFO_LIST_LOCAL->[$idx]->{$LPSDRAM_CHIP_SELECT}->{'DRAM Vendor ID'})
+            {
+                print "no DRAM Vendor ID column";
+                $dram_vendor_id_cmp = '0x0'
+            }
+#            print "2.idx:$idx,count:$CUSTOM_MEM_DEV_OPTIONS_LOCAL->{COMBO_MEM_ENTRY_COUNT}";
+#            print "2.mem type :$mem_type_cmp\n";
+#            print "2.vendor ID :$dram_vendor_id_cmp\n";
+#            print "2.emi_size :$emi_size_cmp\n";
+#            print "2.flash_id :$flash_id_cmp\n";
+        # Limit 1: support only 1 discrete LPDDR1
+            if ($mem_type eq "Discrete DDR1" && $mem_type_cmp eq "Discrete DDR1")
+            {
+                die "[Error]At most one discrete LPDDR1 is allowed in the Combo MCP list\n" ;
+            }
+        # Limit 2: support only 1 discrete PCDDR3
+            if ($mem_type eq "Discrete PCDDR3" && $mem_type_cmp eq "Discrete PCDDR3")
+            {
+                die "[Error]At most one discrete PCDDR3 is allowed in the Combo MCP list\n" ;
+            }
+        # Limit 3: the vendor ID or dram size of discrete LPDDR2/LPDDR3 should be different.
+            if ($mem_type eq "Discrete DDR2" || $mem_type eq "Discrete LPDDR3")
+            {
+               if (  ($mem_type eq $mem_type_cmp)
+                  && ($dram_vendor_id eq $dram_vendor_id_cmp)
+                  && ($emi_size eq $emi_size_cmp))
+               {
+                    die "[Error] Combo discrete DRAM cannot support two part number which the vendor ID and DRAM size are the same\n" ;
+               }
+            }
+        # Limit 4: the flash ID or the vendor ID or dram size of MCP LPDDR2/LPDDR3 should be different.
+            if (   $mem_type eq "MCP(NAND+DDR2)"
+                || $mem_type eq "MCP(NAND+LPDDR3)"
+                || $mem_type eq "MCP(eMMC+DDR2)"
+                || $mem_type eq "MCP(eMMC+LPDDR3)")
+            {
+               if (   ($mem_type eq $mem_type_cmp)
+                   && ($dram_vendor_id eq $dram_vendor_id_cmp)
+                   && ($emi_size eq $emi_size_cmp)
+                   && ($flash_id eq $flash_id_cmp))
+               {
+                    die "[Error] Combo MCP DRAM(LPDDR2,LPDDR3) cannot support two part number which the flash ID and the vendor ID and DRAM size are the same\n" ;
+               }
+            }
+        # Limit 5: support more than 2 MCP LPDDR1 which the flash ID should be different
+        # Limit 6: support more than 2 MCP PCDDR3 which the flash ID should be different
+            if (   $mem_type eq "MCP(NAND+DDR1)"
+                || $mem_type eq "MCP(NAND+PCDDR3)"
+                || $mem_type eq "MCP(eMMC+DDR1)"
+                || $mem_type eq "MCP(eMMC+PCDDR3)")
+            {
+
+               if (   ($mem_type eq $mem_type_cmp)
+                   && ($flash_id eq $flash_id_cmp))
+               {
+                    die "[Error] Combo MCP DRAM(LPDDR1, PCDDR3) cannot support two part number which the flash ID are the same\n" ;
+               }
+            }
+        }
+    }
+
+
+    return ;
 }
 
 #****************************************************************************
@@ -345,7 +428,7 @@ sub custom_EMI_c_file_body
 {
    my ($CUSTOM_MEM_DEV_OPTIONS_LOCAL, $MDL_INFO_LIST_LOCAL, $MCP_LIST_LOCAL) = @_;
    my $idx = 0;
-   my $mem_type_ori, $flash_id_ori, ,$mem_type, $flash_id,$flash_length, $emi_clk, $emi_drva, $emi_drvb, $emi_odla, $emi_odlb, $emi_odlc, $emi_odld;
+   my $mem_type_ori, $flash_id_ori, ,$mem_type, $flash_id,$dram_vendor_id,$flash_length, $emi_clk, $emi_drva, $emi_drvb, $emi_odla, $emi_odlb, $emi_odlc, $emi_odld;
    my $emi_odle, $emi_odlf, $emi_odlg, $emi_odlh, $emi_odli, $emi_odlj, $emi_odlk, $emi_odll, $emi_odlm, $emi_odln;
    my $emi_coni, $emi_conj, $emi_conk, $emi_conl, $emi_conn, $emi_duta, $emi_dutb, $emi_dutc, $emi_duca, $emi_ducb, $emi_duce;
    my $emi_iocl, $emi_gend, $emi_size, $emi_size_str, $emi_reserved;
@@ -358,6 +441,8 @@ sub custom_EMI_c_file_body
    
    for (1..$CUSTOM_MEM_DEV_OPTIONS_LOCAL->{COMBO_MEM_ENTRY_COUNT})
    {
+       $emi_clk = $EMI_CLK[$_-1];
+       print "EMI_CLK[$_-1]= $EMI_CLK[$_-1]";
    	    $flash_id = "";
   	    my $comma = ($_ < $CUSTOM_MEM_DEV_OPTIONS_LOCAL->{COMBO_MEM_ENTRY_COUNT}) ? "," : "";
         $mem_type_ori = $MDL_INFO_LIST_LOCAL->[$_]->{$LPSDRAM_CHIP_SELECT}->{'Type'};
@@ -401,9 +486,20 @@ sub custom_EMI_c_file_body
         print "emi setting $emi_drva, $emi_drvb\n";
         $emi_size_str = $MDL_INFO_LIST_LOCAL->[$_]->{$LPSDRAM_CHIP_SELECT}->{'Density (Mb)'};
         #print "mem size:$emi_size_str\n";
-        $emi_size = &memory_size_transfer($emi_size_str);
         #print "mem size:$emi_size\n";
-        $emi_reserved = "{0,0}";
+        $emi_size = &memory_size_transfer($emi_size_str);
+        $dram_vendor_id = $MDL_INFO_LIST_LOCAL->[$_]->{$LPSDRAM_CHIP_SELECT}->{'DRAM Vendor ID'};
+        if (!defined $MDL_INFO_LIST_LOCAL->[$_]->{$LPSDRAM_CHIP_SELECT}->{'DRAM Vendor ID'})
+        {
+            print "no DRAM Vendor ID column";
+            $dram_vendor_id = '0x0'
+        }elsif($dram_vendor_id eq '0x0' || $dram_vendor_id eq '')
+        {
+            $dram_vendor_id = "0xf0";
+        }
+
+        print "dram vendor ID:$dram_vendor_id\n";
+        $emi_reserved = "0";
         
         ###
         $combo_memory_struct_setting .= <<"__TEMPLATE1";
@@ -448,7 +544,9 @@ sub custom_EMI_c_file_body
         	   $emi_gend,  /* EMI_GEND_value */
         	   
         	   $emi_size,  /* DRAM RANK SIZE  4Gb/rank */
-             $emi_reserved  /* reserved 2 */
+        	   $dram_vendor_id,  /* DRAM vendor ID*/
+                   0,  /* match flag*/
+
         }$comma
 __TEMPLATE1
    
@@ -553,18 +651,18 @@ sub xls_cell_value {
         	   my $value;
         	   for(0..$#$mareas)
         	   {
-        	   	   if($col >=8 && $col <= 94)
-        	   	  {
-        	   	  	   	$value = $sheet->get_cell(0,8)->value();
-        	            #print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
-        	            return $value;
-        	   	  }
-        	      elsif($col >= $mareas->[$_]->[1] && $col <= $mareas->[$_]->[3])
-        	      {
-        	          	$value = $sheet->get_cell(0,$mareas->[$_]->[1])->value();
-        	            # print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
-        	            return $value;
-        	      }	
+                       if($col >=8 && $col <= 94)
+                       {
+                           $value = $sheet->get_cell(0,8)->value();
+                           #print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
+                           return $value;
+                       }
+                       elsif($col >= $mareas->[$_]->[1] && $col <= $mareas->[$_]->[3])
+                       {
+                           $value = $sheet->get_cell(0,$mareas->[$_]->[1])->value();
+                           #print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
+                           return $value;
+                       }	
         	   }
         	
         }
@@ -591,60 +689,26 @@ sub xls_cell_value {
         	   	  	#print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
         	   	  	return $value;
         	   	  }
-        	   	  elsif($col == 0)
+        	   	  elsif(($col >= 0 && $col <= 7) || $col == 95)
         	   	  {
-        	   	  	$value = $sheet->get_cell(0,0)->value();
-        	   	  	#print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
+                                # no.95->for DRAM vendor ID title parsing
+                                if (defined $sheet->get_cell(0,$col))
+                                {
+                                    $value = $sheet->get_cell(0,$col)->value();
+                                }
+                                else 
+                                {
+                                    $value = 0; 
+                                }
+                                #print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
         	   	  	return $value;
         	   	  }
-        	   	   elsif($col == 1)
-        	   	  {
-        	   	  	$value = $sheet->get_cell(0,1)->value();
-        	   	  	#print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
-        	   	  	return $value;
-        	   	  }
-        	   	   elsif($col == 2)
-        	   	  {
-        	   	  	$value = $sheet->get_cell(0,2)->value();
-        	   	  	#print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
-        	   	  	return $value;
-        	   	  }
-        	   	   elsif($col == 3)
-        	   	  {
-        	   	  	$value = $sheet->get_cell(0,3)->value();
-        	   	  	#print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
-        	   	  	return $value;
-        	   	  }
-        	   	  elsif($col == 4)
-        	   	  {
-        	   	  	$value = $sheet->get_cell(0,4)->value();
-        	   	  	#print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
-        	   	  	return $value;
-        	   	  }
-        	   	  elsif($col == 5)
-        	   	  {
-        	   	  	$value = $sheet->get_cell(0,5)->value();
-        	   	  	#print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
-        	   	  	return $value;
-        	   	  }
-        	   	  elsif($col == 6)
-        	   	  {
-        	   	  	$value = $sheet->get_cell(0,6)->value();
-        	   	  	#print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
-        	   	  	return $value;
-        	   	  }
-        	   	  elsif($col == 7)
-        	   	  {
-        	   	  	$value = $sheet->get_cell(0,7)->value();
-        	   	  	#print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
-        	   	  	return $value;
-        	   	  }
-        	      elsif($col >= $mareas->[$_]->[1] && $col <= $mareas->[$_]->[3])
-        	      {
-        	          	$value = $sheet->get_cell(1,$mareas->[$_]->[1])->value();
-        	            #print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
-        	            return $value;
-        	      }	
+                          elsif($col >= $mareas->[$_]->[1] && $col <= $mareas->[$_]->[3])
+                          {
+                              $value = $sheet->get_cell(1,$mareas->[$_]->[1])->value();
+                              #print "col : $col, $mareas->[$_]->[1], $mareas->[$_]->[3], $value\n";
+                              return $value;
+                          }	
         	   }
         }
         if($cell){
@@ -694,7 +758,8 @@ sub write_tag()
     {
         unlink ($INFO_TAG);
     }
-    
+     my $temp_path = `dirname $INFO_TAG`;
+    `mkdir -p $temp_path`;
     open FILE,">$INFO_TAG";
     print FILE pack("a24", "MTK_BLOADER_INFO_v11");
     $filesize = $filesize + 24 ;
@@ -739,7 +804,7 @@ sub write_tag_one_element()
 {
   my ($file_size_local, $CUSTOM_MEM_DEV_OPTIONS_LOCAL, $MDL_INFO_LIST_LOCAL) = @_;
    my $idx = 0;
-   my $mem_type_ori, $flash_id_ori, ,$mem_type, $flash_id,$flash_length, $emi_clk, $emi_drva, $emi_drvb, $emi_odla, $emi_odlb, $emi_odlc, $emi_odld;
+   my $mem_type_ori, $flash_id_ori, ,$mem_type, $dram_vendor_id,$flash_id,$flash_length, $emi_clk, $emi_drva, $emi_drvb, $emi_odla, $emi_odlb, $emi_odlc, $emi_odld;
    my $emi_odle, $emi_odlf, $emi_odlg, $emi_odlh, $emi_odli, $emi_odlj, $emi_odlk, $emi_odll, $emi_odlm, $emi_odln;
    my $emi_coni, $emi_conj, $emi_conk, $emi_conl, $emi_conn, $emi_duta, $emi_dutb, $emi_dutc, $emi_duca, $emi_ducb, $emi_duce;
    my $emi_iocl, $emi_gend, $emi_size, $emi_size_str, $emi_reserved, $emi_clk_str;
@@ -752,6 +817,10 @@ sub write_tag_one_element()
    
   for (1..$CUSTOM_MEM_DEV_OPTIONS_LOCAL->{COMBO_MEM_ENTRY_COUNT})
    {
+       $emi_clk = $EMI_CLK[$_-1];
+       $emi_clk_str = sprintf("0x%X", $emi_clk);
+       print "write tag : $PROJECT, $LPSDRAM_CHIP_SELECT, $emi_clk, $emi_clk_str\n";
+       print "EMI_CLK[$_-1]= $EMI_CLK[$_-1]";
    	    #$flash_id = "";
    	    my $fs = 0;
   	    my $comma = ($_ < $CUSTOM_MEM_DEV_OPTIONS_LOCAL->{COMBO_MEM_ENTRY_COUNT}) ? "," : "";
@@ -794,19 +863,18 @@ sub write_tag_one_element()
         $emi_iocl = &Lookup_LPDDR_EMI_setting_by_IDX_CLK_BB_REG($_, $emi_clk, $PLATFORM, 'EMI_IOCL_VAL', $LPSDRAM_CHIP_SELECT, $CUSTOM_MEM_DEV_OPTIONS_LOCAL);
         $emi_gend = &Lookup_LPDDR_EMI_setting_by_IDX_CLK_BB_REG($_, $emi_clk, $PLATFORM, 'EMI_GEND_VAL', $LPSDRAM_CHIP_SELECT, $CUSTOM_MEM_DEV_OPTIONS_LOCAL);
        # print "emi setting tag $emi_drva, $emi_drvb\n";
-        $emi_size_str = $MDL_INFO_LIST_LOCAL->[$_]->{$LPSDRAM_CHIP_SELECT}->{'Density (Mb)'};
-        #print "mem size:$emi_size_str\n";
-        #$emi_size = &memory_size_transfer($emi_size_str);
-        if($emi_size_str =~ /(\d{4})\+(\d{4})/)
+        $dram_vendor_id = $MDL_INFO_LIST_LOCAL->[$_]->{$LPSDRAM_CHIP_SELECT}->{'DRAM Vendor ID'};
+        if (!defined $MDL_INFO_LIST_LOCAL->[$_]->{$LPSDRAM_CHIP_SELECT}->{'DRAM Vendor ID'})
         {
-        	$emi_size = sprintf("0x%X",($1+$2)*1024*1024/8);
-        }
-        else
+            print "no DRAM Vendor ID column";
+            $dram_vendor_id = '0x0';
+        }elsif($dram_vendor_id eq '0x0' || $dram_vendor_id eq '')
         {
-        	$emi_size = sprintf("0x%X",$emi_size_str*1024*1024/8);
+            $dram_vendor_id = "0xf0";
         }
-       # print "mem size:$emi_size\n";
-        $emi_reserved = "{0,0}";
+
+        print "DRAM vendor ID:$dram_vendor_id";
+        $emi_reserved = "0";
         
         print FILE pack("L", hex($mem_type));                           #type
         $fs = $fs + 4 ;
@@ -926,29 +994,36 @@ sub write_tag_one_element()
         print FILE pack ("L", hex (lc($emi_gend))) ;        # DRAMC_MISCTL0_VAL
         $fs = $fs + 4 ;
         
-        print FILE pack("L", hex($emi_size));                     #length
-        $fs = $fs + 4 ;
-        
-        print FILE pack("L", hex($emi_reserved));                     #length
-        $fs = $fs + 4 ;
-        
-        print FILE pack ("L", hex ("0")) ;                                  #  DRAM_RANK_SIZE[4]
+##
+        $emi_size_str = $MDL_INFO_LIST_LOCAL->[$_]->{$LPSDRAM_CHIP_SELECT}->{'Density (Mb)'};
+        print "mem size:$emi_size_str\n";
+        $emi_size = &memory_size_transfer($emi_size_str);
+                                                                                        #  DRAM_RANK_SIZE[4]
+        if($emi_size_str =~ /(\d{4})\+(\d{4})/)
+        {
+                $emi_size = sprintf("0x%X",($1)*1024*1024/8);
+                print FILE pack ("L", hex ($emi_size)) ;                                  
+                $emi_size = sprintf("0x%X",($2)*1024*1024/8);
+                print FILE pack ("L", hex ($emi_size)) ;
+        }
+        else
+        {
+                $emi_size = sprintf("0x%X",$emi_size_str*1024*1024/8);
+                print FILE pack ("L", hex ($emi_size)) ;
+                print FILE pack ("L", hex ("0")) ;
+        }
+        # print "mem size:$emi_size\n";
+
         print FILE pack ("L", hex ("0")) ;
         print FILE pack ("L", hex ("0")) ;
-        print FILE pack ("L", hex ("0")) ;
-       
-        #print FILE pack ("L", hex ("0")) ;                                  #reserved[10]
-        #print FILE pack ("L", hex ("0")) ;  
-        #print FILE pack ("L", hex ("0")) ;
-        #print FILE pack ("L", hex ("0")) ;
-        #print FILE pack ("L", hex ("0")) ;
-        #print FILE pack ("L", hex ("0")) ;
-        #print FILE pack ("L", hex ("0")) ;
-        #print FILE pack ("L", hex ("0")) ;
-        #print FILE pack ("L", hex ("0")) ;
-        #print FILE pack ("L", hex ("0")) ;
         $fs = $fs + 16;
-        
+       
+        print FILE pack("L", hex($dram_vendor_id));                           #type
+        $fs = $fs + 4 ;
+
+        print FILE pack ("L", hex ("0")) ;        # match flag
+        $fs = $fs + 4 ;
+##        
         $$file_size_local = $$file_size_local + $fs;
    }
 }
@@ -1229,10 +1304,10 @@ sub get_info
                      }
                      else
                      {
-                     	      if($col >=1 && $col <=7)
+                     	      if(($col >=1 && $col <=7) || $col == 95 )
                      	    {
                      	    	$href->{$tgt}->{$rows{'index'}->{0}->{$col}} = $content;
-                     	    	# print "1 href->{$tgt}->{$rows{'index'}->{0}->{$col}} = $href->{$tgt}->{$rows{'index'}->{0}->{$col}}\n"
+                                #print "1 href->{$tgt}->{$rows{'index'}->{0}->{$col}} = $href->{$tgt}->{$rows{'index'}->{0}->{$col}}\n"
                      	    }
                      	    else
                     	    {
@@ -1458,9 +1533,20 @@ while (<CUSTOM_MEMORY_DEVICE_HDR>)
         }
         elsif ($1 eq "EMI_CLK")
         {
-        	  
-           	$CUSTOM_MEM_DEV_OPTIONS_LOCAL->{EMI_CLK} = $2;
+            my $emi_clk_index = $2;
+            if ($3 =~ /\d{3}/)
+            {
+                $EMI_CLK[$emi_clk_index] = $&;
+                print "EMI_CLK[$emi_clk_index] = $&\n";
+            }
+            else
+            {
+                print "[ERROR] EMI CLK value is not a 3 digit number."; 
+            }  
         }
+        #{
+        #      	$CUSTOM_MEM_DEV_OPTIONS_LOCAL->{EMI_CLK} = $2;
+        #}
         
         $LPSDRAM_CHIP_SELECT_LOCAL = $cs;
         
@@ -1524,9 +1610,13 @@ sub get_memory_type
     {
     	return 0x0002;
     }
-    elsif($mem_type_ori eq "Discrete DDR3")
+    elsif($mem_type_ori eq "Discrete PCDDR3")
     {
     	return 0x0003;
+    }
+    elsif($mem_type_ori eq "Discrete LPDDR3")
+    {
+    	return 0x0004;
     }
     elsif($mem_type_ori eq "MCP(NAND+DDR1)")
     {
@@ -1540,9 +1630,13 @@ sub get_memory_type
     {
     	return 0x0102;
     }
-    elsif($mem_type_ori eq "MCP(NAND+DDR3)")
+    elsif($mem_type_ori eq "MCP(NAND+PCDDR3)")
     {
     	return 0x0103;
+    }
+    elsif($mem_type_ori eq "MCP(NAND+LPDDR3)")
+    {
+    	return 0x0104;
     }
     elsif($mem_type_ori eq "MCP(eMMC+DDR1)")
     {
@@ -1552,9 +1646,13 @@ sub get_memory_type
     {
     	return 0x0202;
     }
-    elsif($mem_type_ori eq "MCP(eMMC+DDR3)")
+    elsif($mem_type_ori eq "MCP(eMMC+PCDDR3)")
     {
     	return 0x0203;
+    }
+    elsif($mem_type_ori eq "MCP(eMMC+LPDDR3)")
+    {
+    	return 0x0204;
     }
     else
     {

@@ -1,4 +1,3 @@
-
 //#include "eeprom_layout.h"
 #include "camera_custom_eeprom.h"
 

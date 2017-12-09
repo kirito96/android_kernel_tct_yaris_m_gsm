@@ -59,6 +59,9 @@ loglevel 5
     mkdir /data 0771 system system
     mkdir /cache 0770 system cache
     mkdir /config 0500 root root
+  
+    #Create CIP mount point
+	mkdir /custom
 
     # Directory for putting things only root should see.
     mkdir /mnt/secure 0700 root root
@@ -106,20 +109,29 @@ on fs_property:ro.mount.fs=EXT4
     #mount ext4 emmc@android /system wait commit=1,data=journal,noauto_da_alloc
     mount ext4 /emmc@android /system wait commit=1,noauto_da_alloc
     chmod 0750 /system/etc/partition_permission.sh
-    mount ext4 /emmc@android /system noatime ro remount wait 
+    mkdir /custpack
+    #Mount custpack
+    mount ext4 /emmc@custpack /custpack commit=1,noauto_da_alloc
+    exec /sbin/proinfo
     exec /sbin/e2fsck -pfD /emmc@usrdata
     exec /sbin/tune2fs -O has_journal /emmc@usrdata
     exec /system/bin/ext4_resize
-    mount ext4 /emmc@usrdata /data noatime nosuid nodev wait commit=1,nodelalloc,noauto_da_alloc	
+    mount ext4 /emmc@usrdata /data noatime nosuid nodev wait commit=1,nodelalloc,noauto_da_alloc
+    mount ext4 /emmc@android /system noatime ro remount wait
+    mount ext4 /emmc@custpack /custpack noatime ro remount
+    # mount cip partitions
+    exec /sbin/e2fsck -p /emmc@custom
+	mount ext4 /emmc@custom /custom	
     write /proc/bootprof "INIT:eMMC:Mount_END"
 
 on fs_property:ro.mount.fs=UBIFS
     write /proc/bootprof "INIT:NAND:Mount_START"
-    mount ubifs ubi@system /system
+    mount ubifs ubi@system /system wait
     chmod 0750 /system/etc/partition_permission.sh
     mount ubifs ubi@system /system ro remount sync
-    mount ubifs ubi@userdata /data nosuid nodev sync
-    mount ubifs ubi@cache /cache nosuid nodev sync
+    mount ubifs ubi@userdata /data nosuid nodev sync wait
+#    mount ubifs ubi@cache /cache nosuid nodev wait
+    mount yaffs2 mtd@cache /cache nosuid nodev
     write /proc/bootprof "INIT:NAND:Mount_END"
 # mount different fs end
 
@@ -191,15 +203,9 @@ on post-fs
 	# OpenCORE player config
 	chmod 0666 /etc/player.cfg
 
-    # load driver base driver
-    insmod /system/lib/modules/mtk_drvb_73.ko
-    mknod /dev/drvb c 176 0
-    chmod 0666 /dev/drvb
-
     # WiFi
     mkdir /data/misc/wifi 0770 system wifi
     mkdir /data/misc/wifi/sockets 0770 system wifi
-    mkdir /data/system/wpa_supplicant 0770 system wifi
     mkdir /data/misc/dhcp 0770 dhcp dhcp
     chown dhcp dhcp /data/misc/dhcp
     chmod 0660 /sys/class/rfkill/rfkill1/state 
@@ -238,26 +244,21 @@ on post-fs
     # Sensor
     chmod 0666 /dev/sensor
 
-    # GPIO
-    chmod 0666 /dev/mtgpio
-
     # Android SEC related device nodes
-    insmod /system/lib/modules/sec.ko
     mknod /dev/sec c 182 0
     chmod 0660 /dev/sec
     chown root system /dev/sec
     
     # device info interface
-    insmod /system/lib/modules/devinfo.ko
     mknod /dev/devmap c 196 0;
-    chmod 0444 /dev/devmap
-    chown root media /dev/devmap
+    chmod 0440 /dev/devmap
+    chown root system /dev/devmap
 
 
     #change partition permission
     exec /system/etc/partition_permission.sh
    
-    chmod 0666 /dev/uio0
+    chmod 0666 /dev/exm0
      
 on post-fs-data
 
@@ -295,6 +296,8 @@ on boot
    chmod 700 /remount.sh
    exec /remount.sh
 
+   start drvbd
+
 # basic network init
     ifup lo
     hostname localhost
@@ -316,6 +319,9 @@ service console /system/bin/sh
     group log
 
 
+on property:sys.powerctl=*
+    powerctl ${sys.powerctl}
+
 service meta_tst /sbin/meta_tst	
 
 service nvram_daemon /system/bin/nvram_daemon
@@ -329,9 +335,22 @@ service featured /system/bin/featured
     socket dfo stream 666 root system
 # DFO (End)
 
+service drvbd /system/bin/drvbd
+    class main
+    user system
+    group system
+
 service debuggerd /system/bin/debuggerd
 
 service mobile_log_d /system/bin/mobile_log_d
+    disabled
+    oneshot
+
+on property:sys.mtk.disable.mobile_log_d=1    
+    stop mobile_log_d    
+
+on property:sys.mtk.disable.mobile_log_d=0
+    start mobile_log_d
 
 service vold /system/bin/vold
     class core

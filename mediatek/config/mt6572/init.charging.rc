@@ -29,15 +29,16 @@ on early-init
 
 on early_property:ro.build.type=user
     write /proc/bootprof "INIT: user build setting"
-    export BOOTCLASSPATH /system/framework/core.jar:/system/framework/core-junit.jar:/system/framework/bouncycastle.jar:/system/framework/ext.jar:/system/framework/framework.jar:/system/framework/telephony-common.jar:/system/framework/mms-common.jar:/system/framework/android.policy.jar:/system/framework/services.jar:/system/framework/apache-xml.jar:/system/framework/mediatek-common.jar:/system/framework/mediatek-framework.jar:/system/framework/secondary-framework.jar:/system/framework/CustomProperties.jar:/system/framework/mediatek-telephony-common.jar:/system/framework/mediatek-op.jar
+    export BOOTCLASSPATH /system/framework/core.jar:/system/framework/core-junit.jar:/system/framework/bouncycastle.jar:/system/framework/ext.jar:/system/framework/framework.jar:/system/framework/telephony-common.jar:/system/framework/voip-common.jar:/system/framework/mms-common.jar:/system/framework/android.policy.jar:/system/framework/services.jar:/system/framework/apache-xml.jar:/system/framework/mediatek-common.jar:/system/framework/mediatek-framework.jar:/system/framework/secondary-framework.jar:/system/framework/CustomProperties.jar:/system/framework/mediatek-telephony-common.jar:/system/framework/mediatek-op.jar
 
 on early_property:ro.build.type=userdebug
     write /proc/bootprof "INIT: userdebug build setting"
-    export BOOTCLASSPATH /system/framework/core.jar:/system/framework/core-junit.jar:/system/framework/bouncycastle.jar:/system/framework/ext.jar:/system/framework/framework.jar:/system/framework/telephony-common.jar:/system/framework/mms-common.jar:/system/framework/android.policy.jar:/system/framework/services.jar:/system/framework/apache-xml.jar:/system/framework/mediatek-common.jar:/system/framework/mediatek-framework.jar:/system/framework/secondary-framework.jar:/system/framework/CustomProperties.jar:/system/framework/mediatek-telephony-common.jar:/system/framework/mediatek-op.jar
+    export BOOTCLASSPATH /system/framework/core.jar:/system/framework/core-junit.jar:/system/framework/bouncycastle.jar:/system/framework/ext.jar:/system/framework/framework.jar:/system/framework/telephony-common.jar:/system/framework/voip-common.jar:/system/framework/mms-common.jar:/system/framework/android.policy.jar:/system/framework/services.jar:/system/framework/apache-xml.jar:/system/framework/mediatek-common.jar:/system/framework/mediatek-framework.jar:/system/framework/secondary-framework.jar:/system/framework/CustomProperties.jar:/system/framework/mediatek-telephony-common.jar:/system/framework/mediatek-op.jar
+
 
 on early_property:ro.build.type=eng
     write /proc/bootprof "INIT: eng build setting"
-    export BOOTCLASSPATH /system/framework/core.jar:/system/framework/core-junit.jar:/system/framework/bouncycastle.jar:/system/framework/ext.jar:/system/framework/framework.jar:/system/framework/telephony-common.jar:/system/framework/mms-common.jar:/system/framework/android.policy.jar:/system/framework/services.jar:/system/framework/apache-xml.jar:/system/framework/mediatek-common.jar:/system/framework/mediatek-framework.jar:/system/framework/secondary-framework.jar:/system/framework/CustomProperties.jar:/system/framework/mediatek-telephony-common.jar:/system/framework/mediatek-op.jar:/system/framework/emma.jar
+    export BOOTCLASSPATH /system/framework/core.jar:/system/framework/core-junit.jar:/system/framework/bouncycastle.jar:/system/framework/ext.jar:/system/framework/framework.jar:/system/framework/telephony-common.jar:/system/framework/voip-common.jar:/system/framework/mms-common.jar:/system/framework/android.policy.jar:/system/framework/services.jar:/system/framework/apache-xml.jar:/system/framework/mediatek-common.jar:/system/framework/mediatek-framework.jar:/system/framework/secondary-framework.jar:/system/framework/CustomProperties.jar:/system/framework/mediatek-telephony-common.jar:/system/framework/mediatek-op.jar:/system/framework/emma.jar
 
 on init
 
@@ -216,7 +217,8 @@ on fs_property:ro.mount.fs=UBIFS
 
     mount ubifs ubi@system /system ro remount 
     mount ubifs ubi@userdata /data nosuid nodev 
-    mount ubifs ubi@cache /cache nosuid nodev wait
+#    mount ubifs ubi@cache /cache nosuid nodev wait
+    mount yaffs2 mtd@cache /cache nosuid nodev
     write /proc/bootprof "INIT:NAND:Mount_END"
 
 # mount different fs end
@@ -350,8 +352,8 @@ on post-fs-data
     chmod 444 /etc/radvd/radvd.conf
 
     # SGX
-    insmod /system/lib/modules/pvrsrvkm.ko
-    insmod /system/lib/modules/mtklfb.ko
+    #insmod /system/lib/modules/pvrsrvkm.ko
+    #insmod /system/lib/modules/mtklfb.ko
 
     # Permissions for System Server and daemons.
     chown root   radio  /sys/class/leds/lcd-backlight/brightness
@@ -389,9 +391,12 @@ on post-fs-data
     mkdir /data/nvram/md  0770 root nvram
     mkdir /data/nvram/md2 0770 root nvram
 
-    insmod /system/lib/modules/ccci_plat.ko
-    insmod /system/lib/modules/ccci.ko
-    chown ccci ccci /sys/class/BOOT/BOOT/boot/md
+#  Build-in Modified - S
+#   insmod /system/lib/modules/ccci_plat.ko
+#   insmod /system/lib/modules/ccci.ko
+#  Build-in Modified - E
+#   chown ccci ccci /sys/class/BOOT/BOOT/boot/md
+    chown ccci ccci /sys/kernel/ccci/boot
     # M4U
     #insmod /system/lib/modules/m4u.ko
     #mknod /dev/M4U_device c 188 0
@@ -418,7 +423,7 @@ on post-fs-data
     #Accdet
     chown root radio /sys/devices/platform/Accdet_Driver/driver/accdet_call_state
     #VideoCodec
-    insmod /system/lib/modules/vcodec_kernel_driver.ko
+    #insmod /system/lib/modules/vcodec_kernel_driver.ko
     mknod /dev/Vcodec c 160 0
     chmod 0660 /dev/Vcodec
     chown system media /dev/Vcodec
@@ -437,9 +442,6 @@ on post-fs-data
     chown system /sys/devices/platform/msensor/driver/cpsopmode
     chown system /sys/devices/platform/msensor/driver/cpsreptxy
     chown system /sys/devices/platform/msensor/driver/cpsreptz
-
-    # GPIO
-    chmod 0664 /dev/mtgpio
 
         #EM eint
     chown root diag /sys/bus/platform/drivers/eint/current_eint
@@ -473,7 +475,6 @@ on post-fs-data
     chmod 0777 /data/misc/ppp
 
     # Android SEC related device nodes
-    insmod /system/lib/modules/sec.ko
     mknod /dev/sec c 182 0
     chmod 0660 /dev/sec
 
@@ -482,14 +483,11 @@ on post-fs-data
     chmod 0660 /dev/fm
     chown system media /dev/fm
 
-    # device apc settings
-    insmod /system/lib/modules/devapc.ko
 
     # device info /proc interface
-    insmod /system/lib/modules/devinfo.ko
     mknod /dev/devmap c 196 0;
-    chmod 0444 /dev/devmap
-    chown root media /dev/devmap
+    chmod 0440 /dev/devmap
+    chown root system /dev/devmap
 
     # bluetooth
     mkdir /data/@btmtk 0770 bluetooth net_bt
@@ -506,10 +504,8 @@ on post-fs-data
     #HDMI
     chmod 0664 /dev/hdmitx
 
-    # JPEG
-    chmod 0444 /dev/mtk_jpeg
-    chmod 0444 /dev/mtk_gdma
-    chmod 0444 /dev/mtk_gfmt
+    #ALMK
+    chmod 0440 /dev/mtk_almk
 
     # DISP
     chmod 0444 /dev/mtk_disp
@@ -547,9 +543,6 @@ on post-fs-data
     chmod 0660 /dev/mtkg2d
     chown system media /dev/mtkg2d
 
-    #for eng mode
-    chmod 0664 /dev/misc-sd
-
     chown system media /sys/bus/platform/drivers/mem_bw_ctrl/concurrency_scenario
 
     #mtk_sched
@@ -560,8 +553,8 @@ on post-fs-data
     #chmod 666 /dev/ump
     #chown system.graphics /dev/ump
           
-    chmod 666 /dev/mali
-    chown system graphics /dev/mali   
+    chmod 666 /dev/mali0
+    chown system graphics /dev/mali0   
     
 
 # End of adding by MTK drivers
@@ -650,6 +643,11 @@ service adbd /sbin/adbd
 on property:ro.kernel.qemu=1
     start adbd
 
+service drvbd /system/bin/drvbd
+    class main
+    user system
+    group system
+
 service debuggerd /system/bin/debuggerd
     class main
 
@@ -688,7 +686,7 @@ service servicemanager /system/bin/servicemanager
 #    onrestart restart media
 #    onrestart restart netd
 
-service ipod /system/bin/logwrapper /system/bin/ipod
+service ipod /system/bin/ipod
     user root
     group root
     class ipo

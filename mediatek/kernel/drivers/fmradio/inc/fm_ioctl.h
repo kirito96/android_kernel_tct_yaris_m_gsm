@@ -75,6 +75,10 @@
 #define FM_IOCTL_PRE_SEARCH _IOWR(FM_IOC_MAGIC, 45,int32_t)
 #define FM_IOCTL_RESTORE_SEARCH _IOWR(FM_IOC_MAGIC, 46,int32_t)
 
+#define FM_IOCTL_SET_SEARCH_THRESHOLD   _IOWR(FM_IOC_MAGIC, 47, struct fm_search_threshold_t*)
+
+#define FM_IOCTL_GET_AUDIO_INFO _IOWR(FM_IOC_MAGIC, 48, fm_audio_info_t*)
+
 #define FM_IOCTL_SCAN_NEW       _IOWR(FM_IOC_MAGIC, 60, struct fm_scan_t*)
 #define FM_IOCTL_SEEK_NEW       _IOWR(FM_IOC_MAGIC, 61, struct fm_seek_t*)
 #define FM_IOCTL_TUNE_NEW       _IOWR(FM_IOC_MAGIC, 62, struct fm_tune_t*)

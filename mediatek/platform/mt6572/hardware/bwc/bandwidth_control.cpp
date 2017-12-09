@@ -51,6 +51,8 @@ static const char* BwcProfileType_GetStr( BWC_PROFILE_TYPE profile )
     case BWCPT_CAMERA_PREVIEW:      return "BWCPT_CAMERA_PREVIEW";
     case BWCPT_CAMERA_CAPTURE:      return "BWCPT_CAMERA_CAPTURE";
     case BWCPT_CAMERA_ZSD:          return "BWCPT_CAMERA_ZSD";
+    case BWCPT_VIDEO_LIVE_PHOTO:    return "BWCPT_VIDEO_LIVE_PHOTO";
+    case BWCPT_VIDEO_WIFI_DISPLAY:  return "BWCPT_VIDEO_WIFI_DISPLAY";
     case BWCPT_NONE:                return "BWCPT_NONE";
     }
 
@@ -212,7 +214,7 @@ bool BWC::check_profile_change_valid( BWC_PROFILE_TYPE profile_type )
 {
     BWC_PROFILE_TYPE current_profile;
     
-    current_profile = _Profile_Get();
+    current_profile = (BWC_PROFILE_TYPE)_Profile_Get();
 
     if( profile_type >= current_profile )
         return true;
@@ -230,9 +232,12 @@ int BWC::Profile_Change( BWC_PROFILE_TYPE profile_type , bool bOn )
     /*Priority Check*/
     if( !check_profile_change_valid( profile_type ) )
     {
-        BWC_WARNING("Priority denied. Skip change profile from %s(%d) to %s(%d)",
-            BwcProfileType_GetStr( _Profile_Get() ), (int)_Profile_Get(),
+BWC_WARNING("Priority denied, Skip change profile from %d to %d" , _Profile_Get() , (int)profile_type);
+/*        
+BWC_WARNING("Priority denied. Skip change profile from %s(%d) to %s(%d)",
+            BwcProfileType_GetStr( (BWC_PROFILE_TYPE)_Profile_Get() ), (int)_Profile_Get(),
             BwcProfileType_GetStr( profile_type ), (int)profile_type );
+*/
         return -1;
     } 
     else
@@ -500,7 +505,7 @@ void            BWC::_Profile_Set( BWC_PROFILE_TYPE profile )
     profile_value.SetToProperty( prop_name );
 }
 
-BWC_PROFILE_TYPE BWC::_Profile_Get( void )
+int BWC::_Profile_Get( void )
 {
     BWC_INT profile;
         
@@ -510,7 +515,7 @@ BWC_PROFILE_TYPE BWC::_Profile_Get( void )
 
     profile.LoadFromProperty( prop_name );
 
-    return (BWC_PROFILE_TYPE)profile.value;
+    return profile.value;
 }
 
 
@@ -542,6 +547,14 @@ int BWC::property_name_str_get( const char* function_name , char* prop_name )
 }
 
 
-
-
+unsigned int BWC_MONITOR::query_hwc_max_pixel(){
+    unsigned int hwc_max_pixel = -1;
+    hwc_max_pixel = this->get_smi_bw_state();
+    //BWC_INFO("query_hwc_max_pixel: get_smi_bw_state return %d\n", hwc_max_pixel );
+    if( hwc_max_pixel <= 0 ){
+        return 4389000;
+    }else{
+        return hwc_max_pixel;
+    }
+}
 

@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2010 MediaTek, Inc.
+ *
+ * Author: KT Chien <kt.chien@mediatek.com>
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
 
 #include <linux/kernel.h>
 #include <asm/io.h>
@@ -113,6 +128,14 @@ void BM_Enable(const unsigned int enable)
     mt65xx_reg_sync_writel((value & ~(BUS_MON_PAUSE | BUS_MON_EN)) | (enable ? BUS_MON_EN : 0), EMI_BMEN);
 }
 
+/*
+void BM_Disable(void)
+{
+    const unsigned int value = readl(EMI_BMEN);
+
+    mt65xx_reg_sync_writel(value & (~BUS_MON_EN), EMI_BMEN);
+}
+*/
 
 void BM_Pause(void)
 {

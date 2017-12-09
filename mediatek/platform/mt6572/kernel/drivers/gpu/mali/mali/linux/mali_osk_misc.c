@@ -1,11 +1,11 @@
 /*
- * Copyright (C) 2010-2012 ARM Limited. All rights reserved.
- * 
- * This program is free software and is provided to you under the terms of the GNU General Public License version 2
- * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
- * A copy of the licence is included with the program, and can also be obtained from Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * This confidential and proprietary software may be used only as
+ * authorised by a licensing agreement from ARM Limited
+ * (C) COPYRIGHT 2008-2013 ARM Limited
+ * ALL RIGHTS RESERVED
+ * The entire notice above must be reproduced on all authorised
+ * copies and copies may only be made to the extent permitted
+ * by a licensing agreement from ARM Limited.
  */
 
 /**
@@ -18,13 +18,12 @@
 #include <linux/sched.h>
 #include <linux/module.h>
 #include "mali_osk.h"
-#include "mali_kernel_common.h"
 
 void _mali_osk_dbgmsg( const char *fmt, ... )
 {
-    va_list args;
-    va_start(args, fmt);
-    vprintk(fmt, args);
+	va_list args;
+	va_start(args, fmt);
+	vprintk(fmt, args);
 	va_end(args);
 }
 
@@ -49,33 +48,7 @@ void _mali_osk_abort(void)
 
 void _mali_osk_break(void)
 {
-   unsigned long value0 = 0;
-   unsigned long value1 = 0;
-   unsigned long value2 = 0;
-   unsigned long value3 = 0;
-   unsigned long value4 = 0;
-   unsigned long value5 = 0;
-   unsigned long value6 = 0;
-   ///
-   MALI_DEBUG_PRINT(1, ("_mali_osk_break (%u)\n", 0));
-
-   value0 = (*(volatile unsigned long*)(0xF0000020));
-   value1 = (*(volatile unsigned long*)(0xF0000024));
-   value2 = (*(volatile unsigned long*)(0xF0006214));
-   value3 = (*(volatile unsigned long*)(0xF000623C));
-   value4 = (*(volatile unsigned long*)(0xF000660c));
-   value5 = (*(volatile unsigned long*)(0xF0006610));
-   value6 = (*(volatile unsigned long*)(0xF3000000));
-
-   MALI_DEBUG_PRINT(1, ("clk reg(0xF0000020) = %x\n", value0));
-   MALI_DEBUG_PRINT(1, ("clk reg(0xF0000024) = %x\n", value1));
-   MALI_DEBUG_PRINT(1, ("clk reg(0xF0006214) = %x\n", value2));
-   MALI_DEBUG_PRINT(1, ("clk reg(0xF000623C) = %x\n", value3));
-   MALI_DEBUG_PRINT(1, ("clk reg(0xF000660c) = %x\n", value4));
-   MALI_DEBUG_PRINT(1, ("clk reg(0xF0006610) = %x\n", value5));
-   MALI_DEBUG_PRINT(1, ("clk reg(0xF3000000) = %x\n", value6));
-
-   _mali_osk_abort();
+	_mali_osk_abort();
 }
 
 u32 _mali_osk_get_pid(void)
@@ -87,5 +60,13 @@ u32 _mali_osk_get_pid(void)
 u32 _mali_osk_get_tid(void)
 {
 	/* pid is actually identifying the thread on Linux */
-	return (u32)current->pid;
+	u32 tid = current->pid;
+
+	/* If the pid is 0 the core was idle.  Instead of returning 0 we return a special number
+	 * identifying which core we are on. */
+	if (0 == tid) {
+		tid = -(1 + raw_smp_processor_id());
+	}
+
+	return tid;
 }

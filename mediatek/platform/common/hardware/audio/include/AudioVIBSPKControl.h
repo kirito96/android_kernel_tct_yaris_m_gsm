@@ -15,7 +15,6 @@
 #include <utils/KeyedVector.h>
 #include <utils/Vector.h>
 
-#include "AudioType.h"
 #include "AudioVIBSPKCoeff.h"
 #include "audio_custom_exp.h"
 
@@ -34,13 +33,6 @@ namespace android
 #define VIBSPK_CALIBRATION_DONE    0x7777
 #define VIBSPK_SETDEFAULT_VALUE    0x8888
 
-/* +Porting JRD519743(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P83) */
-enum VIBSPK_GEN_STATE{
-   VIBSPK_GEN_IDLE = 0x0,
-   VIBSPK_GEN_RUNNING,
-   VIBSPK_GEN_STOPPING,
-} ;
-/* -Porting JRD519743(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P83) */
 
 class AudioVIBSPKVsgGen
 {
@@ -51,9 +43,7 @@ public:
    void vsgDeInit();
    void vsgInit(int32_t samplerate, int32_t center_freq, int32_t mod_freq, int32_t delta_freq);
    uint8_t  mRampControl; //0--none, 1--rampdown, 2--rampup
-/* +Porting JRD519743(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P83) */
-   void resetPhase();
-/* -Porting JRD519743(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P83) */
+
 private:
    AudioVIBSPKVsgGen();
    ~AudioVIBSPKVsgGen();
@@ -85,11 +75,10 @@ public:
    void VibSpkProcess(uint32_t size, void *buffer, uint32_t channels);
    void VibSpkRampControl(uint8_t rampcontrol);
    void setVibSpkGain(int32_t MaxVolume, int32_t MinVolume, int32_t VolumeRange);
-/* +Porting JRD519743(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P83) */
-   void resetVibSpkPhase();
+   #ifdef DYNAMIC_VIBSPK_STRONG
+   void setCurrentVibSpkGain(int32_t value);
+   #endif
    int16_t getVibSpkGain(void);
-/* -Porting JRD519743(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P83) */
-
 private:
    AudioVIBSPKControl();
    ~AudioVIBSPKControl();

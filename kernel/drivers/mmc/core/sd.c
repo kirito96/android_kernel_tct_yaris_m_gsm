@@ -945,7 +945,11 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 
 	err = mmc_sd_get_cid(host, ocr, cid, &rocr);
 	if (err)
+	{
+		printk(KERN_ERR "%s: mmc_sd_get_cid (%d)\n",
+		       __func__, err);
 		return err;
+	}
 	for (i=0; i<4; i++)
 		g_u32_cid[i] = cid[i];
 
@@ -971,8 +975,13 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 	 */
 	if (!mmc_host_is_spi(host)) {
 		err = mmc_send_relative_addr(host, &card->rca);
+		
 		if (err)
+		{
+			printk(KERN_ERR "%s: mmc_send_relative_addr (%d)\n",
+		       __func__, err);
 			return err;
+		}
 	}
 
 	if (!oldcard) {
@@ -994,13 +1003,20 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 
 	err = mmc_sd_setup_card(host, card, oldcard != NULL);
 	if (err)
+	{
+		printk(KERN_ERR "%s: mmc_sd_setup_card (%d)\n",
+		       __func__, err);
 		goto free_card;
-
+	}
 	/* Initialization sequence for UHS-I cards */
 	if (rocr & SD_ROCR_S18A) {
 		err = mmc_sd_init_uhs_card(card);
 		if (err)
+		{
+			printk(KERN_ERR "%s: mmc_sd_init_uhs_card (%d)\n",
+		       __func__, err);
 			goto free_card;
+		}
 
 		/* Card is an ultra-high-speed card */
 		mmc_card_set_uhs(card);
@@ -1036,7 +1052,12 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 			(card->scr.bus_widths & SD_SCR_BUS_WIDTH_4)) {
 			err = mmc_app_set_bus_width(card, MMC_BUS_WIDTH_4);
 			if (err)
+			{
+				printk(KERN_ERR "%s: mmc_app_set_bus_width (%d)\n",
+		       __func__, err);
 				goto free_card;
+				
+			}
 
 			mmc_set_bus_width(host, MMC_BUS_WIDTH_4);
 		}
@@ -1048,6 +1069,11 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 free_card:
 	if (!oldcard)
 		mmc_remove_card(card);
+	if(err)
+	{
+		printk(KERN_ERR "%s: Err return (%d)\n",
+		       __func__, err);
+	}
 
 	return err;
 }

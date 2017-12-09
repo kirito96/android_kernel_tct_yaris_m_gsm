@@ -63,6 +63,14 @@
 
 #define CFG_WMT_UART_HIF_USE (0)
 
+#define CFG_WMT_WIFI_5G_SUPPORT (1)
+
+#define CFG_WMT_PATCH_DL_OPTM (0)
+#if CFG_WMT_LTE_COEX_HANDLING
+#define CFG_WMT_FILTER_MODE_SETTING (1)
+#else
+#define CFG_WMT_FILTER_MODE_SETTING (0)
+#endif
 #define MTK_WCN_CMB_MERGE_INTERFACE_SUPPORT (0)
 /*******************************************************************************
 *                             D A T A   T Y P E S
@@ -407,6 +415,42 @@ static UCHAR WMT_SET_SDIO_DRV_REG_EVT[] = {0x02, 0x08, 0x04, 0x00/*length*/
 };
 #endif
 
+#if CFG_WMT_WIFI_5G_SUPPORT
+static UCHAR WMT_GET_SOC_ADIE_CHIPID_CMD[] = {0x01,0x13,0x04,0x00,0x02,0x04,0x24,0x00};
+static UCHAR WMT_GET_SOC_ADIE_CHIPID_EVT[] = {0x02,0x13,0x09,0x00,0x00,0x02,0x04,0x24,0x00,0x00,0x00,0x00,0x00};
+#endif
+
+#if CFG_WMT_PATCH_DL_OPTM
+static UCHAR WMT_SET_MCU_CLK_EN_CMD[] = {0x01,0x08,0x10,0x00,0x01,0x01,0x00,0x01,0x34,0x03,0x00,0x80,0x00,0x00,0x01,0x00,0xff,0xff,0xff,0xff};
+static UCHAR WMT_SET_MCU_CLK_EN_EVT[] = {0x02,0x08,0x04,0x00,0x00,0x00,0x00,0x01};
+static UCHAR WMT_SET_MCU_CLK_138_CMD[] = {0x01,0x08,0x10,0x00,0x01,0x01,0x00,0x01,0x0c,0x01,0x00,0x80,0x59,0x4d,0x84,0x00,0xff,0xff,0xff,0xff};
+static UCHAR WMT_SET_MCU_CLK_138_EVT[] = {0x02,0x08,0x04,0x00,0x00,0x00,0x00,0x01};
+static UCHAR WMT_SET_MCU_CLK_26_CMD[] = {0x01,0x08,0x10,0x00,0x01,0x01,0x00,0x01,0x0c,0x01,0x00,0x80,0x00,0x4d,0x84,0x00,0xff,0xff,0xff,0xff};
+static UCHAR WMT_SET_MCU_CLK_26_EVT[] = {0x02,0x08,0x04,0x00,0x00,0x00,0x00,0x01};
+static UCHAR WMT_SET_MCU_CLK_DIS_CMD[] = {0x01,0x08,0x10,0x00,0x01,0x01,0x00,0x01,0x34,0x03,0x00,0x80,0x00,0x00,0x00,0x00,0xff,0xff,0xff,0xff};
+static UCHAR WMT_SET_MCU_CLK_DIS_EVT[] = {0x02,0x08,0x04,0x00,0x00,0x00,0x00,0x01};
+#endif
+
+#if CFG_WMT_FILTER_MODE_SETTING
+static UCHAR WMT_COEX_SPLIT_FILTER_CMD[] = {0x01,0x10,0x19,0x00,0x0F,0x00,0x00,
+					0x00,0x00,0x6c,0x09,0x8a,0x09,0x8a,0x09,0x9e,0x09,0x01,
+					0x07,0x07,0x0b,0x07,0x07,0x00,0x32,0x27,0x4e,0x27,0x32};
+static UCHAR WMT_COEX_FILTER_SPEC_CMD[] = {0x01,0x10,0x45,0x00,0x11,0x00,0x00,
+					0x01,0x00,0x07,0x07,0x07,0x54,0x54,0x00,0x00,0x00,0x50,
+					0x50,0x50,0x54,0x54,0x39,0x39,0x39,0x02,0x02,0x02,0x0e,
+					0x0e,0x01,0x01,0x01,0x0e,0x0e,0x0e,0x0e,0x0e,0x0a,
+					0x0a,0x0a,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+					0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+					0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};
+static UCHAR WMT_COEX_LTE_FREQ_IDX_TABLE_CMD[] = {0x01,0x10,0x21,0x00,0x12,
+					0xfc,0x08,0x15,0x09,0x2e,0x09,0x47,0x09,0xc4,0x09,0xdd,
+					0x09,0xf6,0x09,0x0f,0xaf,0x14,0x09,0x2d,0x09,0x46,0x09,
+					0x5f,0x09,0xdd,0x09,0xf5,0x09,0x0d,0x0a,0x27,0x0a};
+static UCHAR WMT_COEX_LTE_CHAN_UNSAFE_CMD[] = {0x01,0x10,0x02,0x00,0x13,0x00};
+static UCHAR WMT_COEX_EXT_COMPONENT_CMD[] = {0x01,0x10,0x03,0x00,0x0d,0x7f,0x03};
+static UCHAR WMT_COEX_SPLIT_MODE_EVT[] = {0x02,0x10,0x01,0x00,0x00};
+#endif
+
 #if (!CFG_IC_SOC)
 
 /* stp sdio init scripts */
@@ -477,6 +521,29 @@ static struct init_script calibration_table[] =
     INIT_CMD(WMT_CORE_START_RF_CALIBRATION_CMD, WMT_CORE_START_RF_CALIBRATION_EVT, "start RF calibration data"),
 };
 
+#if CFG_WMT_PATCH_DL_OPTM
+static struct init_script set_mcuclk_table_1[] =
+{
+    INIT_CMD(WMT_SET_MCU_CLK_EN_CMD, WMT_SET_MCU_CLK_EN_EVT, "enable set mcu clk"),
+	INIT_CMD(WMT_SET_MCU_CLK_138_CMD, WMT_SET_MCU_CLK_138_EVT, "set mcu clk to 138.67MH"),
+};
+static struct init_script set_mcuclk_table_2[] =
+{
+    INIT_CMD(WMT_SET_MCU_CLK_26_CMD, WMT_SET_MCU_CLK_26_EVT, "set mcu clk to 26MH"),
+	INIT_CMD(WMT_SET_MCU_CLK_DIS_CMD, WMT_SET_MCU_CLK_DIS_EVT, "disable set mcu clk"),
+};
+#endif
+
+#if CFG_WMT_FILTER_MODE_SETTING
+static struct init_script set_wifi_lte_coex_table_0[] = 
+{
+    INIT_CMD(WMT_COEX_SPLIT_FILTER_CMD, WMT_COEX_SPLIT_MODE_EVT, "wifi lte coex split filter"),
+	INIT_CMD(WMT_COEX_FILTER_SPEC_CMD, WMT_COEX_SPLIT_MODE_EVT, "wifi lte coex filter spec"),
+	INIT_CMD(WMT_COEX_LTE_FREQ_IDX_TABLE_CMD, WMT_COEX_SPLIT_MODE_EVT, "wifi lte freq idx"),
+	INIT_CMD(WMT_COEX_LTE_CHAN_UNSAFE_CMD, WMT_COEX_SPLIT_MODE_EVT, "wifi lte channel unsafe"),
+	INIT_CMD(WMT_COEX_EXT_COMPONENT_CMD,WMT_COEX_SPLIT_MODE_EVT,"wifi coex ext component"),
+};
+#endif
 
 #if CFG_SET_OPT_REG
 static struct init_script set_registers[] =
@@ -528,6 +595,8 @@ static struct init_script sdio_driving_table[] = {
 };
 #endif
 
+
+
 /* SOC Chip Version and Info Table */
 static const WMT_IC_INFO_S mtk_wcn_soc_info_table[] = {
     {
@@ -536,7 +605,7 @@ static const WMT_IC_INFO_S mtk_wcn_soc_info_table[] = {
         .cChipVersion      = WMT_IC_VER_E1,
         .cPatchNameExt     = WMT_IC_PATCH_E1_EXT,
         //need to refine?
-        .eWmtHwVer         = WMTHWVER_SOC_E1,
+        .eWmtHwVer         = WMTHWVER_E1,
         .bWorkWithoutPatch = MTK_WCN_BOOL_FALSE,
         .bPsmSupport       = MTK_WCN_BOOL_TRUE,
     }, 
@@ -545,7 +614,7 @@ static const WMT_IC_INFO_S mtk_wcn_soc_info_table[] = {
         .cChipName         = WMT_IC_NAME_DEFAULT,
         .cChipVersion      = WMT_IC_VER_E2,
         .cPatchNameExt     = WMT_IC_PATCH_E1_EXT,
-        .eWmtHwVer         = WMTHWVER_SOC_E2,
+        .eWmtHwVer         = WMTHWVER_E2,
         .bWorkWithoutPatch = MTK_WCN_BOOL_FALSE,
         .bPsmSupport       = MTK_WCN_BOOL_TRUE,
     }
@@ -589,6 +658,11 @@ mtk_wcn_soc_find_wmt_ic_info (
 
 static INT32
 wmt_stp_init_coex (VOID);
+
+#if CFG_WMT_FILTER_MODE_SETTING
+static INT32
+wmt_stp_wifi_lte_coex (VOID);
+#endif
 
 #if CFG_WMT_MULTI_PATCH
 static INT32 mtk_wcn_soc_patch_dwn (UINT32 index);
@@ -649,6 +723,13 @@ mtk_wcn_soc_sw_init (
     UINT32 patch_num = 0;
     UINT32 patch_index = 0;
 #endif
+#if CFG_WMT_WIFI_5G_SUPPORT
+	UINT32 dDieChipid = 0;
+	UINT32 aDieChipid = 0;
+	UINT8 evtbuf[20];
+	UINT32 u4Res;
+	UINT32 pmicChipid = 0;
+#endif
     WMT_DBG_FUNC(" start\n");
 
     osal_assert(NULL != gp_soc_info);
@@ -691,7 +772,7 @@ mtk_wcn_soc_sw_init (
         }
         WMT_INFO_FUNC("enable host STP-BTIF-FULL mode\n");
         /*4. wait for 10ms, enough for chip do mechanism switch.(at least 2ms is needed)*/
-        osal_msleep(10);
+        osal_sleep_ms(10);
         /* 5. Query chip STP options (TEST-ONLY) */
         iRet = wmt_core_init_script(init_table_5, osal_array_size(init_table_5));
         if (iRet) {
@@ -715,6 +796,12 @@ mtk_wcn_soc_sw_init (
 	patch_num = ctrlPa1;
 	WMT_INFO_FUNC("patch total num = [%d]\n", patch_num);
 
+#if CFG_WMT_PATCH_DL_OPTM
+	iRet = wmt_core_init_script(set_mcuclk_table_1, osal_array_size(set_mcuclk_table_1));
+	if (iRet) {
+	    WMT_ERR_FUNC("set_mcuclk_table_1 fail(%d)\n", iRet);
+	}
+#endif
     /* 6.3 Multi-patch Patch download */
     for (patch_index = 0; patch_index < patch_num; patch_index++) {
 		iRet = mtk_wcn_soc_patch_dwn(patch_index);
@@ -728,6 +815,17 @@ mtk_wcn_soc_sw_init (
 	        return -8;
 	    }
 	}
+
+#if CFG_WMT_PATCH_DL_OPTM
+	iRet = wmt_core_init_script(set_mcuclk_table_2, osal_array_size(set_mcuclk_table_2));
+	if (iRet) {
+	    WMT_ERR_FUNC("set_mcuclk_table_2 fail(%d)\n", iRet);
+	}else
+	{
+		WMT_DBG_FUNC("test log....\n");
+	}
+#endif
+
 #else
     /* 6.3 Patch download */
     iRet = mtk_wcn_soc_patch_dwn();
@@ -744,6 +842,15 @@ mtk_wcn_soc_sw_init (
     }  
 #endif
 
+#if CFG_WMT_FILTER_MODE_SETTING
+	if((0x6582 == wmt_ic_ops_soc.icId) || (0x6592 == wmt_ic_ops_soc.icId))
+	{
+		if(wmt_core_get_flag_for_test() > 0)
+		{
+			wmt_stp_wifi_lte_coex();
+		}
+	}
+#endif
 	/* 7. start RF calibration data*/
 	ctrlPa1 = BT_PALDO;
 	ctrlPa2 = PALDO_ON;
@@ -845,6 +952,82 @@ mtk_wcn_soc_sw_init (
         WMT_INFO_FUNC("disable soc_consys firmware coredump\n");
     }
 
+#if CFG_WMT_WIFI_5G_SUPPORT
+	dDieChipid = wmt_ic_ops_soc.icId;
+	WMT_INFO_FUNC("current SOC chipid is 0x%x\n",dDieChipid);
+	if(0x6592 == dDieChipid)
+	{
+		/* read A die chipid by wmt cmd */
+		iRet = wmt_core_tx((PUINT8)&WMT_GET_SOC_ADIE_CHIPID_CMD[0], sizeof(WMT_GET_SOC_ADIE_CHIPID_CMD), &u4Res, MTK_WCN_BOOL_FALSE);
+		if (iRet || (u4Res != sizeof(WMT_GET_SOC_ADIE_CHIPID_CMD))) {
+			WMT_ERR_FUNC("wmt_core:read A die chipid CMD fail(%d),size(%d)\n", iRet, u4Res);
+			return -16;
+		}
+		osal_memset(evtbuf, 0, sizeof(evtbuf));
+		iRet = wmt_core_rx(evtbuf,sizeof(WMT_GET_SOC_ADIE_CHIPID_EVT), &u4Res);
+		if (iRet || (u4Res != sizeof(WMT_GET_SOC_ADIE_CHIPID_EVT))) {
+			WMT_ERR_FUNC("wmt_core:read A die chipid EVT fail(%d),size(%d)\n", iRet, u4Res);
+			return -17;
+		}
+
+        osal_memcpy(&aDieChipid,&evtbuf[u4Res - 2],2);
+        WMT_INFO_FUNC("get SOC A die chipid(0x%x)\n",aDieChipid);
+
+		/* get PMIC chipid */
+
+		ctrlData.ctrlId = WMT_CTRL_SOC_PALDO_CTRL;
+		ctrlData.au4CtrlData[0] = PMIC_CHIPID_PALDO;
+		ctrlData.au4CtrlData[1] = 0;
+		iRet = wmt_ctrl(&ctrlData);
+		if(iRet < 0)
+		{
+			WMT_ERR_FUNC("wmt_core: read PMIC chipid fail(%d)\n",iRet);
+	        return -18;
+		}else
+		{
+			pmicChipid = ctrlData.au4CtrlData[2];
+			WMT_INFO_FUNC("current PMIC chipid(0x%x)\n",pmicChipid);
+		}
+
+		/* MT6625 & MT6322, write 1 to 0x0414[12] */
+		/* MT6625 & MT6323, assert */
+		/* MT6627 & (MT6322 or MT6323),write 0 to 0x0414[12] */
+		
+		switch(aDieChipid){
+			case 0x6625:
+				if(0x6322 == pmicChipid)
+				{
+					WMT_INFO_FUNC("wmt-core:enable wifi 5G support\n");
+					ctrlPa1 = WIFI_5G_PALDO;
+					ctrlPa2 = PALDO_ON;
+					wmt_core_ctrl(WMT_CTRL_SOC_PALDO_CTRL,&ctrlPa1,&ctrlPa2);
+				}else if(0x6323 == pmicChipid)
+				{
+					osal_assert(0);
+				}else
+				{
+					WMT_WARN_FUNC("wmt-core: unkown PMIC chipid\n");
+				}
+				break;
+			case 0x6627:
+				if((0x6322 == pmicChipid) || (0x6323 == pmicChipid))
+				{
+					WMT_INFO_FUNC("wmt-core: disable wifi 5G support\n");
+					ctrlPa1 = WIFI_5G_PALDO;
+					ctrlPa2 = PALDO_OFF;
+					wmt_core_ctrl(WMT_CTRL_SOC_PALDO_CTRL,&ctrlPa1,&ctrlPa2);
+				}else
+				{
+					WMT_WARN_FUNC("wmt-core: unkown PMIC chipid\n");
+				}
+				break;
+			default:
+				WMT_WARN_FUNC("wmt-core: unknow A die chipid(0x%x)\n",aDieChipid);
+				break;
+		}
+	}
+#endif
+
 #if 1
 	ctrlData.ctrlId = WMT_CTRL_SET_STP_DBG_INFO;
 	ctrlData.au4CtrlData[0] = wmt_ic_ops_soc.icId;
@@ -854,7 +1037,7 @@ mtk_wcn_soc_sw_init (
 	if(iRet)
 	{
 		WMT_ERR_FUNC("set dump info fail(%d)\n",iRet);
-        return -16;
+        return -19;
 	}
 #endif
 
@@ -1218,6 +1401,45 @@ mtk_wcn_soc_find_wmt_ic_info (
     return NULL;
 }
 
+#if CFG_WMT_FILTER_MODE_SETTING
+static INT32
+wmt_stp_wifi_lte_coex (VOID)
+{
+    INT32 iRet;
+    UINT32 addr;
+    WMT_GEN_CONF *pWmtGenConf;
+
+    /*Get wmt config*/
+    iRet = wmt_core_ctrl(WMT_CTRL_GET_WMT_CONF, &addr, 0);
+    if (iRet) {
+        WMT_ERR_FUNC("ctrl GET_WMT_CONF fail(%d)\n", iRet);
+        return -2;
+    }
+    WMT_INFO_FUNC("ctrl GET_WMT_CONF ok(0x%08lx)\n", addr);
+
+    pWmtGenConf = (P_WMT_GEN_CONF)addr;
+
+    /*Check if WMT.cfg exists*/
+    if (pWmtGenConf->cfgExist == 0) {
+        WMT_INFO_FUNC("cfgExist == 0, skip config chip\n");
+        /*if WMT.cfg not existed, still return success and adopt the default value*/
+        return 0;
+    }
+
+	if(pWmtGenConf->coex_wmt_filter_mode == 0)
+	{
+    	iRet = wmt_core_init_script(set_wifi_lte_coex_table_0, sizeof(set_wifi_lte_coex_table_0)/sizeof(set_wifi_lte_coex_table_0[0]));
+		if(iRet)
+		{
+			WMT_ERR_FUNC("wmt_core:set_wifi_lte_coex_table_0 fail(%d)\n",iRet);
+		}else
+		{
+			WMT_INFO_FUNC("wmt_core:set_wifi_lte_coex_table_0 ok\n");
+		}
+	}
+    return iRet;
+}
+#endif
 
 static INT32
 wmt_stp_init_coex (VOID)
@@ -1623,6 +1845,14 @@ mtk_wcn_soc_patch_dwn (UINT32 index)
 
     WMT_DBG_FUNC("patch size(%d) fragNum(%d)\n", patchSize, fragNum);
 
+
+    /*send wmt part patch address command*/
+        if(0x8127 == wmt_ic_ops_soc.icId || 0x6571 == wmt_ic_ops_soc.icId)
+        {
+                /* MT6571 patch RAM base */
+                WMT_PATCH_ADDRESS_CMD[8] = 0x40;
+                WMT_PATCH_P_ADDRESS_CMD[8] = 0xc8;
+        }
 
     /*send wmt part patch address command*/
 	iRet = wmt_core_tx((PUINT8)&WMT_PATCH_ADDRESS_CMD[0], sizeof(WMT_PATCH_ADDRESS_CMD), &u4Res, MTK_WCN_BOOL_FALSE);

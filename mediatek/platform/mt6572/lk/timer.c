@@ -33,16 +33,14 @@
 
 #include <kernel/thread.h>
 
-static time_t system_time = 0;
+//static time_t system_time = 0;
 static volatile time_t ticks = 0;
 static time_t tick_interval;
 
 static platform_timer_callback time_callback;
 static void *callback_arg;
 
-//#define TIMER_TICK_RATE 32768
-#define TIMER_TICK_RATE 13000000
-
+#define TIMER_TICK_RATE 32768
 
 static enum handler_return timer_irq(void *arg)
 {
@@ -54,20 +52,13 @@ void lk_scheduler(void)
 {
 	static enum handler_return ret;
 
-    //ack GPT5 irq
+	mt_irq_ack(MT_GPT_IRQ_ID);
 	DRV_WriteReg32( GPT_IRQACK_REG, 0x10);
-    DRV_WriteReg32(GPT5_CON_REG, GPT_CLEAR);
-    DRV_WriteReg32(GPT5_CON_REG, GPT_DISABLE);
-
-    ret = timer_irq(0);
-
-    //CAUTION!! The de-assert signal to GIC might delay several clocks.
-    //Here must have enough delay to make sure the GPT signal had arrived GIC.
-    //Let GPT use 26M clock source might help to reduce the required delay.
-    //ack GIC irq
-    mt_irq_ack(MT_GPT_IRQ_ID); 
-
-    //enable GPT5
+	ret = timer_irq(0);
+	if(ret == INT_RESCHEDULE) {
+        	thread_preempt();
+    	}
+	DRV_WriteReg32(GPT5_CON_REG, GPT_CLEAR);
 	DRV_WriteReg32(GPT5_CON_REG, GPT_ENABLE|GPT_MODE4_ONE_SHOT);
 }
 
@@ -76,10 +67,6 @@ status_t platform_set_periodic_timer(platform_timer_callback callback, void *arg
 	time_callback = callback;
 	tick_interval = interval;
 	callback_arg  = arg;
-
-    if ( mtk_wdt_is_mem_preserved() ) {
- 	    interval = 3000; /* 3s */
-    }
 
 	DRV_WriteReg32(GPT_IRQEN_REG, 0);
 	DRV_WriteReg32(GPT_IRQACK_REG, 0x3f);

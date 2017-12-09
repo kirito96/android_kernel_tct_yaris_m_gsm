@@ -45,9 +45,10 @@ void set_kpd_pmic_mode(void)
 		if(a != 0)
 		printf("kpd write fail, addr: 0x0502\n");
 
-//#ifdef MT65XX_PMIC_RST_KEY
-//	pmic_config_interface(GPIO_SMT_CON3,0x01, PMIC_RG_HOMEKEY_PUEN_MASK, PMIC_RG_HOMEKEY_PUEN_SHIFT);//pull up homekey pin of PMIC for 89 project
-//#endif
+#ifdef MT65XX_PMIC_RST_KEY
+	pmic_config_interface(STRUP_CON3, 0x01, PMIC_RG_FCHR_PU_EN_MASK, PMIC_RG_FCHR_PU_EN_SHIFT);//pull up homekey pin of PMIC for 72 project
+	pmic_config_interface(STRUP_CON3,	0, PMIC_RG_FCHR_KEYDET_EN_MASK, PMIC_RG_FCHR_KEYDET_EN_SHIFT);//disable homekey pin FCHR mode of PMIC for 72 project
+#endif
 
 	return;
 }
@@ -127,11 +128,10 @@ BOOL mtk_detect_key(unsigned short key)	/* key: HW keycode */
 BOOL mtk_detect_pmic_just_rst(void)
 {
 	kal_uint32 just_rst=0;
-	kal_uint32 ret=0;
 
 	printf("detecting pmic just reset\n");
 
-		ret=pmic_read_interface(0x04A, &just_rst, 0x01, 14);
+		pmic_read_interface(0x04A, &just_rst, 0x01, 14);
 		if(just_rst)
 		{
 			printf("Just recover form a reset\n");

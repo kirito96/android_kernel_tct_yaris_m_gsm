@@ -1,3 +1,17 @@
+/*
+ * Copyright (C) 2010 MediaTek, Inc.
+ *
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -88,6 +102,14 @@ static void set_touch_resistance(int value)
 		*(volatile u32 *)AUXADC_TS_CON3 = 0x00; //55 OKM
 }
 
+/*
+* mode: 0: 12-bit, 1: 10-bit
+* sedf: 0: different, 1: single-end
+* PD: 0x00: turn on Y-_driver signal and PDN_sh_ref
+         0x01: turn on PDN_IRQ and PDN_sh_ref
+         0x02: reserved
+         0x03: turn on PDN_IRQ
+*/
 static void set_ts_cmd_reg(int mode, int sedf, int pd)
 {
 	unsigned int value = *(volatile u32 *)AUXADC_TS_CMD;
@@ -448,6 +470,17 @@ void ts_udvt_auto_trigger_fn(unsigned long unused)
 
     printk("[ts_udvt]: start ts auto trigger\n");
 
+/*    *(volatile u32 *)AUXADC_TS_CON0 = 0x0006;
+
+    for (i = 0; i < 8000; i++);
+
+    while ((*(volatile u16 *)AUXADC_CON2) & 0x01) {
+        printk("[ts_udvt]: wait for module idle\n");
+        mdelay(300);
+	  }
+
+    printk("[ts_udvt]: auto sampling completed, start to read data\n");
+ */
  	if ((*(volatile u32 *)AUXADC_TS_RAW_CON) & 0x1)
  	{
 		printk("[ts_udvt]: auto sampling abort!!\n");

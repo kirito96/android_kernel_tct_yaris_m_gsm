@@ -1,6 +1,24 @@
-
-
-
+/*******************************************************************************
+ *
+ * Filename:
+ * ---------
+ *   CFG_OMADMUSB_Default.h
+ *
+ * Project:
+ * --------
+ *   YUSU
+ *
+ * Description:
+ * ------------
+ *    Default value of OMADM usb config
+ *
+ * Author:
+ * -------
+ *   MTK80863(Hao Lin)
+ *
+ * 
+ *
+ *******************************************************************************/
 
 
 #ifndef _CFG_OMADMUSB_DEFAULT_H

@@ -51,6 +51,8 @@
 #define GET_AUDSYS_REG         _IOWR(AUD_DRV_IOC_MAGIC, 0x01, Register_Control*)
 #define SET_ANAAFE_REG         _IOWR(AUD_DRV_IOC_MAGIC, 0x02, Register_Control*)
 #define GET_ANAAFE_REG         _IOWR(AUD_DRV_IOC_MAGIC, 0x03, Register_Control*)
+#define AUDDRV_GET_DL1_REMAINDATA_TIME  _IOWR(AUD_DRV_IOC_MAGIC, 0x0A, int)
+#define AUDDRV_GET_UL_REMAINDATA_TIME   _IOWR(AUD_DRV_IOC_MAGIC, 0x0B, int)
 
 
 // Allocate mean allocate buffer and set stream into ready state.

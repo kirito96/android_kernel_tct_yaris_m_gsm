@@ -1,4 +1,7 @@
 #include "mt_partition.h"
+#include <malloc.h>
+#include <printf.h>
+#include <string.h>
 
 typedef struct{
 	u32 image_index;
@@ -27,7 +30,7 @@ int mmc_get_dl_info(void)
 	u64 dl_addr = g_emmc_size - DL_INFO_SIZE;
 	part_dev_t *dev = mt_part_get_device();
 	int i,ret;
-	u8 *dl_buf = malloc(DL_INFO_SIZE);
+	u8 *dl_buf = (u8*)malloc(DL_INFO_SIZE);
 	printf("get dl info from 0x%llx\n",dl_addr);
 	dev->read(dev,dl_addr,(u8 *)dl_buf,DL_INFO_SIZE);
 	memcpy(&download_info,dl_buf,sizeof(download_info));

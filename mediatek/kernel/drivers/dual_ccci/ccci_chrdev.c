@@ -5,25 +5,34 @@
 #include <asm/io.h>
 #include <linux/fs.h>
 #include <linux/semaphore.h>
+#include <ccci_chrdev.h>
 #include <ccci.h>
-#include <ccci_common.h>
 
 extern unsigned long long lg_ch_tx_debug_enable[];
 extern unsigned long long lg_ch_rx_debug_enable[];
 //extern unsigned int md_ex_type;
 //unsigned int push_data_fail = 0;
-
+unsigned int get_sim_switch_type(void);
 
 static chr_ctl_block_t *chr_ctlb[MAX_MD_NUM];
 static struct wake_lock	chrdev_wakelock[MAX_MD_NUM];
 static struct wake_lock	chrdev_wakelock_mdlogger[MAX_MD_NUM];
 char chrdev_wakelock_name[MAX_MD_NUM][32];
 char chrdev_wakelock_mdlog_name[MAX_MD_NUM][32];
+unsigned int		md_img_exist[MD_IMG_MAX_CNT] = {0};
+unsigned int		md_type_saving = 0;
+struct ccci_dev_client  *md_logger_client = NULL;
+static spinlock_t	md_logger_lock;
+static unsigned int	catch_more = 0;
 
+#ifdef MTK_MD_SBP_CUSTOM_VALUE
+static unsigned int md_sbp_code = 0;
+static unsigned int md_sbp_code_default = 0;
+#endif //MTK_MD_SBP_CUSTOM_VALUE
 
 //==============================================================
 // CCCI Standard charactor device function
-//=============================================================
+//==============================================================
 static void ccci_client_init(struct ccci_dev_client *client,int ch,pid_t pid)
 {
 	WARN_ON(client==NULL);
@@ -40,9 +49,15 @@ static void ccci_client_init(struct ccci_dev_client *client,int ch,pid_t pid)
 
 static void release_client(struct ccci_dev_client *client)
 {
+	unsigned long flags;
 	chr_ctl_block_t *ctlb = (chr_ctl_block_t *)client->ctlb;
 	WARN_ON(spin_is_locked(&client->lock)||list_empty(&client->dev_list));
 	mutex_lock(&ctlb->chr_dev_mutex);
+	if(client->ch_num == CCCI_MD_LOG_RX) {
+		spin_lock_irqsave(&md_logger_lock, flags);
+		md_logger_client = NULL;
+		spin_unlock_irqrestore(&md_logger_lock, flags);
+	}
 	list_del(&client->dev_list);
 	un_register_to_logic_ch(client->md_id, client->ch_num);
 	kfree(client);
@@ -154,6 +169,11 @@ static int ccci_dev_open(struct inode *inode, struct file *file)
 		goto out;
 	}
 	file->private_data=client;
+	if(index == CCCI_MD_LOG_RX) {
+		md_logger_client = client;
+		catch_more = 0;
+	}
+
 	nonseekable_open(inode,file);
 out:
 	return ret;
@@ -191,6 +211,12 @@ static unsigned int ccci_dev_poll(struct file *file,poll_table *wait)
 	{
 		 ret |= POLLIN|POLLRDNORM;
 	}
+	if( (client->ch_num == CCCI_MD_LOG_RX) && (catch_more) ) {
+		CCCI_MSG_INF(0, "chr", "add poll error\n");
+		catch_more = 0;
+		ret |= POLLERR;
+	}
+
 	spin_unlock_irqrestore(&client->lock, flags);
 	return ret;
 }
@@ -204,10 +230,18 @@ static ssize_t ccci_dev_write(struct file *file, const char __user *buf, size_t 
 	int j=0;
 	int ret=0;
 	int ch=client->ch_num;
-	ccci_msg_t *buff=kmalloc(i*sizeof(ccci_msg_t),GFP_KERNEL);
+	ccci_msg_t *buff = NULL;
 	ccci_msg_t msg;
 	WARN_ON(count%sizeof(ccci_msg_t));
 
+	if (!buf || (i < 1))
+	{
+		CCCI_MSG_INF(md_id, "chr", "count:%d, i:%d, buf:0x%x \n", count, i, ((unsigned int) buf));
+		ret=-EINVAL;
+		goto out;
+	}
+
+	buff = (ccci_msg_t *)kmalloc(i*sizeof(ccci_msg_t),GFP_KERNEL);
 	if (buff==NULL)
 	{
 		CCCI_MSG_INF(md_id, "chr", "kmalloc for ccci_msg_t fail \n");
@@ -349,7 +383,7 @@ static long ccci_dev_ioctl( struct file *file, unsigned int cmd, unsigned long a
 		case CCCI_IOC_PCM_BASE_ADDR:
 			if( (ch == CCCI_PCM_RX) || (ch == CCCI_PCM_TX) ) {
 				ccci_pcm_base_req(md_id, NULL, &addr, &len);
-				//CCCI_DBG_MSG(md_id, "chr", "PCM base %08x\n", addr);
+				//audio used this address in ap side, so return ap view
 				ret = put_user((unsigned int)addr, (unsigned int __user *)arg);
 			} else {
 				CCCI_MSG_INF(md_id, "chr", "get PCM base fail: invalid user(%d) \n", ch);
@@ -361,7 +395,6 @@ static long ccci_dev_ioctl( struct file *file, unsigned int cmd, unsigned long a
 			if( (ch == CCCI_PCM_RX) || (ch == CCCI_PCM_TX) ) {
 				ccci_pcm_base_req(md_id, NULL, &addr, &len);
 				ret = put_user((unsigned int)len, (unsigned int __user *)arg);
-				//CCCI_DBG_MSG(md_id, "chr", "PCM len %08x\n", len);
 			} else {
 				CCCI_MSG_INF(md_id, "chr", "get PCM len fail: invalid user(%d)\n", ch);
 				ret = -1;
@@ -371,8 +404,9 @@ static long ccci_dev_ioctl( struct file *file, unsigned int cmd, unsigned long a
 		case CCCI_IOC_ALLOC_MD_LOG_MEM:
 			if( (ch == CCCI_MD_LOG_RX) || (ch == CCCI_MD_LOG_TX) ) {
 				ccci_mdlog_base_req(md_id, NULL, &addr, &len);
+				//mdlogger send this address to md, so return md view
+				addr -=	get_md2_ap_phy_addr_fixed();
 				ret = addr;
-				//CCCI_DBG_MSG(md_id, "chr", "Md log base %08x\n", addr);
 			} else {
 				CCCI_MSG_INF(md_id, "chr", "get MD log base fail: invalid user(%d)\n", ch);
 				ret = -1;
@@ -390,6 +424,7 @@ static long ccci_dev_ioctl( struct file *file, unsigned int cmd, unsigned long a
 			break;
 
 		default:
+			CCCI_MSG_INF(md_id, "chr", "illegal IOCTL %X called by %s\n", cmd, current->comm);
 			ret = -ENOTTY;
 			break;
 	}
@@ -421,7 +456,7 @@ static int ccci_dev_mmap(struct file *file, struct vm_area_struct *vma)
 	pfn = addr;
 	pfn >>= PAGE_SHIFT;
 	/* ensure that memory does not get swapped to disk */
-	vma->vm_flags |= VM_RESERVED;
+	vma->vm_flags |= VM_IO;
 	/* ensure non-cacheable */
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 	if (remap_pfn_range(vma, vma->vm_start, pfn,len, vma->vm_page_prot)) {
@@ -493,6 +528,8 @@ int ccci_chrdev_init(int md_id)
 	
 	sprintf(chrdev_wakelock_mdlog_name[md_id], "ccci%d_chr_mdlog", (md_id+1));
 	wake_lock_init(&chrdev_wakelock_mdlogger[md_id], WAKE_LOCK_SUSPEND, chrdev_wakelock_mdlog_name[md_id]);  
+  
+	spin_lock_init(&md_logger_lock);
   
 	ctlb->major = major;
 	ctlb->minor = minor;
@@ -801,7 +838,17 @@ out:
 	return ret;
 }
 
-
+void ccci_md_logger_notify(void)
+{
+	unsigned long		flags;
+	spin_lock_irqsave(&md_logger_lock, flags);
+	if (md_logger_client) {
+		wake_up_interruptible(&md_logger_client->wait_q);
+		wake_lock_timeout(&chrdev_wakelock_mdlogger[md_logger_client->md_id], HZ); // MD logger using 1s wake lock
+		catch_more = 1;
+	}
+	spin_unlock_irqrestore(&md_logger_lock, flags);
+}
 static long ccci_vir_chr_ioctl( struct file *file, unsigned int cmd, unsigned long arg)
 {
 	int					addr, ret = 0;
@@ -809,11 +856,21 @@ static long ccci_vir_chr_ioctl( struct file *file, unsigned int cmd, unsigned lo
 	int 				md_id = client->md_id;
 	int					idx = client->index;
 	unsigned int		sim_mode;
+	unsigned int            sim_switch_type;
+	unsigned int 		md_type;
+	unsigned int		sim_type;
+	unsigned int		enable_sim_type;
+#ifdef MTK_ICUSB_SUPPORT
+	unsigned int		sim_id;
+#endif
+	unsigned int		sim_slot_cfg[3];
+	int					ccci_cfg_setting[2];
+	int					setting_num;
 
 	switch (cmd) 
 	{
 		case CCCI_IOC_MD_RESET:
-			CCCI_MSG_INF(md_id, "chr", "MD reset ioctl(%d) called by %s\n", idx, current->comm);
+			CCCI_MSG_INF(md_id, "chr", "MD reset ioctl vir(%d) called by %s\n", idx, current->comm);
 			ret = send_md_reset_notify(md_id);
 			break;
 
@@ -905,15 +962,158 @@ static long ccci_vir_chr_ioctl( struct file *file, unsigned int cmd, unsigned lo
 				ret = -EFAULT;
 			} else {
 				ret = exec_ccci_kern_func(ID_SSW_SWITCH_MODE, (char*)(&sim_mode), sizeof(unsigned int));//switch_sim_mode(sim_mode);
-				CCCI_MSG_INF(md_id, "chr", "IOC_SIM_SWITCH(%d): %d\n", sim_mode, ret); 	
+				CCCI_MSG_INF(md_id, "chr", "IOC_SIM_SWITCH(%x): %d\n", sim_mode, ret); 	
 			}
+			break;
+
+		case CCCI_IOC_UPDATE_SIM_SLOT_CFG:
+			if(copy_from_user(&sim_slot_cfg, (void __user *)arg, sizeof(sim_slot_cfg))) {
+				CCCI_MSG_INF(md_id, "chr", "CCCI_IOC_UPDATE_SIM_SLOT_CFG: copy_from_user fail!\n");
+				ret = -EFAULT;
+			} else {
+				CCCI_MSG_INF(md_id, "chr", "CCCI_IOC_UPDATE_SIM_SLOT_CFG get s0:%d s1:%d en:%d\n", 
+								sim_slot_cfg[0], sim_slot_cfg[1], sim_slot_cfg[2]);
+				sim_mode = (2<<16)|(sim_slot_cfg[0]&0x000000FF)|((sim_slot_cfg[1]<<8)&0x0000FF00);
+				exec_ccci_kern_func(ID_SSW_SWITCH_MODE, (char*)(&sim_mode), sizeof(unsigned int));//switch_sim_mode(sim_mode);
+				ret = 0;
+				sim_mode = sim_mode&0x0000FFFF;
+				sim_mode |= (1<<24); // SIM slot save to ccci nvram idx 1
+				if ( sim_slot_cfg[2] ) { // Need save setting
+					sim_mode |= (1<<31); // Set save nvram flag
+				}
+				send_update_cfg_request(md_id, sim_mode);
+			}
+			break;
+
+		case CCCI_IOC_SIM_SWITCH_TYPE:
+			sim_switch_type = get_sim_switch_type();
+			ret = put_user(sim_switch_type, (unsigned int __user *)arg);
 			break;
 		
 		case CCCI_IOC_SEND_BATTERY_INFO:
 			send_battery_info(md_id);
 			break;
 
+#ifdef MTK_ICUSB_SUPPORT
+		case CCCI_IOC_SEND_ICUSB_NOTIFY:
+			if(copy_from_user(&sim_id, (void __user *)arg, sizeof(unsigned int))) {
+				CCCI_MSG_INF(md_id, "chr", "CCCI_IOC_SEND_ICUSB_NOTIFY: copy_from_user fail!\n");
+				ret = -EFAULT;
+			} else {
+				send_icusb_notify(md_id, sim_id);
+			}
+			break;
+#endif			
+
+		case CCCI_IOC_RELOAD_MD_TYPE:
+			if(copy_from_user(&md_type, (void __user *)arg, sizeof(unsigned int))) {
+				CCCI_MSG_INF(md_id, "chr", "IOC_RELOAD_MD_TYPE: copy_from_user fail!\n");
+				ret = -EFAULT;
+			} else {
+				CCCI_MSG_INF(md_id, "chr", "IOC_RELOAD_MD_TYPE: storing md type(%d)!\n", md_type);
+				set_modem_support(md_id, md_type);
+				ccci_set_reload_modem(md_id);
+			}
+			break;
+
+		case CCCI_IOC_GET_SIM_TYPE:			//for regional phone boot animation
+			if (get_sim_type(md_id, &sim_type))
+			{
+				CCCI_MSG_INF(md_id, "chr", "sim type may not be correct\n");
+			}
+			ret = put_user((unsigned int)sim_type, (unsigned int __user *)arg);
+			break;
+
+		case CCCI_IOC_ENABLE_GET_SIM_TYPE:	//for regional phone boot animation
+			if(copy_from_user(&enable_sim_type, (void __user *)arg, sizeof(unsigned int))) {
+				CCCI_MSG_INF(md_id, "chr", "CCCI_IOC_ENABLE_GET_SIM_TYPE: copy_from_user fail!\n");
+				ret = -EFAULT;
+			} else {
+				enable_get_sim_type(md_id, enable_sim_type);
+			}
+			break;
+
+		case CCCI_IOC_SET_MD_IMG_EXIST:
+			if(copy_from_user(&md_img_exist, (void __user *)arg, sizeof(md_img_exist))) {
+				CCCI_MSG_INF(md_id, "chr", "CCCI_IOC_ENABLE_GET_SIM_TYPE: copy_from_user fail!\n");
+				ret = -EFAULT;
+			}
+			break;
+
+		case CCCI_IOC_GET_MD_IMG_EXIST:
+			if (copy_to_user((void __user *)arg, &md_img_exist, sizeof(md_img_exist))) {
+				CCCI_MSG_INF(md_id, "chr", "CCCI_IOC_GET_MD_IMG_EXIST: copy_to_user fail\n");
+				ret= -EFAULT;
+			}
+			break;
+
+		case CCCI_IOC_GET_MD_TYPE:
+			md_type = get_modem_support(md_id);
+			ret = put_user((unsigned int)md_type, (unsigned int __user *)arg);
+			break;
+
+		case CCCI_IOC_STORE_MD_TYPE:
+			CCCI_DBG_MSG(md_id, "chr", "store md type ioctl called by %s!\n",  current->comm);
+			if(copy_from_user(&md_type_saving, (void __user *)arg, sizeof(unsigned int))) {
+				CCCI_MSG_INF(md_id, "chr", "store md type fail: copy_from_user fail!\n");
+				ret = -EFAULT;
+			} else {
+				CCCI_MSG_INF(md_id, "chr", "storing md type(%d) in kernel space!\n", md_type_saving);
+				if (0x1 <= md_type_saving && md_type_saving <= 0x4){
+					if (md_type_saving != get_modem_support(md_id))
+						CCCI_MSG_INF(md_id, "chr", "Maybe Wrong: md type storing not equal with current setting!(%d %d)\n", md_type, get_modem_support(md_id));
+					//Notify md_init daemon to store md type in nvram
+					ccci_system_message(md_id, CCCI_MD_MSG_STORE_NVRAM_MD_TYPE, 0);
+				}
+				else {
+					CCCI_MSG_INF(md_id, "chr", "store md type fail: invalid md type(0x%x)\n", md_type_saving);
+				}
+			}
+			break;
+
+		case CCCI_IOC_GET_MD_TYPE_SAVING:
+			ret = put_user(md_type_saving, (unsigned int __user *)arg);
+			break;
+
+		case CCCI_IOC_GET_CFG_SETTING:
+			setting_num = 2;
+			ret = get_common_cfg_setting(md_id, ccci_cfg_setting, &setting_num);
+			if (copy_to_user((void __user *)arg, ccci_cfg_setting, sizeof(ccci_cfg_setting))) {
+				CCCI_MSG_INF(md_id, "chr", "CCCI_IOC_GET_CFG_SETTING: copy_to_user fail\n");
+				ret= -EFAULT;
+			}
+			break;
+
+#ifdef MTK_MD_SBP_CUSTOM_VALUE
+        case CCCI_IOC_GET_MD_SBP_CFG:
+            if (!md_sbp_code_default) {
+                int tmpret = kstrtouint(MTK_MD_SBP_CUSTOM_VALUE, 0, &md_sbp_code_default);
+                if (!tmpret){
+                    CCCI_MSG_INF(md_id, "chr", "CCCI_IOC_GET_MD_SBP_CFG: get config sbp code:%d!\n", md_sbp_code_default);
+                } else {
+                    CCCI_MSG_INF(md_id, "chr", "CCCI_IOC_GET_MD_SBP_CFG: get config sbp code fail! ret:%d, Config val:%s\n"
+                            , tmpret, MTK_MD_SBP_CUSTOM_VALUE);
+                }
+            } else {
+                CCCI_MSG_INF(md_id, "chr", "CCCI_IOC_GET_MD_SBP_CFG: config sbp code:%d!\n", md_sbp_code_default);
+            }
+
+            ret = put_user(md_sbp_code_default, (unsigned int __user *)arg);
+            break;
+
+		case CCCI_IOC_SET_MD_SBP_CFG:
+			if(copy_from_user(&md_sbp_code, (void __user *)arg, sizeof(unsigned int))) {
+				CCCI_MSG_INF(md_id, "chr", "CCCI_IOC_SET_MD_SBP_CFG: copy_from_user fail!\n");
+				ret = -EFAULT;
+			} else {
+				CCCI_MSG_INF(md_id, "chr", "CCCI_IOC_SET_MD_SBP_CFG: set md sbp code:0x%x!\n", md_sbp_code);
+				ccci_set_md_sbp(md_id, md_sbp_code);
+			}
+			break;
+#endif // MTK_MD_SBP_CUSTOM_VALUE
+
 		default:
+			CCCI_MSG_INF(md_id, "chr", "illegal IOCTL %X called by %s\n", cmd, current->comm);
 			ret = -ENOTTY;
 			break;
 	}

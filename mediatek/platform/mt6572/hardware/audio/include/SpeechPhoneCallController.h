@@ -4,14 +4,16 @@
 #include "AudioType.h"
 #include "AudioDigitalType.h"
 
-#include "AudioResourceManager.h"
+#include "AudioResourceManagerInterface.h"
 #include "AudioAnalogControlFactory.h"
 #include "AudioDigitalControlFactory.h"
 #include "AudioVolumeFactory.h"
 #include "SpeechDriverFactory.h"
+#include "AudioBTCVSDControl.h"
 
 
-enum tty_mode_t {
+enum tty_mode_t
+{
     AUD_TTY_OFF  =  0,
     AUD_TTY_FULL =  1,
     AUD_TTY_VCO  =  2,
@@ -21,8 +23,6 @@ enum tty_mode_t {
 
 namespace android
 {
-
-const uint32_t kDelayForUplinkPulseMs   = 100; // 100 ms
 
 class SpeechPhoneCallController
 {
@@ -48,7 +48,7 @@ class SpeechPhoneCallController
 
         virtual void            SetVtNeedOn(const bool vt_on);
         virtual void            SetMicMute(const bool mute_on);
-        virtual void            SetMicMuteStateOnly(const bool mute_on);
+        virtual void            SetBTMode(const int mode);
 
     protected:
         SpeechPhoneCallController();
@@ -81,13 +81,18 @@ class SpeechPhoneCallController
         audio_devices_t mRoutingForTty;
         tty_mode_t      mTty_Ctm;
 
-
     private:
         static SpeechPhoneCallController *mSpeechPhoneCallController; // singleton
 
         bool mVtNeedOn;
 
         bool mMicMute;
+        int mBTMode;
+
+#ifdef EXT_MODEM_BT_CVSD
+        AudioBTCVSDControl *mAudioBTCVSDControl;
+#endif
+
 };
 
 } // end namespace android

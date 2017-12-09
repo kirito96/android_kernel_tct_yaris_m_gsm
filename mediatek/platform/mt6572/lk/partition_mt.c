@@ -1,5 +1,7 @@
 #include <mt_partition.h>
 #include <stdint.h>
+#include <printf.h>
+#include <string.h>
 #include <platform/errno.h>
 #include "pmt.h"
 #include <platform/mtk_nand.h>
@@ -9,10 +11,14 @@
 
 //common
 //BLK_SIZE is 512, block_size is from flash is 128K
+#ifndef MTK_EMMC_SUPPORT
 static u32 block_size;
 static u32 page_size;
-#ifndef MTK_EMMC_SUPPORT
+#ifdef MTK_SPI_NAND_SUPPORT
+extern snand_flashdev_info devinfo;
+#else
 extern flashdev_info devinfo;
+#endif
 #endif
 extern pt_resident lastest_part[PART_MAX_COUNT];
 extern part_t partition_layout[];
@@ -23,16 +29,17 @@ static pt_info pi;
 
 //if used malloc func ,the pdata = (uchar*)malloc(sizeof(uchar)*size);
 // in recovery_check_command_trigger will return 0
-//static char *page_buf;  
+//static char *page_buf;
 
-unsigned char page_buf[4096+128];
-unsigned char backup_buf[4096];
+__attribute__ ((aligned(64))) unsigned char page_buf[4096+128];
+__attribute__ ((aligned(64)))unsigned char backup_buf[4096];
 #ifdef MTK_EMMC_SUPPORT
 #define CFG_EMMC_PMT_SIZE 0xc00000
 extern int g_user_virt_addr;
 extern u64 g_emmc_size;
 pt_resident32 lastest_part32[PART_MAX_COUNT];
 #endif
+
 
 #ifdef PMT
 void get_part_tab_from_complier(void)
@@ -45,7 +52,7 @@ void get_part_tab_from_complier(void)
 		lastest_part[index].size = (u64)partition_layout[index].blknum * BLK_SIZE ;
 		lastest_part[index].offset = (u64)partition_layout[index].startblk * BLK_SIZE;
 		if (lastest_part[index].size == 0) {
-			lastest_part[index].size = target_get_max_flash_size() - lastest_part[index].offset - partition_reserve_size(); 
+			lastest_part[index].size = target_get_max_flash_size() - lastest_part[index].offset - partition_reserve_size();
 		}
 		lastest_part[index].mask_flags = partition_layout[index].flags;  //this flag in kernel should be fufilled even though in flash is 0.
 		printf("get_ptr  %s %016llx %016llx\n",lastest_part[index].name,lastest_part[index].offset,lastest_part[index].size);
@@ -56,12 +63,12 @@ void get_part_tab_from_complier(void)
 	printf("get_pt_from_complier \n");
 	while(partition_layout[index].flags!= PART_FLAG_END)
 	{
-    		
+
 		memcpy(lastest_part[index].name,partition_layout[index].name,MAX_PARTITION_NAME_LEN);
 		lastest_part[index].size = partition_layout[index].blknum*BLK_SIZE ;
 		lastest_part[index].offset = partition_layout[index].startblk * BLK_SIZE;
 		if(lastest_part[index].size == 0){
-			lastest_part[index].size = total_size - lastest_part[index].offset;		
+			lastest_part[index].size = total_size - lastest_part[index].offset;
 		}
 		lastest_part[index].mask_flags =  partition_layout[index].flags;  //this flag in kernel should be fufilled even though in flash is 0.
 		printf ("get_ptr  %s %lx %lx\n",lastest_part[index].name,lastest_part[index].offset,lastest_part[index].size);
@@ -70,6 +77,47 @@ void get_part_tab_from_complier(void)
 #endif
 }
 
+int is_valid_pt_bytecmp(char * buf)
+{
+    u32 i;
+    u32 sig = PT_SIG;
+
+    for (i = 0; i < sizeof(u32); i++)
+    {
+        if (buf[i] != ((char *)&sig)[i])
+        {
+            //printf("[LK] is_valid_pt_bytecmp: buf 0x%X, sig 0x%X, compare failed!\n", buf, sig);
+
+            return 0;
+        }
+    }
+
+    //printf("[LK] is_valid_pt_bytecmp: buf 0x%X, sig 0x%Xn, compare OK!\n", buf, sig);
+
+    return 1;
+}
+
+int is_valid_mpt_bytecmp(char * buf)
+{
+    u32 i;
+    u32 sig = MPT_SIG;
+
+    for (i = 0; i < sizeof(u32); i++)
+    {
+        if (buf[i] != ((char *)&sig)[i])
+        {
+            //printf("[LK] is_valid_mpt_bytecmp: buf 0x%X, sig 0x%Xn, compare failed!\n", buf, sig);
+
+            return 0;
+        }
+    }
+
+    //printf("[LK] is_valid_mpt_bytecmp: buf 0x%X, sig 0x%Xn, compare OK!\n", buf, sig);
+
+    return 1;
+}
+
+#ifndef MTK_EMMC_SUPPORT
 bool find_mirror_pt_from_bottom(int *start_addr,part_dev_t *dev)
 {
 	int mpt_locate;
@@ -81,7 +129,7 @@ bool find_mirror_pt_from_bottom(int *start_addr,part_dev_t *dev)
 	for(mpt_locate=(block_size/page_size);mpt_locate>0;mpt_locate--)
 	{
 		memset(pmt_spare,0xFF,PT_SIG_SIZE);
-		
+
 		current_start_addr = mpt_start_addr+mpt_locate*page_size;
 		if(!dev->read(dev,current_start_addr, page_buf,page_size))
 		{
@@ -90,8 +138,8 @@ bool find_mirror_pt_from_bottom(int *start_addr,part_dev_t *dev)
 		memcpy(&page_buf[page_size],g_kCMD.au1OOB,16);
 		memcpy(pmt_spare,&page_buf[page_size] ,PT_SIG_SIZE);
 		//need enhance must be the larget sequnce number
-		
-		if(is_valid_mpt(page_buf)&&is_valid_mpt(&pmt_spare))
+
+		if(is_valid_mpt_bytecmp((char *)page_buf) && is_valid_mpt_bytecmp((char *)(&pmt_spare)))
 		{
 		      //if no pt, pt.has space is 0;
 			pi.sequencenumber = page_buf[PT_SIG_SIZE+page_size];
@@ -115,6 +163,8 @@ bool find_mirror_pt_from_bottom(int *start_addr,part_dev_t *dev)
 		return TRUE;
 	}
 }
+#endif
+
 #ifdef MTK_EMMC_SUPPORT
 
 #define PMT_REGION_SIZE     (0x1000)
@@ -126,10 +176,12 @@ bool find_mirror_pt_from_bottom(int *start_addr,part_dev_t *dev)
 static int load_pt_from_fixed_addr(u8 *buf, part_dev_t *dev)
 {
     int reval = ERR_NO_EXIST;
-    u64 pt_start; 
-    u64 mpt_start; 
-    int pt_size = PMT_REGION_SIZE; 
-    int buffer_size = pt_size; 
+    u64 pt_start;
+    u64 mpt_start;
+    int pt_size = PMT_REGION_SIZE;
+    int buffer_size = pt_size;
+    //unsigned char *head = &page_buf[0];
+    unsigned char *head = page_buf;
 
     pt_start = g_emmc_size - PMT_REGION_OFFSET;
     mpt_start = pt_start + PMT_REGION_SIZE;
@@ -137,11 +189,11 @@ static int load_pt_from_fixed_addr(u8 *buf, part_dev_t *dev)
     printf("============func=%s===scan pmt from %llx=====\n", __func__, pt_start);
     /* try to find the pmt at fixed address, signature:0x50547631 */
 
-    dev->read(dev, pt_start, (u8*)page_buf, buffer_size); 
-    if (is_valid_pt(page_buf)) {
+    dev->read(dev, pt_start, (u8*)page_buf, buffer_size);
+    if (is_valid_pt_bytecmp((char *)head)) {
         if (!memcmp(page_buf + PT_SIG_SIZE, PMT_VER_V1, PMT_VER_SIZE)) {
-            if (is_valid_pt(&page_buf[pt_size - PT_SIG_SIZE])) {
-                printf("find pt at %llx\n", pt_start); 
+            if (is_valid_pt_bytecmp((char *)(&page_buf[pt_size - PT_SIG_SIZE]))) {
+                printf("find pt at %llx\n", pt_start);
                 memcpy(buf, page_buf + PT_SIG_SIZE + PMT_VER_SIZE, PART_MAX_COUNT * sizeof(pt_resident));
                 reval = DM_ERR_OK;
                 return reval;
@@ -155,12 +207,12 @@ static int load_pt_from_fixed_addr(u8 *buf, part_dev_t *dev)
         }
     }
 
-    
-    dev->read(dev, mpt_start, (u8*)page_buf, buffer_size); 
-    if (is_valid_mpt(page_buf)) { 
+
+    dev->read(dev, mpt_start, (u8*)page_buf, buffer_size);
+    if (is_valid_mpt_bytecmp((char *)head)) {
         if (!memcmp(page_buf + PT_SIG_SIZE, PMT_VER_V1, PMT_VER_SIZE)) {
-            if (is_valid_mpt(&page_buf[pt_size - PT_SIG_SIZE])) {
-                printf("find mpt at %llx\n", mpt_start); 
+            if (is_valid_mpt_bytecmp((char *)(&page_buf[pt_size - PT_SIG_SIZE]))) {
+                printf("find mpt at %llx\n", mpt_start);
                 memcpy(buf, page_buf + PT_SIG_SIZE + PMT_VER_SIZE, PART_MAX_COUNT * sizeof(pt_resident));
                 reval = DM_ERR_OK;
                 return reval;
@@ -174,7 +226,7 @@ static int load_pt_from_fixed_addr(u8 *buf, part_dev_t *dev)
         }
     }
 
-	return reval;      
+	return reval;
 }
 #endif
 int load_exist_part_tab(u8 *buf,part_dev_t *dev)
@@ -182,15 +234,15 @@ int load_exist_part_tab(u8 *buf,part_dev_t *dev)
 #ifndef MTK_EMMC_SUPPORT
 	int pt_start_addr;
 	int pt_cur_addr;
-	int pt_locate;
+	u32 pt_locate;
 	int reval=DM_ERR_OK;
 	int mirror_address;
 	char pmt_spare[PT_SIG_SIZE];
 
 	block_size= devinfo.blocksize*1024;
 	page_size = devinfo.pagesize;
-	
-	//page_buf = malloc(page_size);	 
+
+	//page_buf = malloc(page_size);
 
 	pt_start_addr = total_size;
 	printf("load_pt from 0x%x \n",pt_start_addr);
@@ -207,7 +259,7 @@ int load_exist_part_tab(u8 *buf,part_dev_t *dev)
           	 memcpy(&page_buf[page_size],g_kCMD.au1OOB,16);
 
 		memcpy(pmt_spare,&page_buf[page_size] ,PT_SIG_SIZE); //skip bad block flag
-		if(is_valid_pt(page_buf)&&is_valid_pt(pmt_spare))
+		if(is_valid_pt_bytecmp((char *)page_buf) && is_valid_pt_bytecmp((char *)(pmt_spare)))
 		{
 			pi.sequencenumber = page_buf[PT_SIG_SIZE+page_size];
 			printf("load_pt find valid pt at %x sq %x \n",pt_start_addr,pi.sequencenumber);
@@ -218,14 +270,14 @@ int load_exist_part_tab(u8 *buf,part_dev_t *dev)
 			continue;
 		}
 	}
-	//for test 
+	//for test
 	//pt_locate==(block_size/page_size);
 	if(pt_locate==(block_size/page_size))
 	{
 		//first download or download is not compelte after erase or can not download last time
 		printf ("load_pt find pt failed \n");
 		pi.pt_has_space = 0; //or before download pt power lost
-		
+
 		if(!find_mirror_pt_from_bottom(&mirror_address,dev))
 		{
 			printf ("First time download \n");
@@ -241,6 +293,8 @@ int load_exist_part_tab(u8 *buf,part_dev_t *dev)
 	memcpy(buf,&page_buf[PT_SIG_SIZE],sizeof(lastest_part));
 
 	return reval;
+#else
+    return ERR_NO_EXIST;
 #endif
 }
 void part_init_pmt(unsigned long totalblks,part_dev_t *dev)
@@ -272,25 +326,25 @@ void part_init_pmt(unsigned long totalblks,part_dev_t *dev)
 		totalblks -= part->blknum;
 		lastblk = part->startblk + part->blknum;
 	}
-	
+
 	memset(&pi,0xFF,sizeof(pi));
 	memset(&lastest_part, 0, PART_MAX_COUNT * sizeof(pt_resident));
 	retval = load_pt_from_fixed_addr((u8 *)&lastest_part, dev);
 	if (retval == ERR_NO_EXIST) {
-        //first run preloader before dowload 
-		//and valid mirror last download or first download 
+        //first run preloader before dowload
+		//and valid mirror last download or first download
 		printf("no pt \n");
 		get_part_tab_from_complier(); //get from complier
 	} else {
 		printf("Find pt \n");
-		for (i = 0; i < PART_MAX_COUNT; i++) {	
+		for (i = 0; i < PART_MAX_COUNT; i++) {
 			if (lastest_part[i].size == 0) {
-				lastest_part[i].size = target_get_max_flash_size() - lastest_part[i].offset - partition_reserve_size(); 
+				lastest_part[i].size = target_get_max_flash_size() - lastest_part[i].offset - partition_reserve_size();
 				printf("partition %s size %016llx %016llx \n",lastest_part[i].name,lastest_part[i].offset,lastest_part[i].size);
 				break;
 			}
-			if (!strcmp(lastest_part[i].name, PMT_END_NAME)) {
-				lastest_part[i].size = target_get_max_flash_size() - lastest_part[i].offset - partition_reserve_size(); 
+			if (!strcmp((char *)lastest_part[i].name, PMT_END_NAME)) {
+				lastest_part[i].size = target_get_max_flash_size() - lastest_part[i].offset - partition_reserve_size();
 				printf("partition %s size %016llx %016llx \n",lastest_part[i].name,lastest_part[i].offset,lastest_part[i].size);
 				break;
 			}
@@ -312,7 +366,7 @@ part_t *part = &partition_layout[0];
 	totalblks -= part->blknum;
 	lastblk = part->startblk + part->blknum;
 
-	while(totalblks) 
+	while(totalblks)
 	{
 		part++;
 		if (!part->name)
@@ -325,13 +379,13 @@ part_t *part = &partition_layout[0];
 		totalblks -= part->blknum;
 		lastblk = part->startblk + part->blknum;
 	}
-	
+
 	memset(&pi,0xFF,sizeof(pi));
 	memset(&lastest_part,0,PART_MAX_COUNT*sizeof(pt_resident));
 	retval=load_exist_part_tab((u8 *)&lastest_part,dev);
 	if (retval==ERR_NO_EXIST) //first run preloader before dowload
 	{
-		//and valid mirror last download or first download 
+		//and valid mirror last download or first download
 		printf ("no pt \n");
 		get_part_tab_from_complier(); //get from complier
 	}
@@ -339,9 +393,9 @@ part_t *part = &partition_layout[0];
 	{
 		printf ("Find pt \n");
 		for(i=0;i<PART_MAX_COUNT;i++)
-		{	
+		{
 			if(lastest_part[i].size == 0){
-				lastest_part[i].size = total_size - lastest_part[i].offset;	
+				lastest_part[i].size = total_size - lastest_part[i].offset;
 				printf ("partition %s size %lx %lx \n",lastest_part[i].name,lastest_part[i].offset,lastest_part[i].size);
 				break;
 			}

@@ -1,17 +1,63 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ * 
+ * MediaTek Inc. (C) 2012. All rights reserved.
+ * 
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #ifndef _MTK_NAND_CORE_H
 #define _MTK_NAND_CORE_H
 
 #include "typedefs.h"
 #ifndef MTK_EMMC_SUPPORT
+#ifdef MTK_SPI_NAND_SUPPORT
+#include "snand_device_list.h"
+#else   // !MTK_SPI_NAND_SUPPORT
 #include "nand_device_list.h"
+#endif  // MTK_SPI_NAND_SUPPORT
 #endif
 
 #define CHIPVER_ECO_1               (0x8a00)
 #define CHIPVER_ECO_2               (0x8a01)
 
+/**************************************************************************
+*  SIZE DEFINITION
+**************************************************************************/
 #define NFI_BUF_MAX_SIZE            (COMMON_BUFFER_MAX_SIZE)
 
+/**************************************************************************
+ * Buffer address define for NAND modules
+ *************************************************************************/
 #define MAX_MAIN_SIZE                (0x1000)
 #define MAX_SPAR_SIZE                (0x80)
 
@@ -27,9 +73,20 @@
 #define NAND_NFI_BUFFER             (PMT_READ_BUFFER + PMT_READ_BUFFER_SIZE)
 #define NAND_NFI_BUFFER_SIZE        (NFI_BUF_MAX_SIZE)
 
+
+/******************************************************************************
+*
+* NFI & ECC Configuration 
+
+*******************************************************************************/
 //#define NFI_BASE                  (0x80032000)
 //#define NFIECC_BASE               (0x80038000)
 
+/******************************************************************************
+*
+* NFI Register Definition 
+
+******************************************************************************/
 
 #define NFI_CNFG_REG16              (NFI_BASE+0x0000)
 #define NFI_PAGEFMT_REG16           (NFI_BASE+0x0004)
@@ -108,9 +165,23 @@
 
 #define NFI_MASTERSTA_REG16         (NFI_BASE+0x0210)
 
+#define NFI_MASTERSTA               (NFI_BASE+0x0224)
+#define NFI_SPIDMA_REG32            (NFI_BASE+0x022C)
+
+/******************************************************************************
+*
+* NFI Register Field Definition 
+
+******************************************************************************/
+
+/* NFI_SPIDMA_REG32 */
+#define SPIDMA_SEC_EN               (0x00010000)
+#define SPIDMA_SEC_SIZE_MASK        (0x0000FFFF)
+
 /* NFI_CNFG */
 #define CNFG_AHB                    (0x0001)
 #define CNFG_READ_EN                (0x0002)
+#define CNFG_AHB_BURST_EN           (0x0004)
 #define CNFG_BYTE_RW                (0x0040)
 #define CNFG_HW_ECC_EN              (0x0100)
 #define CNFG_AUTO_FMT_EN            (0x0200)
@@ -147,6 +218,10 @@
 #define BSY_RTN_EN                  (0x0010)
 #define ACC_LOCK_EN                 (0x0020)
 #define AHB_DONE_EN                 (0x0040)
+#define CUSTOM_READ_DONE_INTR_EN    (0x0100)    // for SPI-NAND
+#define AUTO_PROG_INTR_EN           (0x0200)    // for SPI-NAND
+#define AUTO_READ_INTR_EN           (0x0400)    // for SPI-NAND
+#define AUTO_BLKER_INTR_EN          (0x0800)    // for SPI-NAND
 #define ALL_INTR_DE                 (0x0000)
 #define ALL_INTR_EN                 (0x007F)
 
@@ -158,6 +233,9 @@
 #define BUSY_RETURN                 (0x0010)
 #define ACCESS_LOCK_LOCK            (0x0020)
 #define AHB_DONE                    (0x0040)
+
+// RW_NFI_PIODIRDY
+#define PIO_DI_RDY                  (1)
 
 /* NFI_ADDRNOB */
 #define ADDR_COL_NOB_MASK           (0x0007)
@@ -235,6 +313,15 @@
 #define PAGEFMT_FDM_ECC_MASK        (0xF000)
 #define PAGEFMT_FDM_ECC_SHIFT       (12)
 
+/* NFI_MASTERSTA */
+#define MASTERSTA_MASK              (0x0FFF)
+
+
+/******************************************************************************
+*
+* ECC Register Definition 
+* 
+*******************************************************************************/
 #define ECC_ENCCON_REG16    ((volatile P_U16)(NFIECC_BASE+0x0000))
 #define ECC_ENCCNFG_REG32   ((volatile P_U32)(NFIECC_BASE+0x0004))
 #define ECC_ENCDIADDR_REG32 ((volatile P_U32)(NFIECC_BASE+0x0008))
@@ -274,6 +361,13 @@
 #define ECC_DECNFIDI_REG32  ((volatile P_U32)(NFIECC_BASE+0x0154))
 #define ECC_SYN0_REG32      ((volatile P_U32)(NFIECC_BASE+0x0158))
 
+/******************************************************************************
+*
+* ECC register definition
+* 
+*******************************************************************************
+/
+/* ECC_ENCON */
 #define ENC_EN                  (0x0001)
 #define ENC_DE                  (0x0000)
 
@@ -316,9 +410,11 @@
 #define DEC_CNFG_ECC4          (0x0000)
 //#define DEC_CNFG_ECC6          (0x0001)
 //#define DEC_CNFG_ECC12         (0x0002)
+#define DEC_CNFG_DEC_MODE_MASK (0x0030)
 #define DEC_CNFG_NFI           (0x0010)
+#define DEC_CNFG_AHB           (0x0000)
 //#define DEC_CNFG_META6         (0x10300000)
-//#define DEC_CNFG_META8         (0x10400000)
+#define DEC_CNFG_META8         (0x10740000) // [SPI-NAND 6572] 526.6 bytes = 4212 bits
 
 #define DEC_CNFG_FER           (0x01000)
 #define DEC_CNFG_EL            (0x02000)
@@ -369,6 +465,11 @@
 /* ECC_DECIRQSTA */
 #define DEC_IRQSTA              (0x0001)
 
+/******************************************************************************
+*
+* NFI Register Field Definition 
+* 
+*******************************************************************************/
 
 /* NFI_ACCCON */
 #define ACCCON_SETTING       ()
@@ -383,6 +484,10 @@
 #define INTR_AHB_DONE_EN     (0x0040)
 #define INTR_ALL_INTR_DE     (0x0000)
 #define INTR_ALL_INTR_EN     (0x007F)
+#define INTR_CUSTOM_PROG_DONE_INTR_EN    (0x00000080)
+#define INTR_AUTO_PROG_DONE_INTR_EN      (0x00000200)
+#define INTR_AUTO_BLKER_INTR_EN          (0x00000800)
+
 
 /* NFI_INTR */
 #define INTR_RD_DONE         (0x0001)
@@ -438,6 +543,11 @@
 #define ERASE_CADD_NOB_MASK   (0x0007)
 #define ERASE_CADD_NOB_SHIFT  (0)
 
+/******************************************************************************
+*
+* MTD command
+* 
+******************************************************************************/
 #define NAND_CMD_READ0              0
 #define NAND_CMD_READ1              1
 #define NAND_CMD_PAGEPROG           0x10
@@ -450,6 +560,9 @@
 #define NAND_CMD_RESET              0xff
 #define NAND_CMD_READSTART          0x30
 #define NAND_CMD_CACHEDPROG         0x15
+#define NAND_CMD_DUMMYREAD          0x00
+#define NAND_CMD_DUMMYPROG          0x80
+
 
 /* Options */
 
@@ -530,11 +643,25 @@ struct nand_flash_device
     unsigned long options;
 };
 
+/**
+* struct nand_manufacturers - NAND Flash Manufacturer ID Structure
+* @name:    Manufacturer name
+* @id:      manufacturer ID code of device.
+*/
 struct nand_manufacturers
 {
     int id;
     char *name;
 };
+/*
+struct nand_oobinfo
+{
+    u32 useecc;
+    u32 eccbytes;
+    u32 oobfree[8][2];
+    u32 eccpos[32];
+};
+*/
 
 struct nand_oobfree
 {
@@ -559,6 +686,9 @@ struct nand_ecclayout
 #define MTD_NANDECC_PLACEONLY   3   /* Use the given placement in the structure (Do not store ecc result on read) */
 #define MTD_NANDECC_AUTOPL_USR  4   /* Use the given autoplacement scheme rather than using the default */
 
+/*
+* NAND Flash Manufacturer ID Codes
+*/
 #define NAND_MANFR_TOSHIBA  0x98
 #define NAND_MANFR_SAMSUNG  0xec
 #define NAND_MANFR_FUJITSU  0x04
@@ -569,5 +699,10 @@ struct nand_ecclayout
 #define NAND_MANFR_MICRON   0x2c
 #define NAND_MANFR_AMD      0x01
 
+/******************************************************************************
+*
+* NAND APIs
+* 
+******************************************************************************/
 extern void nand_device_init(void);
 #endif

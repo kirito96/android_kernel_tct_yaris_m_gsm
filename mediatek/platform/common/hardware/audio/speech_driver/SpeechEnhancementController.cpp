@@ -7,19 +7,18 @@
 
 #include <utils/threads.h>
 
-#include "CFG_AUDIO_File.h"
-#include "AudioCustParam.h"
-
-//modify for dual mic cust by yi.zheng.hz begin
-#if defined(JRD_HDVOICE_CUST)
+#ifdef MTK_DUAL_MIC_USER_CONTROL_FEATURE
 #include "AudioUtility.h"
 #endif
-//modify for dual mic cust by yi.zheng.hz end
+
+#include "CFG_AUDIO_File.h"
+#include "AudioCustParam.h"
 
 #define LOG_TAG "SpeechEnhancementController"
 
 static const char PROPERTY_KEY_SPH_ENH_MASKS[PROPERTY_KEY_MAX] = "persist.af.modem.sph_enh_mask";
 static const char PROPERTY_KEY_MAGIC_CON_CALL_ON[PROPERTY_KEY_MAX] = "persist.af.magic_con_call_on";
+static const char PROPERTY_KEY_BT_HEADSET_NREC_ON[PROPERTY_KEY_MAX] = "persist.af.bt_headset_nrec_on";
 
 
 namespace android
@@ -31,7 +30,8 @@ SpeechEnhancementController *SpeechEnhancementController::GetInstance()
     static Mutex mGetInstanceLock;
     Mutex::Autolock _l(mGetInstanceLock);
 
-    if (mSpeechEnhancementController == NULL) {
+    if (mSpeechEnhancementController == NULL)
+    {
         mSpeechEnhancementController = new SpeechEnhancementController();
     }
     ASSERT(mSpeechEnhancementController != NULL);
@@ -43,27 +43,7 @@ SpeechEnhancementController::SpeechEnhancementController()
 {
     // default value (all enhancement on)
     char property_default_value[PROPERTY_VALUE_MAX];
-
-
-//modify for dual mic cust by yi.zheng.hz begin
-#if defined(JRD_HDVOICE_CUST)
-    mbMtkDualMicSupport = isDualMicSupport();
-
-    if(mbMtkDualMicSupport)
-    {
-        sprintf(property_default_value, "0x%x 0x%x", SPH_ENH_MAIN_MASK_ALL, SPH_ENH_DYNAMIC_MASK_ALL);
-    }
-    else
-    {
-        sprintf(property_default_value, "0x%x 0x%x", (0xFFFF & (~SPH_ENH_MAIN_MASK_DMNR)), SPH_ENH_DYNAMIC_MASK_ALL);
-    }
-
-#else
-
     sprintf(property_default_value, "0x%x 0x%x", SPH_ENH_MAIN_MASK_ALL, SPH_ENH_DYNAMIC_MASK_ALL);
-
-#endif
-//modify for dual mic cust by yi.zheng.hz end
 
     // get sph_enh_mask_struct from property
     char property_value[PROPERTY_VALUE_MAX];
@@ -82,6 +62,11 @@ SpeechEnhancementController::SpeechEnhancementController()
     char magic_conference_call_on[PROPERTY_VALUE_MAX];
     property_get(PROPERTY_KEY_MAGIC_CON_CALL_ON, magic_conference_call_on, "0"); //"0": default off
     mMagicConferenceCallOn = (magic_conference_call_on[0] == '0') ? false : true;
+
+    // BT Headset NREC
+    char bt_headset_nrec_on[PROPERTY_VALUE_MAX];
+    property_get(PROPERTY_KEY_BT_HEADSET_NREC_ON, bt_headset_nrec_on, "1"); //"1": default on
+    mBtHeadsetNrecOn = (bt_headset_nrec_on[0] == '0') ? false : true;
 }
 
 SpeechEnhancementController::~SpeechEnhancementController()
@@ -94,9 +79,11 @@ status_t SpeechEnhancementController::SetNBSpeechParametersToAllModem(const AUDI
     SpeechDriverFactory *pSpeechDriverFactory = SpeechDriverFactory::GetInstance();
     SpeechDriverInterface *pSpeechDriver = NULL;
 
-    for (int modem_index = MODEM_1; modem_index < NUM_MODEM; modem_index++) {
+    for (int modem_index = MODEM_1; modem_index < NUM_MODEM; modem_index++)
+    {
         pSpeechDriver = pSpeechDriverFactory->GetSpeechDriverByIndex((modem_index_t)modem_index);
-        if (pSpeechDriver != NULL) { // Might be single talk and some speech driver is NULL
+        if (pSpeechDriver != NULL) // Might be single talk and some speech driver is NULL
+        {
             pSpeechDriver->SetNBSpeechParameters(pSphParamNB);
         }
     }
@@ -105,18 +92,28 @@ status_t SpeechEnhancementController::SetNBSpeechParametersToAllModem(const AUDI
 }
 
 
-#if defined(MTK_DUAL_MIC_SUPPORT) || defined(JRD_HDVOICE_CUST) /*modify for dual mic cust by yi.zheng.hz*/
+#if defined(MTK_DUAL_MIC_SUPPORT)
 status_t SpeechEnhancementController::SetDualMicSpeechParametersToAllModem(const AUDIO_CUSTOM_EXTRA_PARAM_STRUCT *pSphParamDualMic)
 {
+#ifdef MTK_DUAL_MIC_USER_CONTROL_FEATURE
+	if(IsAudioSupportFeature(AUDIO_SUPPORT_DUAL_MIC)){
+#endif
+
     SpeechDriverFactory *pSpeechDriverFactory = SpeechDriverFactory::GetInstance();
     SpeechDriverInterface *pSpeechDriver = NULL;
 
-    for (int modem_index = MODEM_1; modem_index < NUM_MODEM; modem_index++) {
+    for (int modem_index = MODEM_1; modem_index < NUM_MODEM; modem_index++)
+    {
         pSpeechDriver = pSpeechDriverFactory->GetSpeechDriverByIndex((modem_index_t)modem_index);
-        if (pSpeechDriver != NULL) { // Might be single talk and some speech driver is NULL
+        if (pSpeechDriver != NULL) // Might be single talk and some speech driver is NULL
+        {
             pSpeechDriver->SetDualMicSpeechParameters(pSphParamDualMic);
         }
     }
+
+#ifdef MTK_DUAL_MIC_USER_CONTROL_FEATURE
+	}
+#endif
 
     return NO_ERROR;
 }
@@ -129,9 +126,11 @@ status_t SpeechEnhancementController::SetWBSpeechParametersToAllModem(const AUDI
     SpeechDriverFactory *pSpeechDriverFactory = SpeechDriverFactory::GetInstance();
     SpeechDriverInterface *pSpeechDriver = NULL;
 
-    for (int modem_index = MODEM_1; modem_index < NUM_MODEM; modem_index++) {
+    for (int modem_index = MODEM_1; modem_index < NUM_MODEM; modem_index++)
+    {
         pSpeechDriver = pSpeechDriverFactory->GetSpeechDriverByIndex((modem_index_t)modem_index);
-        if (pSpeechDriver != NULL) { // Might be single talk and some speech driver is NULL
+        if (pSpeechDriver != NULL) // Might be single talk and some speech driver is NULL
+        {
             pSpeechDriver->SetWBSpeechParameters(pSphParamWB);
         }
     }
@@ -152,9 +151,11 @@ status_t SpeechEnhancementController::SetSpeechEnhancementMaskToAllModem(const s
     SpeechDriverFactory *pSpeechDriverFactory = SpeechDriverFactory::GetInstance();
     SpeechDriverInterface *pSpeechDriver = NULL;
 
-    for (int modem_index = MODEM_1; modem_index < NUM_MODEM; modem_index++) {
+    for (int modem_index = MODEM_1; modem_index < NUM_MODEM; modem_index++)
+    {
         pSpeechDriver = pSpeechDriverFactory->GetSpeechDriverByIndex((modem_index_t)modem_index);
-        if (pSpeechDriver != NULL) { // Might be single talk and some speech driver is NULL
+        if (pSpeechDriver != NULL) // Might be single talk and some speech driver is NULL
+        {
             pSpeechDriver->SetSpeechEnhancementMask(mSpeechEnhancementMask);
         }
     }
@@ -168,16 +169,19 @@ status_t SpeechEnhancementController::SetDynamicMaskOnToAllModem(const sph_enh_d
     sph_enh_mask_struct_t mask = GetSpeechEnhancementMask();
 
     const bool current_flag_on = ((mask.dynamic_func & dynamic_mask_type) > 0);
-    if (new_flag_on == current_flag_on) {
+    if (new_flag_on == current_flag_on)
+    {
         ALOGW("%s(), dynamic_mask_type(%x), new_flag_on(%d) == current_flag_on(%d), return",
               __FUNCTION__, dynamic_mask_type, new_flag_on, current_flag_on);
         return NO_ERROR;
     }
 
-    if (new_flag_on == false) {
+    if (new_flag_on == false)
+    {
         mask.dynamic_func &= (~dynamic_mask_type);
     }
-    else {
+    else
+    {
         mask.dynamic_func |= dynamic_mask_type;
     }
 
@@ -191,6 +195,24 @@ void SpeechEnhancementController::SetMagicConferenceCallOn(const bool magic_conf
 
     property_set(PROPERTY_KEY_MAGIC_CON_CALL_ON, (magic_conference_call_on == false) ? "0" : "1");
     mMagicConferenceCallOn = magic_conference_call_on;
+}
+
+void SpeechEnhancementController::SetBtHeadsetNrecOnToAllModem(const bool bt_headset_nrec_on)
+{
+    SpeechDriverFactory *pSpeechDriverFactory = SpeechDriverFactory::GetInstance();
+    SpeechDriverInterface *pSpeechDriver = NULL;
+
+    property_set(PROPERTY_KEY_BT_HEADSET_NREC_ON, (bt_headset_nrec_on == false) ? "0" : "1");
+    mBtHeadsetNrecOn = bt_headset_nrec_on;
+
+    for (int modem_index = MODEM_1; modem_index < NUM_MODEM; modem_index++)
+    {
+        pSpeechDriver = pSpeechDriverFactory->GetSpeechDriverByIndex((modem_index_t)modem_index);
+        if (pSpeechDriver != NULL) // Might be single talk and some speech driver is NULL
+        {
+            pSpeechDriver->SetBtHeadsetNrecOn(mBtHeadsetNrecOn);
+        }
+    }
 }
 
 

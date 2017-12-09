@@ -12,7 +12,6 @@
 
 #include "AudioSpeechEnhLayer.h"
 #include "AudioSpeechEnhanceInfo.h"
-#include "SpeechType.h"
 
 #include "AudioPreProcess.h"
 
@@ -70,7 +69,6 @@ class AudioMTKStreamIn : public android_audio_legacy::AudioStreamIn
          * status based on include/utils/Errors.h
          */
         virtual status_t    standby();
-        status_t standbyWithMode();
 
         // set/get audio input parameters. The function accepts a list of parameters
         // key value pairs in the form: key1=value1;key2=value2;...
@@ -99,6 +97,22 @@ class AudioMTKStreamIn : public android_audio_legacy::AudioStreamIn
         // here to implemenmt dedicate function
         status_t SetSuspend(bool suspend);
 
+
+        bool SetIdentity(uint32_t id);
+        uint32_t GetIdentity(void);
+
+
+
+        void NeedUpdateVoIPParams(void);
+        bool GetVoIPRunningState(void);
+
+#ifdef MTK_AUDIO_HD_REC_SUPPORT
+        uint32_t BesRecordPreprocess(void *buffer , uint32_t bytes, AdditionalInfo_STRUCT AddInfo);
+#endif
+        void UpdateDynamicFunction();
+
+    private:
+        status_t standbyWithMode();
         // for streamin contructor check
         bool CheckFormat(int *pFormat);
         bool CheckSampleRate(uint32_t devices, uint32_t *pChannels);
@@ -107,32 +121,33 @@ class AudioMTKStreamIn : public android_audio_legacy::AudioStreamIn
         status_t SetClientSourceandMemType(AudioMTKStreamInClient *mStreamInClient);
         bool  CheckMemTypeChange(uint32_t oldDevice, uint32_t newDevice);
         uint32_t  GetMemTypeByDevice(uint32_t Device);
-
-        bool SetIdentity(uint32_t id);
-        uint32_t GetIdentity(void);
-
         uint32_t StreamInPreprocess(void *buffer , uint32_t bytes);
         status_t SetStreamInPreprocessStatus(bool Enable);
+        bool CheckVoIPNeeded(void);
+
+        void SetDMNREnable(DMNR_TYPE type, bool enable);
+
+#ifdef MTK_VOICEUNLOCK_DEBUG_ENABLE
+        bool CheckRecordNoData(short *buffer , uint32_t bytes);
+        uint32_t mNoDataCount;
+        int              mFd;
+#endif
+
+        void CheckDmicNeedLRSwitch(short *buffer, ssize_t bytes);
 
         status_t RequesetRecordclock();
         status_t ReleaseRecordclock();
 
+
         // defualt setting for Streamin
-#ifdef MTK_DIGITAL_MIC_SUPPORT
-		static const bool mIsDigitalMIC = true;
-		static const uint32_t mStream_Default_SampleRate = 32000;	//due to DMIC upper bound
-#else
-		static const bool mIsDigitalMIC = false;
-		static const uint32_t mStream_Default_SampleRate = 48000;
-#endif
         static const int mStream_Default_Format = AUDIO_FORMAT_PCM_16_BIT;
         static const int mStream_Default_Channels = AUDIO_CHANNEL_IN_STEREO;
+        static const uint32_t mStream_Default_SampleRate = 48000;   //DMIC upper bound is 32K
 
         // defualt setting for Streamin
         static const uint32_t Default_Mic_Buffer = 0x1000;
         static const uint32_t Default_BT_Buffer = 0x1000;
 
-    private:
         Mutex     mLock;
         uint32_t mIdentity;
         uint32_t mLatency;
@@ -145,22 +160,34 @@ class AudioMTKStreamIn : public android_audio_legacy::AudioStreamIn
         AudioResourceManagerInterface *mAudioResourceManager;
         AudioSpeechEnhanceInfo *mAudioSpeechEnhanceInfoInstance;
 
+        static int DumpFileNum;
+        String8 DumpFileName;
         FILE *mPAdcPCMDumpFile;
         FILE *mPAdcPCMInDumpFile;
 
         bool mEnablePreprocess;
+        bool mForceMagiASREnable;
+        bool mForceAECRecEnable;
+        bool mUsingMagiASR;
+        bool mUsingAECRec;
 
         bool MutexLock(void);
         bool MutexUnlock(void);
-        void CheckNeedDataConvert(short * buffer, ssize_t bytes);
+        void CheckNeedDataConvert(short *buffer, ssize_t bytes);
         void StereoToMono(short *buffer , int length);
+        timespec GetSystemTime(bool print = 0);
+
 #ifdef MTK_AUDIO_HD_REC_SUPPORT
         SPELayer    *mpSPELayer;
         int mHDRecordModeIndex;
-		int mHDRecordSceneIndex;
+        int mHDRecordSceneIndex;
         AUDIO_HD_RECORD_SCENE_TABLE_STRUCT mhdRecordSceneTable;
         AUDIO_HD_RECORD_PARAM_STRUCT mhdRecordParam;
-//        AUDIO_HD_RECORD_48K_PARAM_STRUCT mhdRecord48kParam;
+
+        AUDIO_VOIP_PARAM_STRUCT mVOIPParam;
+
+        AUDIO_CUSTOM_EXTRA_PARAM_STRUCT mDMNRParam;
+
         bool mStereoMode;
         int CheckHDRecordMode(void);
         bool GetHdRecordModeInfo(uint8_t *modeIndex);
@@ -168,84 +195,64 @@ class AudioMTKStreamIn : public android_audio_legacy::AudioStreamIn
         void ConfigHDRecordParams(SPE_MODE mode);
         void StartHDRecord(SPE_MODE mode);
         void StopHDRecord(void);
-        uint32_t HDRecordPreprocess(void *buffer , uint32_t bytes);
+        uint32_t HDRecordPreprocess(void *buffer , uint32_t bytes, AdditionalInfo_STRUCT AddInfo);
         bool IsHDRecordRunning(void);
+
+        void CheckHDRecordVoIPSwitch(void);
+        bool IsVoIPRouteChange(void);
+        int GetRoutePath(void);
+        bool mVoIPRunning;
+        bool mHDRecordParamUpdate;
 #endif
 
-#ifdef NATIVE_AUDIO_PREPROCESS_ENABLE
         AudioPreProcess *mAPPS;
         struct echo_reference_itfe *mEcho_Reference;
-        ssize_t	NativeRecordPreprocess(void * buffer, ssize_t bytes);
-#endif
-
-
-//modify for dual mic cust by yi.zheng.hz begin
-#if defined(JRD_HDVOICE_CUST)
-
-//#ifdef MTK_DUAL_MIC_SUPPORT
-		bool	mLRChannelSwitch;
-		int mSpecificMicChoose;
-//#endif
-
-#else
+        ssize_t NativeRecordPreprocess(void *buffer, ssize_t bytes);
 
 #ifdef MTK_DUAL_MIC_SUPPORT
-		bool	mLRChannelSwitch;
-		int mSpecificMicChoose;
+        bool    mLRChannelSwitch;
+        int mSpecificMicChoose;
 #endif
+        bool StreamIn_NeedToSRC(void);
+        bool IsNeedDMICSRC(void);
+        void StreamInSRC_Init(void);
+        void StreamInSRC_Process(void *buffer, size_t bytes);
+        uint32 GetSrcbufvalidSize(RingBuf *SrcInputBuf);
+        uint32 GetSrcbufFreeSize(RingBuf *SrcInputBuf);
+        uint32 CopySrcBuf(char *buffer, uint32 *bytes, RingBuf *SrcInputBuf, uint32 *length);
 
-#endif
-//modify for dual mic cust by yi.zheng.hz end
-		ssize_t     Refilldata(char *buffer, ssize_t bytes);
-		bool StreamIn_NeedToSRC(void);
-		void StreamInSRC_Init(void);
-		void StreamInSRC_Process(void *buffer, size_t bytes);
-		uint32 GetSrcbufvalidSize(RingBuf *SrcInputBuf);
-		uint32 GetSrcbufFreeSize(RingBuf *SrcInputBuf);
-		uint32 CopySrcBuf(char *buffer,uint32 *bytes, RingBuf *SrcInputBuf, uint32 *length);
-
-		// BLI_SRC
+        // BLI_SRC
         BLI_HANDLE *mBliHandler1;
         char       *mBliHandler1Buffer;
         BLI_HANDLE *mBliHandler2;
         char       *mBliHandler2Buffer;
 
-		  class BliSrc
-		  {
-		  public:
-				BliSrc();
-				~BliSrc();
-				status_t initStatus();
-				status_t init(uint32 inSamplerate,uint32 inChannel, uint32 OutSamplerate,uint32 OutChannel);
-				size_t process(const void *inbuffer, size_t *inBytes, void *outbuffer, size_t *outBytes);
+        class BliSrc
+        {
+            public:
+                BliSrc();
+                ~BliSrc();
+                status_t initStatus();
+                status_t init(uint32 inSamplerate, uint32 inChannel, uint32 OutSamplerate, uint32 OutChannel);
+                size_t process(const void *inbuffer, size_t *inBytes, void *outbuffer, size_t *outBytes);
 
-				status_t close();
-		  private:
-			  BLI_HANDLE *mHandle;
-			  uint8_t *mBuffer;
-			  status_t mInitCheck;
-			  BliSrc(const BliSrc&);
-			  BliSrc & operator=(const BliSrc&);
-		  };
+                status_t close();
+            private:
+                BLI_HANDLE *mHandle;
+                uint8_t *mBuffer;
+                status_t mInitCheck;
+                BliSrc(const BliSrc &);
+                BliSrc &operator=(const BliSrc &);
+        };
 
-		  BliSrc * mBliSrc;
-		  uint8_t *mSwapBufferTwo;
+        BliSrc *mBliSrc;
+        uint8_t *mSwapBufferTwo;
 
-		//HDRec tunning tool
-		bool mIsHDRecTunningEnable;
-		bool mHDRecTunning16K;
-		bool mIsAPDMNRTuningEnable;
-		char m_strTunningFileName[128];
-		
-		AUDIO_CUSTOM_PARAM_STRUCT mSphParamNB;
-		AUDIO_CUSTOM_WB_PARAM_STRUCT mSphParamWB;
-
-
-		//modify for dual mic cust by yi.zheng.hz begin
-#if defined(JRD_HDVOICE_CUST)
-		bool mbMtkDualMicSupport;
-#endif
-		//modify for dual mic cust by yi.zheng.hz end
+        //HDRec tunning tool
+        bool mIsHDRecTunningEnable;
+        bool mHDRecTunning16K;
+        bool mIsAPDMNRTuningEnable;
+        char m_strTunningFileName[128];
 };
 
 }

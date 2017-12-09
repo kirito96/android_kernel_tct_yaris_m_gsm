@@ -194,16 +194,14 @@ int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card,
 	if (!mq->queue)
 		return -ENOMEM;
 
+	memset(&mq->mqrq_cur, 0, sizeof(mq->mqrq_cur));
+	memset(&mq->mqrq_prev, 0, sizeof(mq->mqrq_prev));
 #ifdef CONFIG_ZRAM    
     if (mmc_card_mmc(card) &&
         (totalram_pages << (PAGE_SHIFT - 10)) <= (256 * 1024))
         mq->queue->backing_dev_info.ra_pages =
     		(VM_MIN_READAHEAD * 1024) / PAGE_CACHE_SIZE;
 #endif // CONFIG_ZRAM
-
-
-	memset(&mq->mqrq_cur, 0, sizeof(mq->mqrq_cur));
-	memset(&mq->mqrq_prev, 0, sizeof(mq->mqrq_prev));
 	mq->mqrq_cur = mqrq_cur;
 	mq->mqrq_prev = mqrq_prev;
 	mq->queue->queuedata = mq;

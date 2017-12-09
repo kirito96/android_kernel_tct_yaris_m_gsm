@@ -74,7 +74,7 @@ static PF_WMT_SDIO_PSOP sdio_own_ctrl = NULL;
 
 #define WMT_STP_CPUPCR_BUF_SIZE 6144
 static UINT8 g_cpupcr_buf[WMT_STP_CPUPCR_BUF_SIZE] = {0};
-
+static UINT32 g_quick_sleep_ctrl = 1;
 /*******************************************************************************
 *                            P U B L I C   D A T A
 ********************************************************************************
@@ -117,7 +117,6 @@ wmt_lib_pin_ctrl (
     UINT32 flag
     );
 MTK_WCN_BOOL wmt_lib_hw_state_show(VOID);
-
 
 /*******************************************************************************
 *                              F U N C T I O N S
@@ -225,7 +224,7 @@ wmt_lib_init (VOID)
     for (i = 0 ; i < WMTDRV_TYPE_WIFI ; i++) {
         pDevWmt->rFdrvCb.fDrvRst[i] = NULL;
     }
-    pDevWmt->hw_ver = WMTHWVER_SOC_MAX;
+    pDevWmt->hw_ver = WMTHWVER_MAX;
     WMT_INFO_FUNC("***********Init, hw->ver = %x\n", pDevWmt->hw_ver);
 
     // TODO:[FixMe][GeorgeKuo]: wmt_lib_conf_init
@@ -239,7 +238,7 @@ wmt_lib_init (VOID)
     /* initialize platform resources */
     if (0 != gDevWmt.rWmtGenConf.cfgExist)
     {
-        iRet = wmt_plat_init(gDevWmt.rWmtGenConf.co_clock_flag);
+        iRet = wmt_plat_init(gDevWmt.rWmtGenConf.co_clock_flag & 0x0f);
     }else
     {
     	iRet = wmt_plat_init(0);
@@ -280,6 +279,14 @@ wmt_lib_init (VOID)
 
 #if CONSYS_WMT_REG_SUSPEND_CB_ENABLE
 	wmt_lib_consys_osc_en_ctrl(0);
+#endif
+
+#ifdef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
+	mtk_wcn_wmt_exp_init();
+#endif
+
+#if CFG_WMT_LTE_COEX_HANDLING
+	wmt_idc_init();
 #endif
     WMT_DBG_FUNC("init success\n");
     return 0;
@@ -352,6 +359,14 @@ wmt_lib_deinit (VOID)
         iResult += 16;
     }
     osal_memset(&gDevWmt, 0, sizeof(gDevWmt));
+
+#ifdef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
+	mtk_wcn_wmt_exp_deinit();
+#endif
+
+#if CFG_WMT_LTE_COEX_HANDLING
+	wmt_idc_deinit();
+#endif
 
     return iResult;
 }
@@ -538,6 +553,70 @@ static MTK_WCN_BOOL wmt_lib_ps_action(MTKSTP_PSM_ACTION_T action)
     return bRet;
 }
 
+#if CFG_WMT_LTE_COEX_HANDLING
+MTK_WCN_BOOL wmt_lib_handle_idc_msg(ipc_ilm_t *idc_infor)
+{
+    P_OSAL_OP lxop;
+    MTK_WCN_BOOL bRet;
+	P_OSAL_SIGNAL pSignal;
+
+	WMT_INFO_FUNC("idc_infor from conn_md is 0x%p\n",idc_infor);
+
+    lxop = wmt_lib_get_free_op();
+    if (!lxop)
+    {
+        WMT_WARN_FUNC("get_free_lxop fail \n");
+        return MTK_WCN_BOOL_FALSE;
+    }
+	pSignal = &lxop->signal;
+	pSignal->timeoutValue = MAX_EACH_WMT_CMD;
+    lxop->op.opId = WMT_OPID_IDC_MSG_HANDLING;
+    lxop->op.au4OpData[0] = (UINT32)idc_infor;
+
+	/*msg opcode fill rule is still not clrear,need scott comment*/
+	/***********************************************************/
+	WMT_INFO_FUNC("ilm msg id is (0x%08x)\n",idc_infor->msg_id);
+	switch(idc_infor->msg_id)
+	{
+		case IPC_MSG_ID_EL1_LTE_DEFAULT_PARAM_IND:
+			lxop->op.au4OpData[1] = WMT_IDC_TX_OPCODE_LTE_PARA;
+			break;
+		case IPC_MSG_ID_EL1_LTE_OPER_FREQ_PARAM_IND:
+			lxop->op.au4OpData[1] = WMT_IDC_TX_OPCODE_LTE_FREQ;
+			break;
+		case IPC_MSG_ID_EL1_WIFI_MAX_PWR_IND:
+			lxop->op.au4OpData[1] = WMT_IDC_TX_OPCODE_WIFI_MAX_POWER;
+			break;
+		case IPC_MSG_ID_EL1_LTE_TX_IND:
+			lxop->op.au4OpData[1] = WMT_IDC_TX_OPCODE_LTE_INDICATION;
+			break;
+		default:
+			WMT_ERR_FUNC("unknow msgid from LTE(%d)\n",idc_infor->msg_id);
+			break;
+	}
+
+	/*wake up chip first*/
+    if (DISABLE_PSM_MONITOR()) {
+        WMT_ERR_FUNC("wake up failed\n");
+        wmt_lib_put_op_to_free_queue(lxop);
+        return MTK_WCN_BOOL_FALSE;
+    }
+    
+    bRet = wmt_lib_put_act_op(lxop);
+    ENABLE_PSM_MONITOR();
+    if (MTK_WCN_BOOL_FALSE == bRet) {
+        WMT_WARN_FUNC("WMT_OPID_IDC_MSG_HANDLING fail(%d)\n", bRet);
+    }
+    else {
+        WMT_DBG_FUNC("OPID(%d) type(%d) ok\n",
+            lxop->op.opId,
+            lxop->op.au4OpData[1]);
+    }
+	
+    return bRet;
+}
+#endif
+
 static MTK_WCN_BOOL wmt_lib_ps_do_sleep(VOID)
 {
     return wmt_lib_ps_action(SLEEP);
@@ -550,11 +629,10 @@ static MTK_WCN_BOOL wmt_lib_ps_do_wakeup(VOID)
 
 static MTK_WCN_BOOL wmt_lib_ps_do_host_awake(VOID)
 {
-	/* temp solution: consys tirgger interrupt will be handled wakeup interrupt */
-#if 0
-    return wmt_lib_ps_action(HOST_AWAKE);
-#else
+#if 1
     return wmt_lib_ps_action(WAKEUP);
+#else
+    return wmt_lib_ps_action(HOST_AWAKE);
 #endif
 }
 //extern int g_block_tx;
@@ -584,6 +662,9 @@ wmt_lib_ps_handler (
         WMT_DBG_FUNC("send op--------------------------------> sleep job\n");
 
         if (!mtk_wcn_stp_is_sdio_mode()) {
+			#if CFG_WMT_DUMP_INT_STATUS
+			wmt_plat_BGF_irq_dump_status();
+			#endif
             ret = wmt_lib_ps_do_sleep();
             WMT_DBG_FUNC("enable host eirq \n");
             wmt_plat_eirq_ctrl(PIN_BGF_EINT, PIN_STA_EINT_EN);
@@ -650,6 +731,9 @@ wmt_lib_ps_handler (
             WMT_DBG_FUNC("disable host eirq \n");
             //IRQ already disabled
             //wmt_plat_eirq_ctrl(PIN_BGF_EINT, PIN_STA_EINT_DIS);
+           	#if CFG_WMT_DUMP_INT_STATUS
+			wmt_plat_BGF_irq_dump_status();
+			#endif
             ret = wmt_lib_ps_do_host_awake();
         }
         else {
@@ -715,7 +799,14 @@ wmt_lib_ps_stp_cb (
 
 MTK_WCN_BOOL wmt_lib_is_quick_ps_support (VOID)
 {
-    return wmt_core_is_quick_ps_support();
+	if((g_quick_sleep_ctrl) && (wmt_dev_get_early_suspend_state() == MTK_WCN_BOOL_TRUE))
+	{
+    	return wmt_core_is_quick_ps_support();
+	}
+	else
+	{
+		return MTK_WCN_BOOL_FALSE;
+	}
 }
 
 VOID
@@ -799,7 +890,7 @@ static INT32 wmtd_thread (void *pvData)
         if (osal_test_bit(WMT_STAT_RST_ON, &pWmtDev->state)) {
             /* when whole chip reset, only HW RST and SW RST cmd can execute*/
             if ((pOp->op.opId == WMT_OPID_HW_RST) || (pOp->op.opId == WMT_OPID_SW_RST) || (pOp->op.opId == WMT_OPID_GPIO_STATE)) {
-        iResult = wmt_core_opid(&pOp->op);
+                iResult = wmt_core_opid(&pOp->op);
             } else {
             	iResult = -2;
                 WMT_WARN_FUNC("Whole chip resetting, opid (%d) failed, iRet(%d)\n",  pOp->op.opId,iResult);
@@ -960,7 +1051,10 @@ MTK_WCN_BOOL wmt_lib_put_act_op (P_OSAL_OP pOp)
             WMT_ERR_FUNC("pWmtDev(0x%p), pOp(0x%p)\n", pWmtDev, pOp);
             break;
         }
-        if(0 != mtk_wcn_stp_coredump_start_get())
+        if((0 != mtk_wcn_stp_coredump_start_get()) &&\
+			(WMT_OPID_HW_RST != pOp->op.opId) && \
+			(WMT_OPID_SW_RST != pOp->op.opId) && \
+			(WMT_OPID_GPIO_STATE != pOp->op.opId))
         {
             bCleanup = MTK_WCN_BOOL_TRUE;
             WMT_WARN_FUNC("block tx flag is set\n");
@@ -1143,7 +1237,7 @@ wmt_lib_is_therm_ctrl_support (VOID)
 {
     MTK_WCN_BOOL bIsSupportTherm = MTK_WCN_BOOL_TRUE;
     // TODO:[FixMe][GeorgeKuo]: move IC-dependent checking to ic-implementation file
-    if ( ((0x6620 == gDevWmt.chip_id) && (WMTHWVER_SOC_E3 > gDevWmt.eWmtHwVer))
+    if ( ((0x6620 == gDevWmt.chip_id) && (WMTHWVER_E3 > gDevWmt.eWmtHwVer))
         || (WMTHWVER_INVALID == gDevWmt.eWmtHwVer) ) {
         WMT_ERR_FUNC("thermal command fail: chip version(WMTHWVER_TYPE:%d) is not valid\n", gDevWmt.eWmtHwVer);
         bIsSupportTherm = MTK_WCN_BOOL_FALSE;
@@ -1161,7 +1255,7 @@ MTK_WCN_BOOL
 wmt_lib_is_dsns_ctrl_support (VOID)
 {
     // TODO:[FixMe][GeorgeKuo]: move IC-dependent checking to ic-implementation file
-    if ( ((0x6620 == gDevWmt.chip_id) && (WMTHWVER_SOC_E3 > gDevWmt.eWmtHwVer))
+    if ( ((0x6620 == gDevWmt.chip_id) && (WMTHWVER_E3 > gDevWmt.eWmtHwVer))
         || (WMTHWVER_INVALID == gDevWmt.eWmtHwVer) ) {
         WMT_ERR_FUNC("thermal command fail: chip version(WMTHWVER_TYPE:%d) is not valid\n", gDevWmt.eWmtHwVer);
         return MTK_WCN_BOOL_FALSE;
@@ -1446,14 +1540,16 @@ VOID wmt_lib_state_init(VOID)
     //RB_INIT(&pDevWmt->rFreeOpQ, WMT_OP_BUF_SIZE);
     //RB_INIT(&pDevWmt->rActiveOpQ, WMT_OP_BUF_SIZE);
 
-    while ((pOp = wmt_lib_get_op(&pDevWmt->rActiveOpQ))) {
+    while (!RB_EMPTY(&pDevWmt->rActiveOpQ)) {
 		#if 0
 		osal_signal_init(&(pOp->signal));
         wmt_lib_put_op(&pDevWmt->rFreeOpQ, pOp);
 		#endif
+		pOp = wmt_lib_get_op(&pDevWmt->rActiveOpQ);
         if (osal_op_is_wait_for_signal(pOp)) {
             osal_op_raise_signal(pOp, -1);
         }
+		
     }
         
     /* Put all to free Q */
@@ -1707,6 +1803,7 @@ ENUM_WMTRSTRET_TYPE_T wmt_lib_cmb_rst(ENUM_WMTRSTSRC_TYPE_T src){
         retval = WMTRSTRET_FAIL;
         goto rstDone;
     }
+	mtk_wcn_stp_coredump_start_ctrl(0);
 
     retval = WMTRSTRET_SUCCESS;
 rstDone:
@@ -1826,33 +1923,19 @@ P_OSAL_OP wmt_lib_get_current_op(P_DEV_WMT pWmtDev)
 	}
 }
 
-INT32 wmt_lib_read_emi_info(UINT32 index,UINT8 *buf,UINT32 len)
-{
-	UINT8 *pAddr = NULL;
-	pAddr = wmt_plat_get_emi_base_add((ENUM_EMI_BASE_INDEX)index);
-
-	if(!pAddr)
-	{
-		WMT_ERR_FUNC("wmt-lib: get EMI virtual base address fail\n");
-		return -1;
-	}else
-	{
-		WMT_INFO_FUNC("vir addr(0x%p)\n",pAddr);
-	}
-
-	osal_memcpy(buf,pAddr,len);
-
-	return 0;
-}
 
 UINT8 *wmt_lib_get_fwinfor_from_emi(UINT8 section, UINT32 offset,UINT8 *buf,UINT32 len)
 {
 	UINT8 *pAddr = NULL;
 	UINT32 sublen1 = 0;
 	UINT32 sublen2 = 0;
+	P_CONSYS_EMI_ADDR_INFO p_consys_info;
 
+	p_consys_info = wmt_plat_get_emi_phy_add();
+	osal_assert(p_consys_info);
+		
     if(section == 0){
-            pAddr = wmt_plat_get_emi_ctrl_state_base_add(0x0);
+            pAddr = wmt_plat_get_emi_virt_add(0x0);
             if(len > 1024)
                 len = 1024;
             if(!pAddr)
@@ -1869,7 +1952,7 @@ UINT8 *wmt_lib_get_fwinfor_from_emi(UINT8 section, UINT32 offset,UINT8 *buf,UINT
     	
     	if(offset + len > 32768)
     	{
-    		pAddr = wmt_plat_get_emi_ctrl_state_base_add(offset + CONSYS_EMI_PAGED_TRACE_OFFSET);
+    		pAddr = wmt_plat_get_emi_virt_add(offset + p_consys_info->paged_trace_off);
     		if(!pAddr)
     		{
     			WMT_ERR_FUNC("wmt-lib: get part1 EMI virtual base address fail\n");
@@ -1879,7 +1962,7 @@ UINT8 *wmt_lib_get_fwinfor_from_emi(UINT8 section, UINT32 offset,UINT8 *buf,UINT
     			sublen1 = 0x7fff - offset;
     			osal_memcpy(&buf[0],pAddr,sublen1);
     		}
-    		pAddr = wmt_plat_get_emi_ctrl_state_base_add(CONSYS_EMI_PAGED_TRACE_OFFSET);
+    		pAddr = wmt_plat_get_emi_virt_add(p_consys_info->paged_trace_off);
     		if(!pAddr)
     		{
     			WMT_ERR_FUNC("wmt-lib: get part2 EMI virtual base address fail\n");
@@ -1891,7 +1974,7 @@ UINT8 *wmt_lib_get_fwinfor_from_emi(UINT8 section, UINT32 offset,UINT8 *buf,UINT
     		}
     	}else
     	{
-    		pAddr = wmt_plat_get_emi_ctrl_state_base_add(offset + CONSYS_EMI_PAGED_TRACE_OFFSET);
+    		pAddr = wmt_plat_get_emi_virt_add(offset + p_consys_info->paged_trace_off);
     		if(!pAddr)
     		{
     			WMT_ERR_FUNC("wmt-lib: get EMI virtual base address fail\n");
@@ -1917,7 +2000,7 @@ INT32 wmt_lib_poll_cpupcr(UINT32 count,UINT16 sleep,UINT16 toAee)
 	if(toAee)
 	{
 		stp_dbg_set_fw_info("STP ProcTest", osal_strlen("STP ProcTest"),issue_type);
-		osal_dbg_assert_aee("[MT6572/82]ProcTest", "**[WCN_ISSUE_INFO]STP Tx Timeout**\n Polling CPUPCR for FW debug usage\n");
+		osal_dbg_assert_aee("[SOC_CONSYS]ProcTest", "**[WCN_ISSUE_INFO]STP Tx Timeout**\n Polling CPUPCR for FW debug usage\n");
 	}else
 	{
 		WMT_INFO_FUNC("wmt_lib:do not pass cpupcr to AEE\n");
@@ -1942,11 +2025,37 @@ UINT8 *wmt_lib_get_cpupcr_xml_format(UINT32 *len)
 	return &g_cpupcr_buf[0];
 }
 
+UINT32 wmt_lib_set_host_assert_info(UINT32 type,UINT32 reason,UINT32 en)
+{
+	return stp_dbg_set_host_assert_info(type,reason,en);	
+}
+
 INT32 wmt_lib_register_thermal_ctrl_cb(thermal_query_ctrl_cb thermal_ctrl)
 {
 	wmt_plat_thermal_ctrl_cb_reg(thermal_ctrl);
 	return 0;
 }
+
+CHAR wmt_lib_co_clock_get()
+{
+	if(gDevWmt.rWmtGenConf.cfgExist)
+	{
+		return gDevWmt.rWmtGenConf.co_clock_flag;
+	}
+	else
+	{
+		return -1;
+	}
+}
+
+#if CFG_WMT_PS_SUPPORT
+UINT32 wmt_lib_quick_sleep_ctrl(UINT32 en)
+{
+	WMT_INFO_FUNC("%s quick sleep mode\n", en ? "enable" : "disable");
+	g_quick_sleep_ctrl = en;
+	return 0;
+}
+#endif
 
 #if CONSYS_ENALBE_SET_JTAG
 UINT32 wmt_lib_jtag_flag_set(UINT32 en)

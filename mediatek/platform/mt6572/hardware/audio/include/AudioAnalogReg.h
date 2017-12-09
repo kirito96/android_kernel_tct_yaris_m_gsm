@@ -42,7 +42,7 @@
 #define AFE_PMIC_NEWIF_CFG1      (AFE_PMICDIG_AUDIO_BASE + 0x0026)
 #define AFE_PMIC_NEWIF_CFG2      (AFE_PMICDIG_AUDIO_BASE + 0x0028)
 #define AFE_PMIC_NEWIF_CFG3      (AFE_PMICDIG_AUDIO_BASE + 0x002A)
-#define AFE_TOP_PMIC_CON0        (AFE_PMICDIG_AUDIO_BASE + 0x002C)
+#define ABB_AFE_TOP_CON0        (AFE_PMICDIG_AUDIO_BASE + 0x002C)
 #define ABB_MON_DEBUG0           (AFE_PMICDIG_AUDIO_BASE + 0x002E)
 
 //---------------digital pmic  register define end ---------------------------------------
@@ -96,13 +96,6 @@ class AudioAnalogReg
         status_t SetAnalogReg(uint32 offset, uint32 value, uint32 mask);
         uint32 GetAnalogReg(uint32 offset);
 
-        /**
-        * a basic function to check regiseter range
-        * @param offset
-        * @return bool
-        */
-        bool CheckAnaRegRange(uint32 offset);
-
     private:
         /**
         * AudioAnalogReg contructor .
@@ -110,6 +103,12 @@ class AudioAnalogReg
         */
         AudioAnalogReg();
         ~AudioAnalogReg();
+        /**
+        * a basic function to check regiseter range
+        * @param offset
+        * @return bool
+        */
+        bool CheckAnaRegRange(uint32 offset);
 
         /**
         * a private variable.

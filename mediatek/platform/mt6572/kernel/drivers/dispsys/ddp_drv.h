@@ -1,9 +1,11 @@
 #ifndef __DDP_DRV_H__
 #define __DDP_DRV_H__
+
 #include <linux/ioctl.h>
 
+#include "ddp_hal.h"
 #include "ddp_aal.h"
-#include "ddp_ovl.h"
+
 
 typedef enum DISP_MODULE_ENUM_
 {
@@ -40,14 +42,7 @@ typedef struct
     unsigned int mask;
 } DISP_READ_REG;
 
-struct DISP_REGION
-{
-    unsigned int x;
-    unsigned int y;
-    unsigned int width;
-    unsigned int height;
-};
-
+#if 0
 typedef enum
 {
     DDP_YUYV ,
@@ -69,6 +64,7 @@ typedef enum
     DDP_XARGB8888 ,
     DDP_NONE_FMT
 } DDP_OVL_FORMAT;
+#endif
 
 typedef struct DISP_EXEC_COMMAND
 {
@@ -86,7 +82,7 @@ typedef struct
     int layer;
     
     unsigned int addr;
-    DDP_OVL_FORMAT fmt;
+    DpColorFormat fmt;
     
     int x; 
     int y; 
@@ -134,7 +130,7 @@ typedef struct{
 
 typedef struct{
 
-    unsigned long entry[3][257]; 
+    unsigned long entry[3][257];
 
 } DISPLAY_GAMMA_T;
 
@@ -160,6 +156,7 @@ typedef enum
     DISP_INTERLACE_FORMAT_BOTTOM_FIELD
 }DISP_INTERLACE_FORMAT;
 
+#if 0
 typedef enum
 {
     DISP_COLOR_FORMAT_YUV_420_3P      , // 0
@@ -191,6 +188,7 @@ typedef enum
     DISP_COLOR_FORMAT_MTKYUV,
     DISP_COLOR_FORMAT_YUV_420_3P_YVU
 }DISP_COLOR_FORMAT;
+#endif
 
 
 #define DISP_IOCTL_MAGIC        'x'
@@ -232,7 +230,7 @@ typedef enum
 //Update AAL setting
 #define DISP_IOCTL_SET_AALPARAM    _IOW    (DISP_IOCTL_MAGIC, 17 , DISP_AAL_PARAM)
 //Update PQ setting
-#define DISP_IOCTL_SET_PQPARAM     _IOW    (DISP_IOCTL_MAGIC, 18 , DISP_PQ_PARAM)
+#define DISP_IOCTL_SET_PQPARAM     _IOW    (DISP_IOCTL_MAGIC, 60 , DISP_PQ_PARAM)
 #define DISP_IOCTL_SET_PQINDEX     _IOW    (DISP_IOCTL_MAGIC, 19 , DISPLAY_PQ_T)
 #define DISP_IOCTL_SET_GAMMALUT    _IOW    (DISP_IOCTL_MAGIC, 20 , DISPLAY_GAMMA_T)
 //Update BLS setting
@@ -256,9 +254,9 @@ typedef enum
 #define DISP_IOCTL_MUTEX_CONTROL     _IOW    (DISP_IOCTL_MAGIC, 55 , int)
 #define DISP_IOCTL_GET_LCMINDEX     _IOR    (DISP_IOCTL_MAGIC, 56 , int)
 #define DISP_IOCTL_SET_PQ_CAM_PARAM     _IOW    (DISP_IOCTL_MAGIC, 57 , DISP_PQ_PARAM)
-#define DISP_IOCTL_GET_PQ_CAM_PARAM     _IOR    (DISP_IOCTL_MAGIC, 58 , DISP_PQ_PARAM)
+#define DISP_IOCTL_GET_PQ_CAM_PARAM     _IOR    (DISP_IOCTL_MAGIC, 68 , DISP_PQ_PARAM)
 #define DISP_IOCTL_SET_PQ_GAL_PARAM     _IOW    (DISP_IOCTL_MAGIC, 59 , DISP_PQ_PARAM)
-#define DISP_IOCTL_GET_PQ_GAL_PARAM     _IOR    (DISP_IOCTL_MAGIC, 60 , DISP_PQ_PARAM)
+#define DISP_IOCTL_GET_PQ_GAL_PARAM     _IOR    (DISP_IOCTL_MAGIC, 70 , DISP_PQ_PARAM)
 typedef struct
 {
     DISP_MODULE_ENUM module;
@@ -271,27 +269,16 @@ typedef void (*DDP_IRQ_CALLBACK)(unsigned int param);
 //-------------------------------------------------------
 // functions
 //-------------------------------------------------------
-int disp_wait_intr(DISP_MODULE_ENUM module, unsigned int timeout_ms);
-int disp_dump_reg(DISP_MODULE_ENUM module);
-
-int disp_set_overlay_roi(int layer, int x, int y, int w, int h, int pitch);
-int disp_set_overlay_addr(int layer, unsigned int addr, DDP_OVL_FORMAT fmt);
-int disp_set_overlay(int layer, int enable);
-int disp_is_dp_framework_run(void);
-
-int disp_set_mutex_status(int enable);
-int disp_get_mutex_status(void);
-int disp_register_irq(DISP_MODULE_ENUM module, DDP_IRQ_CALLBACK cb);
-int disp_unregister_irq(DISP_MODULE_ENUM module, DDP_IRQ_CALLBACK cb);
-int disp_set_needupdate(DISP_MODULE_ENUM eModule , unsigned long u4En);
-void disp_power_off(DISP_MODULE_ENUM eModule , unsigned int * pu4Record);
-void disp_power_on(DISP_MODULE_ENUM eModule , unsigned int * pu4Record);
-void cmdq_ion_flush(void);
-
 void disp_aal_lock(void);
 void disp_aal_unlock(void);
+int disp_register_irq(DISP_MODULE_ENUM module, DDP_IRQ_CALLBACK cb);
+int disp_unregister_irq(DISP_MODULE_ENUM module, DDP_IRQ_CALLBACK cb);
+void cmdq_ion_flush(void);
 
 void disp_m4u_dump_reg(void);
+int disp_dump_reg(DISP_MODULE_ENUM module);
+int disp_color_set_pq_param(void* arg);
+
 #endif
 
 #endif

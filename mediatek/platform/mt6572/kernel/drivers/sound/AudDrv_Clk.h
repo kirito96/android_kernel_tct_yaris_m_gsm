@@ -89,7 +89,8 @@ void AudDrv_HDMI_Clk_Off(void);
 void AudDrv_Suspend_Clk_On(void);
 void AudDrv_Suspend_Clk_Off(void);
 
-
+void AudDrv_Clk_On_DisableISR(void);
+void AudDrv_Clk_On_ClrISRStatus(void);
 
 
 

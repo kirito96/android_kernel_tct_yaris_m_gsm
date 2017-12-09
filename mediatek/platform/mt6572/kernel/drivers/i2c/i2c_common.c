@@ -144,12 +144,12 @@ static inline void i2c_writew(struct mt_i2c * i2c, u8 offset, u16 value)
 {
 
 	//dev_err(i2c->dev, "before i2c_writew base=%x,offset=%x\n",i2c->base,offset);
-	__raw_writew(value, (i2c->base) + (offset));
+	__raw_writew(value, (void *)(i2c->base + offset));
 }
 static inline u16 i2c_readw(struct mt_i2c * i2c, u8 offset)
 {
 	//dev_err(i2c->dev, "before i2c_readw base=%x,offset=%x\n",i2c->base,offset);
-	return __raw_readw((i2c->base) + (offset));
+	return __raw_readw((void *)(i2c->base + offset));
 }
 //extern struct mt_i2c ;
 static int i2c_dump_reg(int bus_id)
@@ -460,16 +460,16 @@ err:
 
 static DEVICE_ATTR(ut, 660, show_config, set_config);
 
-static int __devinit i2c_common_probe(struct platform_device *pdev)
+static int __init i2c_common_probe(struct platform_device *pdev)
 {
 	int ret = 0;
-	//your code here£¬your should save client in your own way
+	//your code hereyour should save client in your own way
 	printk(KERN_ALERT"i2c_common device probe\n");
 	ret = device_create_file(&pdev->dev, &dev_attr_ut);
 	return ret; 
 }
 
-static int __devexit i2c_common_remove(struct platform_device *pdev)
+static int __exit i2c_common_remove(struct platform_device *pdev)
 {
 	int ret = 0;
 	//your code here

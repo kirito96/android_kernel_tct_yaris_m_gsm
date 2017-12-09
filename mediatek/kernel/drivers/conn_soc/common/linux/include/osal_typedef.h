@@ -8,6 +8,39 @@
 #ifndef _OSAL_TYPEDEF_H_
 #define _OSAL_TYPEDEF_H_
 
+#include <linux/version.h>
+#include <linux/init.h>
+#include <linux/module.h>
+#include <linux/types.h>
+#include <linux/kernel.h>
+#include <linux/fs.h>
+#include <linux/cdev.h>
+#include <linux/sched.h>
+#include <linux/poll.h>
+#include <asm/current.h>
+#include <asm/uaccess.h>
+#include <asm/io.h>
+#include <linux/proc_fs.h>
+#include <linux/workqueue.h>
+#include <linux/wait.h>
+#include <linux/time.h>
+#include <linux/delay.h>
+#include <linux/interrupt.h>
+#include <linux/irq.h>
+#include <linux/vmalloc.h>
+#include <linux/firmware.h>
+#include <linux/kthread.h>
+#include <linux/jiffies.h>
+#include <linux/slab.h>
+#include <linux/err.h>
+#include <linux/earlysuspend.h>
+#ifdef WMT_PLAT_ALPS
+#include <linux/aee.h>
+#endif
+#include <linux/kfifo.h>
+#include <linux/wakelock.h>
+#include <linux/log2.h>
+
 typedef void VOID;
 typedef void *PVOID;
 

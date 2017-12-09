@@ -1,14 +1,9 @@
 #ifndef __DSI_DRV_H__
 #define __DSI_DRV_H__
 
-#ifdef BUILD_UBOOT
-#include <asm/arch/mt65xx_typedefs.h>
-#else
-#include "disp_drv.h"
 #include <mach/mt_typedefs.h>
-#endif
-
-#include "lcm_drv.h"
+#include "disp_hal.h"
+#include "disp_intr.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -243,7 +238,7 @@ UINT32 DSI_read_lcm_reg(void);
 UINT32 DSI_dcs_read_lcm_reg(unsigned char);
 UINT32 DSI_dcs_read_lcm_reg_v2(UINT8 cmd, UINT8 *buffer, UINT8 buffer_size);
 DSI_STATUS DSI_write_lcm_fb(unsigned int addr, bool long_length);
-DSI_STATUS DSI_read_lcm_fb(unsigned char *buffer);//zhao.li@tcl bug 481348 P28
+DSI_STATUS DSI_read_lcm_fb(unsigned char *buffer);
 
 DSI_STATUS DSI_enable_MIPI_txio(bool en);
 bool Need_Wait_ULPS(void);
@@ -270,11 +265,24 @@ DSI_STATUS DSI_BackupRegisters(void);
 DSI_STATUS DSI_RestoreRegisters(void);
 DSI_STATUS DSI_WaitForEngineNotBusy(void);
 DSI_STATUS DSI_Wait_VDO_Idle(void);
-//zhao.li@tcl bug 481348 P28
+
 unsigned int DSI_Check_LCM(UINT32 color);
 unsigned int DSI_BLS_Query(void);
 void DSI_BLS_Enable(bool enable);
-//zhao.li@tcl bug 481348 P28 end
+
+void fbconfig_set_cmd_mode(void);
+void fbconfig_set_vdo_mode(void);
+DSI_STATUS fbconfig_DSI_set_CLK(unsigned int clk);
+void fbconfig_DSI_set_lane_num(unsigned int lane_num);
+void fbconfig_DSI_Continuous_HS(int enable);
+void fbconfig_DSI_set_timing(MIPI_TIMING timing);
+int fbconfig_get_Continuous_status(void);
+int fbconfig_get_dsi_CLK(void);
+int fbconfig_get_dsi_lane_num(void);
+int fbconfig_get_dsi_timing(MIPI_SETTING_TYPE type);
+int fbconfig_get_TE_enable(void);
+
+
 #ifdef __cplusplus
 }
 #endif

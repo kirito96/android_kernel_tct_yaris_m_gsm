@@ -33,7 +33,7 @@ int larb_clock_off(int larb_id, const char *mod_name);
 
 int mau_init(void);
 
-static int smi_bwc_config( MTK_SMI_BWC_CONFIG* p_conf );
+int smi_bwc_config( MTK_SMI_BWC_CONFIG* p_conf );
 
 #endif
 

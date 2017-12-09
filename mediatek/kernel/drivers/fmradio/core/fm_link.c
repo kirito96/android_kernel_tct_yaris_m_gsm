@@ -1,3 +1,25 @@
+/* fm_link.c
+ *
+ * (C) Copyright 2012
+ * MediaTek <www.MediaTek.com>
+ * Hongcheng <hongcheng.xia@MediaTek.com>
+ *
+ * FM Radio Driver -- setup data link common part
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 #include <linux/slab.h>
 #include <linux/interrupt.h>
 
@@ -6,7 +28,7 @@
 #include "fm_err.h"
 #include "fm_stdlib.h"
 #include "fm_link.h"
-#if (defined(MT6620_FM)||defined(MT6628_FM)||defined(MT6627_FM))
+#if (defined(MT6620_FM)||defined(MT6628_FM)||defined(MT6627_FM)||defined(MT6630_FM))
 #include "stp_exp.h"
 #include "wmt_exp.h"
 static struct fm_link_event *link_event;
@@ -116,16 +138,39 @@ fm_s32 fm_link_release(void)
     return 0;
 }
 
+/*
+ * fm_ctrl_rx
+ * the low level func to read a rigister
+ * @addr - rigister address
+ * @val - the pointer of target buf
+ * If success, return 0; else error code
+ */
 fm_s32 fm_ctrl_rx(fm_u8 addr, fm_u16 *val)
 {
     return 0;
 }
 
+/*
+ * fm_ctrl_tx
+ * the low level func to write a rigister
+ * @addr - rigister address
+ * @val - value will be writed in the rigister
+ * If success, return 0; else error code
+ */
 fm_s32 fm_ctrl_tx(fm_u8 addr, fm_u16 val)
 {
     return 0;
 }
 
+/*
+ * fm_cmd_tx() - send cmd to FM firmware and wait event
+ * @buf - send buffer
+ * @len - the length of cmd
+ * @mask - the event flag mask
+ * @	cnt - the retry conter
+ * @timeout - timeout per cmd
+ * Return 0, if success; error code, if failed
+ */
 fm_s32 fm_cmd_tx(fm_u8* buf, fm_u16 len, fm_s32 mask, fm_s32 cnt, fm_s32 timeout, fm_s32(*callback)(struct fm_res_ctx* result))
 {
     fm_s32 ret_time = 0;
@@ -327,7 +372,7 @@ fm_s32 fm_event_parser(fm_s32(*rds_parser)(struct rds_rx_t*, fm_s32))
 			case CSPI_READ_OPCODE:
 			{
 				if ((i + 1) < RX_BUF_SIZE) {
-					link_event->result.cspi_rd = (rx_buf[i] + (rx_buf[i+1] << 8) + (rx_buf[i+1] << 16) + (rx_buf[i+1] << 24));
+					link_event->result.cspi_rd = (rx_buf[i] + (rx_buf[i+1] << 8) + (rx_buf[i+2] << 16) + (rx_buf[i+3] << 24));
 				}
 			
 				FM_EVENT_SEND(link_event->ln_event, FLAG_CSPI_READ);
@@ -336,7 +381,7 @@ fm_s32 fm_event_parser(fm_s32(*rds_parser)(struct rds_rx_t*, fm_s32))
 			case FM_HOST_READ_OPCODE:
 			{
 				if ((i + 1) < RX_BUF_SIZE) {
-					link_event->result.cspi_rd = (rx_buf[i] + (rx_buf[i+1] << 8) + (rx_buf[i+1] << 16) + (rx_buf[i+1] << 24));
+					link_event->result.cspi_rd = (rx_buf[i] + (rx_buf[i+1] << 8) + (rx_buf[i+2] << 16) + (rx_buf[i+3] << 24));
 				}
 			
 				FM_EVENT_SEND(link_event->ln_event, (1 << opcode));

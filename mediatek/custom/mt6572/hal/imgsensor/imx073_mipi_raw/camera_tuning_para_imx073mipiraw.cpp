@@ -1,4 +1,3 @@
-
 #include <utils/Log.h>
 #include <fcntl.h>
 #include <math.h>

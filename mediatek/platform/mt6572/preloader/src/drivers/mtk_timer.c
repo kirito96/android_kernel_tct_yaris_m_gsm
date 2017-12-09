@@ -1,3 +1,39 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ *
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #include <platform.h>
 #include <typedefs.h>
@@ -27,6 +63,18 @@
 // 12MHz: 1ms = 12004.801 ticks
 #define TIME_TO_TICK_MS(ms) ((ms)*GPT4_1MS_TICK + ((ms)*801 + (1000-1))/1000)
 #else
+/*
+// 6.5MHz setting (13/2) MHz
+#define GPT4_CLK_SETTING    (GPT4_SYS_CLK|GPT4_CLK_DIV2)
+#define GPT4_MAX_US_TIMEOUT ((U32)660737768)    // 0xFFFFFFFF * 153.84ns / 1000
+#define GPT4_MAX_MS_TIMEOUT ((U32)660737)       // 0xFFFFFFFF * 153.84ns / 1000000
+#define GPT4_1US_TICK       ((U32)6)            //    1000 / 153.84ns = 6.500
+#define GPT4_1MS_TICK       ((U32)6500)         // 1000000 / 153.84ns = 6500.260
+// 6.5MHz: 1us = 6.500 ticks
+#define TIME_TO_TICK_US(us) ((us)*GPT4_1US_TICK + ((us)*500 + (1000-1))/1000)
+// 6.5MHz: 1ms = 6500.260 ticks
+#define TIME_TO_TICK_MS(ms) ((ms)*GPT4_1MS_TICK + ((ms)*260 + (1000-1))/1000)
+*/
 
 // 13MHz setting
 #define GPT4_CLK_SETTING    (GPT4_SYS_CLK)
@@ -240,44 +288,28 @@ static void set_timer (ulong ticks)
 /* delay msec mseconds */
 void mdelay (unsigned long msec)
 {
-    ulong start_time = 0;
-
-    start_time = get_timer (0);
-    while (get_timer (start_time) < msec);
+    gpt_busy_wait_ms(msec);
 }
 
 /* delay usec useconds */
 void udelay (unsigned long usec)
 {
-    ulong tmo, tmp;
-
-    if (usec >= 1000)
-    {                         /* if "big" number, spread normalization to seconds */
-        tmo = usec / 1000;    /* start to normalize for usec to ticks per sec */
-        tmo *= MS_TO_US;      /* find number of "ticks" to wait to achieve target */
-        tmo /= 1000;          /* finish normalize. */
-    }
-    else
-    {                         /* else small number, don't kill it prior to HZ multiply */
-        tmo = usec * MS_TO_US;
-        tmo /= (1000 * 1000);
-    }
-
-    tmp = get_timer (0);        /* get current timestamp */
-    if ((tmo + tmp + 1) < tmp)  /* if setting this fordward will roll time stamp */
-        reset_timer_masked ();  /* reset "advancing" timestamp to 0, set lastdec value */
-    else
-        tmo += tmp;             /* else, set advancing stamp wake up time */
-
-    while (get_timer_masked () < tmo)   /* loop till event */
-        /*NOP*/;
+   gpt_busy_wait_us(usec);
 }
 
+/*
+ * This function is derived from PowerPC code (read timebase as long long).
+ * On ARM it just returns the timer value.
+ */
 static unsigned long long get_ticks (void)
 {
     return (unsigned long long) get_timer (0);
 }
 
+/*
+ * This function is derived from PowerPC code (timebase clock frequency).
+ * On ARM it returns the number of timer ticks per second.
+ */
 static ulong get_tbclk (void)
 {
     ulong tbclk;

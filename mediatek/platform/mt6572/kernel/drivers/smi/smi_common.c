@@ -118,7 +118,7 @@ static void larb_reg_backup(const int larb)
     unsigned int* pReg = pLarbRegBackUp[larb];
     int i;
     unsigned int larb_base = gLarbBaseAddr[larb];
-
+    
     //SMI registers
     for(i=0; i<2; i++)
         *(pReg++) = COM_ReadReg32(REG_SMI_SECUR_CON(i));
@@ -255,7 +255,7 @@ void dump_smi_register(void)
 EXPORT_SYMBOL(dump_smi_register);
 
 
-static int smi_bwc_config( MTK_SMI_BWC_CONFIG* p_conf )
+int smi_bwc_config( MTK_SMI_BWC_CONFIG* p_conf )
 {
 
     int i;
@@ -612,8 +612,8 @@ static int smi_probe(struct platform_device *pdev)
     smi_common_init();
 
     mau_init();
-
-#ifndef MTK_M4U_EXT_PAGE_TABLE
+    
+#if 0 //ndef MTK_M4U_EXT_PAGE_TABLE
     {
         MTK_MAU_CONFIG mau_disp;
         mau_disp.entry = 0;
@@ -727,6 +727,17 @@ static void __exit smi_exit(void)
 {
     platform_driver_unregister(&smiDrv);
 
+}
+
+// HAL function to notify SMI when engine state is changed
+// Don't remove it.
+void smi_dynamic_adj_hint_mhl(int mhl_enable)
+{
+}
+
+
+void smi_dynamic_adj_hint(unsigned int dsi2smi_total_pixel)
+{
 }
 
 module_init(smi_init);

@@ -48,18 +48,16 @@
 #include <linux/input.h>
 #include <unistd.h>
 
-#include "AcdkErrCode.h"
-#include "AcdkLog.h"
-#include "AcdkCommon.h"
-#include "cct_feature.h"
-
 extern "C" {
 #include <pthread.h>
 }
 
-#include "AcdkTypes.h"
+#include <mtkcam/acdk/cct_feature.h>
+#include <mtkcam/acdk/CctIF.h>
+#include <mtkcam/acdk/MdkIF.h>
+
+#include "AcdkLog.h"
 #include "camera_custom_eeprom.h"
-#include "AcdkIF.h"
 
 #define MEDIA_PATH "//data"
 #define PROJECT_NAME "Yusu"
@@ -385,7 +383,7 @@ static bool bSendDataToACDK(MINT32   FeatureID,
     rAcdkFeatureInfo.pu4RealParaOutLen = pRealOutByeCnt;
 
 
-    return (MDK_IOControl(FeatureID, &rAcdkFeatureInfo));
+    return (Mdk_IOControl(FeatureID, &rAcdkFeatureInfo));
 }
 
 static BOOL bCapDone = MFALSE;
@@ -507,7 +505,7 @@ MRESULT mrCCAPPreviewStart_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("FT_CCT_OP_PREVIEW_LCD_START\n");
@@ -528,10 +526,10 @@ MRESULT mrCCAPPreviewStart_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
                                                                                                                 &u4RetLen);
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 
 }
 
@@ -542,7 +540,7 @@ MRESULT mrCCAPPreviewStop_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("FT_CCT_OP_PREVIEW_LCD_STOP\n");
@@ -552,9 +550,9 @@ MRESULT mrCCAPPreviewStop_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -566,14 +564,14 @@ MRESULT mrCCAPSingleShot_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("FT_CCT_OP_SINGLE_SHOT_CAPTURE\n");
     if (a_u4Argc != 2 && a_u4Argc != 4)
     {
         ACDK_LOGD("Usage: cap <mode, prv:0, cap:1> <format, 1:raw, 0:jpg> <width (Option)> <height (Option)>\n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_CCT_STILL_CAPTURE_STRUCT rCCTStillCapConfig;
@@ -656,10 +654,10 @@ MRESULT mrCCAPSingleShot_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -671,7 +669,7 @@ MRESULT mrCCAPMultiShot_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("FT_CCT_OP_MULTI_SHOT_CAPTURE\n");
@@ -679,7 +677,7 @@ MRESULT mrCCAPMultiShot_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (a_u4Argc != 3)
     {
         ACDK_LOGD("Usage: cap <mode, prv:0, cap:1> <format, 1:raw, 0:jpg> <count> \n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_CCT_MULTI_SHOT_CAPTURE_STRUCT rCCTMutiShotConfig;
@@ -739,9 +737,9 @@ MRESULT mrCCAPMultiShot_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -751,7 +749,7 @@ MRESULT mrCCAPLoadFromNvram_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_OP_LOAD_FROM_NVRAM\n");
@@ -761,10 +759,10 @@ MRESULT mrCCAPLoadFromNvram_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (!bRet)
     {
         ACDK_LOGE("ACDK_CCT_OP_LOAD_FROM_NVRAM Fail\n");
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 
@@ -775,7 +773,7 @@ MRESULT mrCCAPSaveToNvram_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_OP_SAVE_TO_NVRAM\n");
@@ -785,10 +783,10 @@ MRESULT mrCCAPSaveToNvram_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (!bRet)
     {
         ACDK_LOGE("ACDK_CCT_OP_SAVE_TO_NVRAM Fail\n");
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 
@@ -799,7 +797,7 @@ MRESULT mrCCAPISPLoadFromNvram_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_OP_ISP_LOAD_FROM_NVRAM\n");
@@ -809,10 +807,10 @@ MRESULT mrCCAPISPLoadFromNvram_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (!bRet)
     {
         ACDK_LOGE("ACDK_CCT_OP_ISP_LOAD_FROM_NVRAM Fail\n");
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 
@@ -823,7 +821,7 @@ MRESULT mrCCAPISPSaveToNvram_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_OP_ISP_SAVE_TO_NVRAM\n");
@@ -833,10 +831,10 @@ MRESULT mrCCAPISPSaveToNvram_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (!bRet)
     {
         ACDK_LOGE("ACDK_CCT_OP_ISP_SAVE_TO_NVRAM Fail\n");
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -846,7 +844,7 @@ MRESULT mrCCAPISPGetNvramData_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     printf("ACDK_CCT_V2_OP_ISP_GET_NVRAM_DATA\n");
@@ -864,10 +862,10 @@ MRESULT mrCCAPISPGetNvramData_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (!ret)
     {
         printf("ACDK_CCT_OP_ISP_SAVE_TO_NVRAM Fail\n");
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 
@@ -879,7 +877,7 @@ MRESULT mrCCAPReadISPReg_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (a_u4Argc != 1)
     {
         ACDK_LOGD("Usage: rIspReg <addr>\n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_CCT_REG_RW_STRUCT ACDK_reg_read;
@@ -904,7 +902,7 @@ MRESULT mrCCAPReadISPReg_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     printf("[mrCCAPReadISPReg_Cmd] Addr:0x%X\n", ACDK_reg_read.RegAddr);
@@ -913,7 +911,7 @@ MRESULT mrCCAPReadISPReg_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     ACDK_LOGD("Read Addr:0x%X\n", ACDK_reg_read.RegAddr);
     ACDK_LOGD("Read Data:0x%X\n", ACDK_reg_read.RegData);
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 
 }
 
@@ -925,7 +923,7 @@ MRESULT mrCCAPWriteISPReg_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (a_u4Argc != 2)
     {
         ACDK_LOGD("Usage: wIspReg <addr> <data>\n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_CCT_REG_RW_STRUCT ACDK_reg_write;
@@ -954,13 +952,13 @@ MRESULT mrCCAPWriteISPReg_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("Write Addr:0x%X\n", ACDK_reg_write.RegAddr);
     ACDK_LOGD("Write Data:0x%X\n", ACDK_reg_write.RegData);
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 
 }
 
@@ -971,7 +969,7 @@ MRESULT mrCCAPQueryISPID_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_OP_QUERY_ISP_ID\n");
@@ -991,10 +989,10 @@ MRESULT mrCCAPQueryISPID_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -1005,7 +1003,7 @@ MRESULT mrCCAPSetTuningIndex_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 #if 0
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_ISP_SET_TUNING_INDEX\n");
@@ -1043,12 +1041,12 @@ MRESULT mrCCAPSetTuningIndex_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
             );
         if  ( ! bRet )
         {
-            return E_CCT_CCAP_API_FAIL;
+            return E_ACDK_CCAP_API_FAIL;
         }
     }
 #endif
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 
 }
 
@@ -1060,7 +1058,7 @@ MRESULT mrCCAPGetTuningIndex_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 #if 0
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_ISP_GET_TUNING_INDEX\n");
@@ -1095,11 +1093,11 @@ MRESULT mrCCAPGetTuningIndex_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
         printf("Get: (bRet, u4RetLen)=(%d, %d) (Category, Index)=(%d, %d)\n", bRet, u4RetLen, eCategory, u4Index);
         if  ( ! bRet )
         {
-            return E_CCT_CCAP_API_FAIL;
+            return E_ACDK_CCAP_API_FAIL;
         }
     }
 #endif
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 #if 0
@@ -1143,7 +1141,7 @@ MRESULT mrCCAPGetTuningParas_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_ISP_GET_TUNING_PARAS\n");
@@ -1165,10 +1163,10 @@ MRESULT mrCCAPGetTuningParas_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -1178,7 +1176,7 @@ MRESULT mrCCAPSetTuningParas_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_ISP_SET_TUNING_PARAS\n");
@@ -1192,7 +1190,7 @@ MRESULT mrCCAPSetTuningParas_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if  ( a_u4Argc < 2 )
     {
         printf("a_u4Argc(%d) < 2: (please give \"category\" & \"index\")  \n", a_u4Argc);
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ::sscanf((char*)a_pprArgv[0], "%d", &u4Category);
@@ -1200,7 +1198,7 @@ MRESULT mrCCAPSetTuningParas_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     printf("(u4Category, u4Index) = (%d, %d) \n", u4Category, u4Index);
     if  ( EIsp_Num_Of_Category <= u4Category )
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
 
     param.u4Index   = u4Index;
     param.eCategory = (ACDK_CCT_ISP_REG_CATEGORY)u4Category;
@@ -1214,10 +1212,10 @@ MRESULT mrCCAPSetTuningParas_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (!bRet)
     {
         printf("Fail\n");
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -1227,14 +1225,14 @@ MRESULT mrCCAPSetShadingOnOff_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("FT_MSDK_CCT_V2_OP_ISP_SET_SHADING_ON_OFF\n");
     if (a_u4Argc != 2)
     {
         ACDK_LOGD("Usage: setShading <Mode: prv:0, cap:1, bin:2 > <On/Off, ON:1, OFF:0>\n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
 
@@ -1255,10 +1253,10 @@ MRESULT mrCCAPSetShadingOnOff_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
     ACDK_LOGD("CCAP Set Shading On/Off Success, Mode:%d    On/Off:%d\n", ACDK_Data.Mode,  ACDK_Data.Enable);
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -1268,14 +1266,14 @@ MRESULT mrCCAPGetShadingOnOff_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("FT_MSDK_CCT_V2_OP_ISP_GET_SHADING_ON_OFF\n");
     if (a_u4Argc != 1)
     {
         ACDK_LOGD("Usage: getShading <Mode: prv:0, cap:1, bin:2 >\n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_CCT_MODULE_CTRL_STRUCT ACDK_Data;
@@ -1294,10 +1292,10 @@ MRESULT mrCCAPGetShadingOnOff_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
     ACDK_LOGD("CCAP Get Shading On/Off Success, Mode:%d    On/Off:%d\n", ACDK_Data.Mode,  ACDK_Data.Enable);
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -1307,7 +1305,7 @@ MRESULT mrCCAPSetShadingPara_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("FT_MSDK_CCT_V2_OP_ISP_SET_SHADING_PARA\n");
@@ -1344,9 +1342,9 @@ MRESULT mrCCAPSetShadingPara_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
                                                        &u4RetLen);
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -1356,7 +1354,7 @@ MRESULT mrCCAPGetShadingPara_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("FT_MSDK_CCT_V2_OP_ISP_GET_SHADING_PARA\n");
@@ -1379,7 +1377,7 @@ MRESULT mrCCAPGetShadingPara_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("CAMERA_TUNING_PREVIEW_SET\n");
@@ -1410,7 +1408,7 @@ MRESULT mrCCAPGetShadingPara_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("CAMERA_TUNING_CAPTURE_SET\n");
@@ -1442,7 +1440,7 @@ MRESULT mrCCAPGetShadingPara_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("CAMERA_TUNING_VIDEO_SET\n");
@@ -1462,7 +1460,7 @@ MRESULT mrCCAPGetShadingPara_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     ACDK_LOGD("SDBLK_RATIO10:%d\n", CCT_shading.SDBLK_RATIO10);
     ACDK_LOGD("SDBLK_RATIO11:%d\n", CCT_shading.SDBLK_RATIO11);
     ACDK_LOGD("SD_TABLE_SIZE:%d\n",  CCT_shading.SD_TABLE_SIZE);
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -1472,7 +1470,7 @@ MRESULT mrCCAPDefectTblOn_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("FT_MSDK_CCT_V2_ISP_DEFECT_TABLE_ON\n");
@@ -1491,9 +1489,9 @@ MRESULT mrCCAPDefectTblOn_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
                                                        &u4RetLen);
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -1503,7 +1501,7 @@ MRESULT mrCCAPDefectTblOff_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("FT_MSDK_CCT_V2_ISP_DEFECT_TABLE_OFF\n");
@@ -1522,9 +1520,9 @@ MRESULT mrCCAPDefectTblOff_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
                                                        &u4RetLen);
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -1534,12 +1532,12 @@ MRESULT mrCCAPDefectTblCal_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
     ACDK_LOGD("FT_MSDK_CCT_OP_DEFECT_TABLE_CAL\n");
     //ToDo
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -1549,7 +1547,7 @@ MRESULT mrCCAPEnableDynamicBypass(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_ISP_ENABLE_DYNAMIC_BYPASS_MODE\n");
@@ -1564,9 +1562,9 @@ MRESULT mrCCAPEnableDynamicBypass(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -1576,7 +1574,7 @@ MRESULT mrCCAPDisableDynamicBypass(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("FT_MSDK_CCT_V2_OP_ISP_DISABLE_DYNAMIC_BYPASS_MODE\n");
@@ -1590,9 +1588,9 @@ MRESULT mrCCAPDisableDynamicBypass(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 
@@ -1605,7 +1603,7 @@ MRESULT mrCCAPGetDynamicMode_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("FT_MSDK_CCT_V2_OP_ISP_GET_DYNAMIC_BYPASS_MODE_ON_OFF\n");
@@ -1625,9 +1623,9 @@ MRESULT mrCCAPGetDynamicMode_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 
@@ -1638,7 +1636,7 @@ MRESULT mrCCAPGetShadingTableV3_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
     ACDK_LOGD("FT_MSDK_CCT_V2_OP_ISP_GET_SHADING_TABLE_V3\n");
 
@@ -1669,7 +1667,7 @@ MRESULT mrCCAPGetShadingTableV3_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
         if (!bRet)
         {
             ACDK_LOGD("Get Shading Preview Table Fail, Color Temp:%d\n", i);
-            return E_CCT_CCAP_API_FAIL;
+            return E_ACDK_CCAP_API_FAIL;
         }
         ACDK_LOGD("Get Shading Preview Table_ColorTemp:%d\n", i);
         for (MINT32 j = 0; j  < 675; j++)
@@ -1694,7 +1692,7 @@ MRESULT mrCCAPGetShadingTableV3_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
         if (!bRet)
         {
             ACDK_LOGD("Get Shading Capture Table Fail, Color Temp:%d\n", i);
-            return E_CCT_CCAP_API_FAIL;
+            return E_ACDK_CCAP_API_FAIL;
         }
         ACDK_LOGD("Get Shading Capture Table_ColorTemp:%d\n", i);
         for (MINT32 j = 0; j  < 675; j++)
@@ -1703,7 +1701,7 @@ MRESULT mrCCAPGetShadingTableV3_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
         }
         printf("\n\n");
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 
@@ -1714,7 +1712,7 @@ MRESULT mrCCAPSetShadingTableV3_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("FT_MSDK_CCT_V2_OP_ISP_SET_SHADING_TABLE_V3\n");
@@ -1780,7 +1778,7 @@ MRESULT mrCCAPSetShadingTableV3_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
         if (!bRet)
         {
             ACDK_LOGD("Set Shading Preview Table Fail, Color Temp:%d\n", i);
-            return E_CCT_CCAP_API_FAIL;
+            return E_ACDK_CCAP_API_FAIL;
         }
     }
 
@@ -1799,10 +1797,10 @@ MRESULT mrCCAPSetShadingTableV3_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
         if (!bRet)
         {
             ACDK_LOGD("Set Shading Capture Table Fail, Color Temp:%d\n", i);
-            return E_CCT_CCAP_API_FAIL;
+            return E_ACDK_CCAP_API_FAIL;
         }
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 
 }
 
@@ -1813,7 +1811,7 @@ MRESULT mrCCAPGetShadingTablePOLYCOEF_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprA
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
     ACDK_LOGD("ACDK_CCT_V2_OP_ISP_GET_SHADING_TABLE_POLYCOEF\n");
 
@@ -1843,7 +1841,7 @@ MRESULT mrCCAPGetShadingTablePOLYCOEF_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprA
         if (!bRet)
         {
             ACDK_LOGD("Get Shading Preview Table Poly Coef Fail, Color Temp:%d\n", i);
-            return E_CCT_CCAP_API_FAIL;
+            return E_ACDK_CCAP_API_FAIL;
         }
         ACDK_LOGD("Get Shading Preview Table_ColorTemp:%d\n", i);
         for (MINT32 j = 0; j  < MAX_SHADING_Preview_SIZE/8; j++)
@@ -1870,7 +1868,7 @@ MRESULT mrCCAPGetShadingTablePOLYCOEF_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprA
         if (!bRet)
         {
             ACDK_LOGD("Get Shading Capture Table Poly Coef Fail, Color Temp:%d\n", i);
-            return E_CCT_CCAP_API_FAIL;
+            return E_ACDK_CCAP_API_FAIL;
         }
         ACDK_LOGD("Get Shading Capture Table_ColorTemp:%d\n", i);
         for (MINT32 j = 0; j  < MAX_SHADING_Capture_SIZE/8; j++)
@@ -1879,7 +1877,7 @@ MRESULT mrCCAPGetShadingTablePOLYCOEF_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprA
         }
         printf("\n\n");
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 
@@ -1890,7 +1888,7 @@ MRESULT mrCCAPSetShadingTablePOLYCOEF_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprA
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_ISP_SET_SHADING_TABLE_POLYCOEF\n");
@@ -1922,7 +1920,7 @@ MRESULT mrCCAPSetShadingTablePOLYCOEF_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprA
         if (!bRet)
         {
             ACDK_LOGD("Set Shading Preview Table Poly Coef Fail, Color Temp:%d\n", i);
-            return E_CCT_CCAP_API_FAIL;
+            return E_ACDK_CCAP_API_FAIL;
         }
     }
 
@@ -1942,10 +1940,10 @@ MRESULT mrCCAPSetShadingTablePOLYCOEF_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprA
         if (!bRet)
         {
             ACDK_LOGD("Set Shading Capture Table Fail, Color Temp:%d\n", i);
-            return E_CCT_CCAP_API_FAIL;
+            return E_ACDK_CCAP_API_FAIL;
         }
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 
 }
 
@@ -1957,7 +1955,7 @@ MRESULT mrCCAPGetShadingNVRAM_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
     ACDK_LOGD("ACDK_CCT_V2_OP_ISP_GET_SHADING_NVRAM\n");
 
@@ -1981,7 +1979,7 @@ MRESULT mrCCAPGetShadingNVRAM_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (!bRet)
     {
           ACDK_LOGD("Get Shading NVRAM data Fail\n");
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     pshadistr =  reinterpret_cast<ISP_SHADING_STRUCT*> (ShadingData.pBuffer) ;
@@ -1993,7 +1991,7 @@ MRESULT mrCCAPGetShadingNVRAM_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     ACDK_LOGD("Cap SVD Size :%d\n", pshadistr->CaptureSVDSize);
     ACDK_LOGD("Data Size  :%d\n", u4RetLen);
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 
 }
 
@@ -2005,14 +2003,14 @@ MRESULT mrCCAPCalShading_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_SHADING_CAL\n");
     if (a_u4Argc != 2)
     {
         ACDK_LOGD("Usage: calShading <mode, prv:0, cap:1> <index: 0::2900K, 1:4000K, 2:6300K>\n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
 
@@ -2052,10 +2050,10 @@ MRESULT mrCCAPCalShading_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     //! ====================================================
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -2065,10 +2063,10 @@ MRESULT mrCCAPVerifyShading_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 
@@ -2079,10 +2077,10 @@ MRESULT mrCCAPVerifyDefect_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 
@@ -2094,7 +2092,7 @@ MRESULT mrCCAPReadSensorReg_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (a_u4Argc != 1)
     {
         ACDK_LOGD("Usage: rsensorReg <addr>\n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_CCT_REG_RW_STRUCT ACDK_reg_read;
@@ -2119,13 +2117,13 @@ MRESULT mrCCAPReadSensorReg_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("Read Addr:0x%X\n", ACDK_reg_read.RegAddr);
     ACDK_LOGD("Read Data:0x%X\n", ACDK_reg_read.RegData);
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 
 }
 
@@ -2137,7 +2135,7 @@ MRESULT mrCCAPWriteSensorReg_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (a_u4Argc != 2)
     {
         ACDK_LOGD("Usage: wsensorReg <addr> <data>\n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_CCT_REG_RW_STRUCT ACDK_reg_write;
@@ -2166,13 +2164,13 @@ MRESULT mrCCAPWriteSensorReg_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("Write Addr:0x%X\n", ACDK_reg_write.RegAddr);
     ACDK_LOGD("Write Data:0x%X\n", ACDK_reg_write.RegData);
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 
 }
 
@@ -2183,7 +2181,7 @@ MRESULT mrCCAPGetSensorRes_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_CCT_SENSOR_RESOLUTION_STRUCT  SensorResolution;
@@ -2204,7 +2202,7 @@ MRESULT mrCCAPGetSensorRes_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (!bRet)
     {
         ACDK_LOGE("Get Sensor Resolution Fail \n");
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("Sensor Resolution:\n");
@@ -2212,7 +2210,7 @@ MRESULT mrCCAPGetSensorRes_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     ACDK_LOGD("Preview Height:%d\n", SensorResolution.SensorPreviewHeight);
     ACDK_LOGD("Full Width:%d\n", SensorResolution.SensorFullWidth);
     ACDK_LOGD("Full Height:%d\n", SensorResolution.SensorFullHeight);
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -2222,7 +2220,7 @@ MRESULT mrCCAPGetLSCSensorRes_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_CCT_SENSOR_RESOLUTION_STRUCT  SensorResolution;
@@ -2243,7 +2241,7 @@ MRESULT mrCCAPGetLSCSensorRes_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (!bRet)
     {
         ACDK_LOGE("Get Sensor Resolution Fail \n");
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("LSC Sensor Resolution:\n");
@@ -2251,7 +2249,7 @@ MRESULT mrCCAPGetLSCSensorRes_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     ACDK_LOGD("Preview Height:%d\n", SensorResolution.SensorPreviewHeight);
     ACDK_LOGD("Full Width:%d\n", SensorResolution.SensorFullWidth);
     ACDK_LOGD("Full Height:%d\n", SensorResolution.SensorFullHeight);
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -2261,7 +2259,7 @@ MRESULT mrCCAPQuerySensor_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_CCT_SENSOR_INFO_STRUCT ACDK_Sensor;
@@ -2283,7 +2281,7 @@ MRESULT mrCCAPQuerySensor_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (!bRet)
     {
         ACDK_LOGE("CCAP Query Sensor Fail \n");
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
 
@@ -2294,7 +2292,7 @@ MRESULT mrCCAPQuerySensor_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     ACDK_LOGD("GrabXOffset:%d\n", ACDK_Sensor.GrabXOffset);
     ACDK_LOGD("GrabYOffset:%d\n", ACDK_Sensor.GrabYOffset);
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -2308,12 +2306,12 @@ MRESULT mrCCAPGetEngSensorPara_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("Please ref mrCCAPGetSensorPreGain_Cmd(); \n");
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 
@@ -2328,11 +2326,11 @@ MRESULT mrCCAPSetEngSensorPara_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("Please ref mrCCAPSetSensorPreGain_Cmd(); \n");
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -2342,7 +2340,7 @@ MRESULT mrCCAPGetEngSensorGroupPara_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArg
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("MSDK_CCT_OP_GET_ENG_SENSOR_GROUP_PARA\n");
@@ -2365,10 +2363,10 @@ MRESULT mrCCAPGetEngSensorGroupPara_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArg
     if (!bRet)
     {
         ACDK_LOGE("CCAP Get Eng Sensor Group Para Fail \n");
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -2378,7 +2376,7 @@ MRESULT mrCCAPGetEngSensorGroupCnt_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_OP_GET_ENG_SENSOR_GROUP_COUNT\n");
@@ -2397,12 +2395,12 @@ MRESULT mrCCAPGetEngSensorGroupCnt_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv
     if (!bRet)
     {
         ACDK_LOGE("Get Sensor Group Count Fail \n");
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("Get Sensor Group Count:%d\n", uGroupCnt);
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -2412,7 +2410,7 @@ MRESULT mrCCAPGetSensorPreGain_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("FT_MSDK_CCT_OP_GET_SENSOR_PREGAIN\n");
@@ -2490,9 +2488,9 @@ MRESULT mrCCAPGetSensorPreGain_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (!bRet)
     {
         ACDK_LOGE("Get Sensor PreGain Fail \n");
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -2503,7 +2501,7 @@ MRESULT mrCCAPSetSensorPreGain_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("FT_MSDK_CCT_OP_SET_SENSOR_PREGAIN\n");
@@ -2582,9 +2580,9 @@ MRESULT mrCCAPSetSensorPreGain_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (!bRet)
     {
         ACDK_LOGE("Set Sensor PreGain Fail \n");
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 
@@ -2595,7 +2593,7 @@ MRESULT mrCCAPAEEnable_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend)
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_OP_AE_ENABLE\n");
@@ -2626,10 +2624,10 @@ MRESULT mrCCAPAEEnable_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -2639,7 +2637,7 @@ MRESULT mrCCAPAEDisable_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_OP_AE_DISABLE\n");
@@ -2671,10 +2669,10 @@ MRESULT mrCCAPAEDisable_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -2684,7 +2682,7 @@ MRESULT mrCCAPGetAEInfo_cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_OP_AE_GET_ENABLE_INFO\n");
@@ -2714,12 +2712,12 @@ MRESULT mrCCAPGetAEInfo_cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("AE enable Mode = %d\n", u4AEEnableInfo);
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -2729,7 +2727,7 @@ MRESULT mrCCAPAESetSceneMode_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_OP_DEV_AE_SET_SCENE_MODE\n");
@@ -2737,7 +2735,7 @@ MRESULT mrCCAPAESetSceneMode_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (a_u4Argc != 1)
     {
         ACDK_LOGD("Usage: AE scene mode value\n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
     //! ====================================================
     //! 1. Fill the input / output data  here
@@ -2768,9 +2766,9 @@ MRESULT mrCCAPAESetSceneMode_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -2784,7 +2782,7 @@ MRESULT mrCCAPAEGetInfo_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_OP_DEV_AE_GET_INFO\n");
@@ -2813,7 +2811,7 @@ MRESULT mrCCAPAEGetInfo_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     // TEST ONLY (check AE parameter)
@@ -2865,7 +2863,7 @@ MRESULT mrCCAPAEGetInfo_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     ACDK_LOGD("u4CaptureFlareOffset = %d\n", rAENVRAM.rCCTConfig.u4CaptureFlareOffset);
     ACDK_LOGD("u4CaptureFlareThres = %d\n", rAENVRAM.rCCTConfig.u4CaptureFlareThres);
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -2875,7 +2873,7 @@ MRESULT mrCCAPAEGetSceneMode_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_AE_GET_SCENE_MODE\n");
@@ -2906,12 +2904,12 @@ MRESULT mrCCAPAEGetSceneMode_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("AE Mode = %d\n", i4AEMode);
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -2921,7 +2919,7 @@ MRESULT mrCCAPAESetMeteringMode_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_AE_SET_METERING_MODE\n");
@@ -2929,7 +2927,7 @@ MRESULT mrCCAPAESetMeteringMode_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (a_u4Argc != 1)
     {
         ACDK_LOGD("Usage: AE metering mode value\n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
     //! ====================================================
     //! 1. Fill the input / output data  here
@@ -2959,9 +2957,9 @@ MRESULT mrCCAPAESetMeteringMode_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -2971,7 +2969,7 @@ MRESULT mrCCAPAEApplyExpoInfo_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_AE_APPLY_EXPO_INFO\n");
@@ -2979,7 +2977,7 @@ MRESULT mrCCAPAEApplyExpoInfo_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (a_u4Argc != 5)
     {
         ACDK_LOGD("Usage: Exposure AfeGain PreFlare CapFlare bFlareAuto\n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     //! ====================================================
@@ -3027,10 +3025,10 @@ MRESULT mrCCAPAEApplyExpoInfo_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -3040,7 +3038,7 @@ MRESULT mrCCAPAESelectBand_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_AE_SELECT_BAND\n");
@@ -3048,7 +3046,7 @@ MRESULT mrCCAPAESelectBand_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (a_u4Argc != 1)
     {
         ACDK_LOGD("Usage: Flicker mode value\n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
     //! ====================================================
     //! 1. Fill the input / output data  here
@@ -3078,9 +3076,9 @@ MRESULT mrCCAPAESelectBand_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -3090,7 +3088,7 @@ MRESULT mrCCAPAEGetAutoExpoPara_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_AE_GET_AUTO_EXPO_PARA\n");
@@ -3098,7 +3096,7 @@ MRESULT mrCCAPAEGetAutoExpoPara_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (a_u4Argc != 1)
     {
         ACDK_LOGD("[Usage] GainMode = 0: AFE Gain, GainMode = 1: ISO\n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
     //! ====================================================
     //! 1. Fill the input / output data  here
@@ -3140,10 +3138,10 @@ MRESULT mrCCAPAEGetAutoExpoPara_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -3153,7 +3151,7 @@ MRESULT mrCCAPAEGetBand_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
      if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_AE_GET_BAND\n");
@@ -3183,12 +3181,12 @@ MRESULT mrCCAPAEGetBand_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("AE Flicker Mode = %d\n", i4AEFlickerMode);
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -3198,7 +3196,7 @@ MRESULT mrCCAPAEGetMeteringResoult_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv
 {
      if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_AE_GET_METERING_RESULT\n");
@@ -3228,11 +3226,11 @@ MRESULT mrCCAPAEGetMeteringResoult_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("AE Metering Mode = %d\n", i4AEMeteringMode);
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -3306,7 +3304,7 @@ MRESULT mrCCAPAEApplyInfo_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
      if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_OP_DEV_AE_APPLY_INFO\n");
@@ -3337,10 +3335,10 @@ MRESULT mrCCAPAEApplyInfo_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 
@@ -3351,7 +3349,7 @@ MRESULT mrCCAPAESaveInfoToNVRAM_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_OP_DEV_AE_SAVE_INFO_NVRAM\n");
@@ -3383,9 +3381,9 @@ MRESULT mrCCAPAESaveInfoToNVRAM_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -3395,7 +3393,7 @@ MRESULT mrCCAPAEGetEVCalibration_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[]
 {
      if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_OP_DEV_AE_GET_EV_CALIBRATION\n");
@@ -3426,12 +3424,12 @@ MRESULT mrCCAPAEGetEVCalibration_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[]
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("AE current EV value = %d\n", i4AEcurrentEVValue);
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -3441,7 +3439,7 @@ MRESULT mrCCAPAESetExpLine_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
      if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_OP_AE_SET_SENSOR_EXP_LINE\n");
@@ -3449,7 +3447,7 @@ MRESULT mrCCAPAESetExpLine_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (a_u4Argc != 1)
     {
         ACDK_LOGD("Usage: AE exposure line\n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
     //! ====================================================
     //! 1. Fill the input / output data  here
@@ -3479,10 +3477,10 @@ MRESULT mrCCAPAESetExpLine_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -3492,7 +3490,7 @@ MRESULT mrCCAPAWBEnableAutoRun_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_AWB_ENABLE_AUTO_RUN\n");
@@ -3524,10 +3522,10 @@ MRESULT mrCCAPAWBEnableAutoRun_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -3537,7 +3535,7 @@ MRESULT mrCCAPAWBDisableAutoRun_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_AWB_DISABLE_AUTO_RUN\n");
@@ -3569,10 +3567,10 @@ MRESULT mrCCAPAWBDisableAutoRun_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -3582,7 +3580,7 @@ MRESULT mrCCAPAWBGetEnableInfo_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_AWB_GET_AUTO_RUN_INFO\n");
@@ -3614,12 +3612,12 @@ MRESULT mrCCAPAWBGetEnableInfo_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("i4AWBEnable = %d\n", i4AWBEnable);
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -3629,7 +3627,7 @@ MRESULT mrCCAPAWBGetGain_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_AWB_GET_GAIN\n");
@@ -3663,14 +3661,14 @@ MRESULT mrCCAPAWBGetGain_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
     ACDK_LOGD("AWB Rgain = %d\n", rAWBGain.i4R);
     ACDK_LOGD("AWB Ggain = %d\n", rAWBGain.i4G);
     ACDK_LOGD("AWB Bgain = %d\n", rAWBGain.i4B);
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -3680,7 +3678,7 @@ MRESULT mrCCAPAWBSetGain_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 {
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_AWB_SET_GAIN\n");
@@ -3688,7 +3686,7 @@ MRESULT mrCCAPAWBSetGain_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
     if (a_u4Argc != 3)
     {
         ACDK_LOGD("Usage: sAWBGain <Rgain> <Ggain> <Bgain>\n");
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     //! ====================================================
@@ -3727,10 +3725,10 @@ MRESULT mrCCAPAWBSetGain_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 }
 
 /////////////////////////////////////////////////////////////////////////
@@ -4188,7 +4186,7 @@ AWB_NVRAM_T rAWBNVRAMTestData =
 
      if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_AWB_APPLY_CAMERA_PARA2\n");
@@ -4219,10 +4217,10 @@ AWB_NVRAM_T rAWBNVRAMTestData =
 
     if (!bRet)
     {
-        return E_CCT_CCAP_API_FAIL;
+        return E_ACDK_CCAP_API_FAIL;
     }
 
-    return S_CCT_CCAP_OK;
+    return S_ACDK_CCAP_OK;
 
 }
 
@@ -4237,7 +4235,7 @@ MRESULT mrCCAPAWBGetAWBPara_Cmd(const MUINT32 a_u4Argc, MUINT8 *a_pprArgv[])
 
     if (!g_bAcdkOpend )
     {
-        return E_CCT_IF_API_FAIL;
+        return E_ACDK_IF_API_FAIL;
     }
 
     ACDK_LOGD("ACDK_CCT_V2_OP_AWB_GET_AWB_PARA\n");
@@ -7722,16 +7720,16 @@ int main (int argc, char **argv)
     //! *************************************************
     //! Create the related object and init/enable it
     //! *************************************************
-    if (MDK_Open() == MFALSE)
+    if (Mdk_Open() == MFALSE)
     {
-        ACDK_LOGE("MDK_Open() Fail \n");
+        ACDK_LOGE("Mdk_Open() Fail \n");
         goto Exit;
     }
 
 
-    if (MDK_Init() == MFALSE)
+    if (Mdk_Init() == MFALSE)
     {
-        ACDK_LOGE("MDK_Init() Fail \n");
+        ACDK_LOGE("Mdk_Init() Fail \n");
         goto Exit;
     }
 
@@ -7774,8 +7772,8 @@ Exit:
     //!    all files are written to SD card
     //! 3. Sync all file to SD card to ensure the files are saving in SD
     //!***************************************************
-    MDK_DeInit();
-    MDK_Close();
+    Mdk_DeInit();
+    Mdk_Close();
     ACDK_LOGD("umount SDCard file system\n");
 
 #if 0

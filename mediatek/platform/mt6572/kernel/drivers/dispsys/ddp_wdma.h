@@ -1,6 +1,11 @@
 #ifndef _DDP_WDMA_API_H_
 #define _DDP_WDMA_API_H_
 
+#include <mach/mt_typedefs.h>
+
+#include "ddp_drv.h"
+
+
 #define WDMA_INSTANCES  2
 #define WDMA_MAX_WIDTH  1920
 #define WDMA_MAX_HEIGHT 1080
@@ -8,27 +13,6 @@
 enum WDMA_INPUT_FORMAT {
     WDMA_INPUT_FORMAT_ARGB = 0x00,      // from overlay
     WDMA_INPUT_FORMAT_YUV444 = 0x01,    // from direct link
-};
-
-enum WDMA_OUTPUT_FORMAT {
-    WDMA_OUTPUT_FORMAT_RGB565 = 0x00,   // basic format
-    WDMA_OUTPUT_FORMAT_RGB888 = 0x01,
-    WDMA_OUTPUT_FORMAT_ARGB = 0x02,
-    WDMA_OUTPUT_FORMAT_XRGB = 0x03,
-    WDMA_OUTPUT_FORMAT_UYVY = 0x04,
-    WDMA_OUTPUT_FORMAT_YUV444 = 0x05,
-    WDMA_OUTPUT_FORMAT_YUV420_P = 0x06,
-    WDMA_OUTPUT_FORMAT_UYVY_BLK = 0x0c,
-
-    WDMA_OUTPUT_FORMAT_BGR888 = 0xa0,   // special format by swap
-    WDMA_OUTPUT_FORMAT_BGRA = 0xa1,
-    WDMA_OUTPUT_FORMAT_ABGR = 0xa2,
-    WDMA_OUTPUT_FORMAT_RGBA = 0xa3,
-
-    /*WDMA_OUTPUT_FORMAT_Y1V0Y0U0,   // UV format by swap
-    WDMA_OUTPUT_FORMAT_V0Y1U0Y0,
-    WDMA_OUTPUT_FORMAT_Y1U0Y0V0,
-    WDMA_OUTPUT_FORMAT_U0Y1V0Y0,//*/
 };
 
 typedef struct _WDMA_CONFIG_STRUCT
@@ -50,7 +34,8 @@ typedef struct _WDMA_CONFIG_STRUCT
 
 
 // initialize module
-int WDMAInit(unsigned idx);//zhao.li@tcl bug 481348 P28
+int WDMAInit(unsigned idx);
+
 // start module
 int WDMAStart(unsigned idx);
 
@@ -62,10 +47,18 @@ int WDMAReset(unsigned idx);
 
 // config write settings
 int WDMAConfig(unsigned idx,                                                            // module idx
-               unsigned inputFormat, unsigned srcWidth, unsigned srcHeight,             // input
-               unsigned clipX, unsigned clipY, unsigned clipWidth, unsigned clipHeight, // clip
-               unsigned outputFormat, unsigned dstAddress, unsigned dstWidth,           // output
-               bool useSpecifiedAlpha, unsigned char alpha);                            // alpha
+               unsigned inputFormat, 
+               unsigned srcWidth, 
+               unsigned srcHeight,
+               unsigned clipX, 
+               unsigned clipY, 
+               unsigned clipWidth, 
+               unsigned clipHeight,
+               DpColorFormat  out_formt, 
+               unsigned dstAddress, 
+               unsigned dstWidth,               
+               bool useSpecifiedAlpha, 
+               unsigned char alpha);                            // alpha
 
 void WDMAWait(unsigned idx);
 
@@ -74,6 +67,9 @@ void WDMASlowMode(unsigned int idx,
                           unsigned int level, 
                           unsigned int cnt,
                           unsigned int threadhold);
+
+enum WDMA_OUTPUT_FORMAT wdma_fmt_convert(DpColorFormat fmt);
+void WDMAConfigAddress(unsigned int idx, unsigned int addr);
 
 
 ///----------------------------------------------------------

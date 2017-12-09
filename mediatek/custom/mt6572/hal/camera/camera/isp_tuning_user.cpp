@@ -1,5 +1,3 @@
-
-
 #define LOG_TAG "isp_tuning_user"
 
 #ifndef ENABLE_MY_LOG

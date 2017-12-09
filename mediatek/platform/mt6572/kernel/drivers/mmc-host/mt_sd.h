@@ -5,6 +5,7 @@
 #include <linux/mmc/host.h>
 #include <mach/sync_write.h>
 #include <mach/mt_reg_base.h>
+#include <linux/semaphore.h>
 #define MAX_GPD_NUM         (1 + 1)  /* one null gpd */
 #define MAX_BD_NUM          (1024)
 #define MAX_BD_PER_GPD      (MAX_BD_NUM)
@@ -1283,11 +1284,12 @@ struct msdc_host
     int                         read_time_tune;
     int                         write_time_tune;
     u32                         write_timeout_uhs104;
-    u32	                        read_timeout_uhs104;
+    u32                         read_timeout_uhs104;
     u8                          autocmd;
     u32                         sw_timeout;
     u32                         power_cycle; /* power cycle done in tuning flow*/
     bool                        power_cycle_enable;/*Enable power cycle*/
+    bool                        error_tune_enable; /* Enable error tune flow */
     u32                         sd_30_busy;
     bool                        tune;
     MSDC_POWER_DOMAIN           power_domain;

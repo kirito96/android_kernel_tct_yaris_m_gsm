@@ -17,7 +17,8 @@ SpeechLoopbackController *SpeechLoopbackController::GetInstance()
     static Mutex mGetInstanceLock;
     Mutex::Autolock _l(mGetInstanceLock);
 
-    if (mSpeechLoopbackController == NULL) {
+    if (mSpeechLoopbackController == NULL)
+    {
         mSpeechLoopbackController = new SpeechLoopbackController();
     }
     ASSERT(mSpeechLoopbackController != NULL);
@@ -27,7 +28,7 @@ SpeechLoopbackController *SpeechLoopbackController::GetInstance()
 SpeechLoopbackController::SpeechLoopbackController()
 {
     mVoiceVolumeCopy = 1.0;
-	mUseBtCodec = 1;
+    mUseBtCodec = 1;
 }
 
 SpeechLoopbackController::~SpeechLoopbackController()
@@ -39,7 +40,7 @@ status_t SpeechLoopbackController::SetModemBTCodec(bool enable_codec)
 {
     ALOGD("+%s(), enable_codec = %d", __FUNCTION__, enable_codec);
     mUseBtCodec = enable_codec;
-	return NO_ERROR;
+    return NO_ERROR;
 }
 
 status_t SpeechLoopbackController::OpenModemLoopbackControlFlow(const modem_index_t modem_index, const audio_devices_t input_device, const audio_devices_t output_device)
@@ -51,8 +52,18 @@ status_t SpeechLoopbackController::OpenModemLoopbackControlFlow(const modem_inde
     ASSERT(mAudioResourceManager->GetAudioMode() == AUDIO_MODE_NORMAL);
 
     // pretend to be phone call state
-    mAudioResourceManager->SetAudioMode((modem_index == MODEM_1) ? AUDIO_MODE_IN_CALL : AUDIO_MODE_IN_CALL_2);
-
+    if (modem_index == MODEM_1)
+    {
+        mAudioResourceManager->SetAudioMode(AUDIO_MODE_IN_CALL);
+    }
+    else if (modem_index == MODEM_2)
+    {
+        mAudioResourceManager->SetAudioMode(AUDIO_MODE_IN_CALL_2);
+    }
+    else    //External modem
+    {
+        mAudioResourceManager->SetAudioMode(AUDIO_MODE_IN_CALL_EXTERNAL);
+    }
     // get speech driver instance
     SpeechDriverInterface *pSpeechDriver = mSpeechDriverFactory->GetSpeechDriverByIndex(modem_index);
 
@@ -64,8 +75,8 @@ status_t SpeechLoopbackController::OpenModemLoopbackControlFlow(const modem_inde
     SetAfeAnalogClock(true);
 
     // set sampling rate
-    mAudioAnalogInstance->SetFrequency(AudioAnalogType::DEVICE_OUT_DAC, sample_rate);
-    mAudioAnalogInstance->SetFrequency(AudioAnalogType::DEVICE_IN_ADC, sample_rate);
+    mAudioResourceManager->SetFrequency(AudioResourceManagerInterface::DEVICE_OUT_DAC, sample_rate);
+    mAudioResourceManager->SetFrequency(AudioResourceManagerInterface::DEVICE_IN_ADC, sample_rate);
 
     // set device
     mAudioResourceManager->setDlOutputDevice(output_device);
@@ -79,11 +90,12 @@ status_t SpeechLoopbackController::OpenModemLoopbackControlFlow(const modem_inde
 
     // Set PMIC digital/analog part - uplink has pop, open first
     mAudioResourceManager->StartInputDevice();
-    usleep(kDelayForUplinkPulseMs * 1000); // HW pulse
 
     // set MODEM_PCM - open modem pcm here s.t. modem/DSP can learn the uplink background noise, but not zero
     SetModemPcmAttribute(modem_index, sample_rate);
     mAudioDigitalInstance->SetModemPcmEnable(modem_index, true);
+
+
 
     // Set MD side sampling rate
     pSpeechDriver->SetModemSideSamplingRate(sample_rate);
@@ -92,8 +104,10 @@ status_t SpeechLoopbackController::OpenModemLoopbackControlFlow(const modem_inde
     pSpeechDriver->SetSpeechMode(input_device, output_device);
 
     // Set Loopback on
-	pSpeechDriver->SetAcousticLoopbackBtCodec(mUseBtCodec);
+    pSpeechDriver->SetAcousticLoopbackBtCodec(mUseBtCodec);
     pSpeechDriver->SetAcousticLoopback(true);
+
+
 
     // Set PMIC digital/analog part - DL need trim code.
     mAudioResourceManager->StartOutputDevice();
@@ -107,6 +121,7 @@ status_t SpeechLoopbackController::OpenModemLoopbackControlFlow(const modem_inde
     ALOGD("-%s(), modem_index = %d, input_device = 0x%x, output_device = 0x%x", __FUNCTION__, modem_index, input_device, output_device);
     return NO_ERROR;
 }
+
 
 status_t SpeechLoopbackController::CloseModemLoopbackControlFlow(const modem_index_t modem_index)
 {
@@ -140,8 +155,8 @@ status_t SpeechLoopbackController::CloseModemLoopbackControlFlow(const modem_ind
     mAudioDigitalInstance->SetAfeEnable(false);
 
     // recover sampling rate
-    mAudioAnalogInstance->SetFrequency(AudioAnalogType::DEVICE_OUT_DAC, 44100);
-    mAudioAnalogInstance->SetFrequency(AudioAnalogType::DEVICE_IN_ADC, 44100);
+    mAudioResourceManager->SetFrequency(AudioResourceManagerInterface::DEVICE_OUT_DAC, 44100);
+    mAudioResourceManager->SetFrequency(AudioResourceManagerInterface::DEVICE_IN_ADC, 44100);
 
 #ifdef SPEECH_LOOPBACK_USE_MAX_GAIN
     // recover volume

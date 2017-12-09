@@ -1,16 +1,21 @@
-
 #ifndef _MTK_CUSTOM_PROJECT_HAL_IMGSENSOR_SRC_CONFIGFTBLFLASHLIGHT_H_
 #define _MTK_CUSTOM_PROJECT_HAL_IMGSENSOR_SRC_CONFIGFTBLFLASHLIGHT_H_
 #if 1
 //
 
+#include "flash_tuning_custom2.h"
 
+/*******************************************************************************
+ *
+ ******************************************************************************/
 #define CUSTOM_FLASHLIGHT   "flashlight"
 FTABLE_DEFINITION(CUSTOM_FLASHLIGHT)
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 FTABLE_SCENE_INDEP()
     //==========================================================================
-#if 1
+    //
+#if SUB_FLASH_SUPPORT
+#else
     if  (1 == facing)
     {
         MY_LOGD("facing=yes");
@@ -75,30 +80,10 @@ FTABLE_SCENE_INDEP()
             CameraParameters::FLASH_MODE_OFF,
             CameraParameters::FLASH_MODE_ON,
             CameraParameters::FLASH_MODE_AUTO,
-            //CameraParameters::FLASH_MODE_RED_EYE,
+            CameraParameters::FLASH_MODE_RED_EYE,
             CameraParameters::FLASH_MODE_TORCH,
             )
         ),
-        //......................................................................
-        #if 1   //  SCENE HDR
-        SCENE_AS_(MtkCameraParameters::SCENE_MODE_HDR,
-            ITEM_AS_DEFAULT_(MtkCameraParameters::FLASH_MODE_OFF),
-            ITEM_AS_VALUES_(
-            CameraParameters::FLASH_MODE_OFF,
-            )
-        )
-        #endif
-        //......................................................................
-        //......................................................................
-        #if 1   //  SCENE Fireworks
-        SCENE_AS_(MtkCameraParameters::SCENE_MODE_FIREWORKS,
-            ITEM_AS_DEFAULT_(MtkCameraParameters::FLASH_MODE_OFF),
-            ITEM_AS_VALUES_(
-            CameraParameters::FLASH_MODE_OFF,
-            )
-        )
-        #endif
-        //......................................................................
     )
     }
     //==========================================================================
@@ -131,6 +116,9 @@ END_FTABLE_SCENE_INDEP()
 END_FTABLE_DEFINITION()
 
 
+/*******************************************************************************
+ *
+ ******************************************************************************/
 #define CUSTOM_AFLAMP       "aflamp"
 FTABLE_DEFINITION(CUSTOM_AFLAMP)
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -180,8 +168,14 @@ FTABLE_SCENE_INDEP()
 END_FTABLE_SCENE_INDEP()
 //------------------------------------------------------------------------------
 END_FTABLE_DEFINITION()
+/*******************************************************************************
+ *
+ ******************************************************************************/
 
 
+/*******************************************************************************
+ *
+ ******************************************************************************/
 #endif
 #endif //_MTK_CUSTOM_PROJECT_HAL_IMGSENSOR_SRC_CONFIGFTBLFLASHLIGHT_H_
 

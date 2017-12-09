@@ -1,3 +1,16 @@
+/******************************************************************************
+* partition_mt.c - MT6516 NAND partition managment Driver
+ *
+* Copyright 2009-2010 MediaTek Co.,Ltd.
+ *
+* DESCRIPTION:
+* 	This file provid the other drivers partition relative functions
+ *
+* modification history
+* ----------------------------------------
+* v1.0, 28 Feb 2011, mtk80134 written
+* ----------------------------------------
+******************************************************************************/
 
 #include <linux/slab.h>
 #include <linux/init.h>
@@ -58,7 +71,12 @@ char *page_readbuf;
 
 extern bool g_bInitDone;
 extern struct mtk_nand_host *host;
+
+#if defined(MTK_SPI_NAND_SUPPORT)
+extern snand_flashdev_info devinfo;
+#else
 extern flashdev_info devinfo;
+#endif
 
 #if 0
 struct pmt_config

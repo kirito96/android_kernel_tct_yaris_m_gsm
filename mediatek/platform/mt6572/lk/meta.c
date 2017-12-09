@@ -1,3 +1,25 @@
+/*
+ * (C) Copyright 2008
+ * MediaTek <www.mediatek.com>
+ *
+ * See file CREDITS for list of people who contributed to this
+ * project.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of
+ * the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
+ * MA 02111-1307 USA
+ */
 
 #include <sys/types.h>
 #include <debug.h>
@@ -13,6 +35,9 @@
 #include <platform/mt_rtc.h>
 #include <mt_partition.h>
 
+/**************************************************************************
+ *  CONSTANT DEFINITION
+ **************************************************************************/
 #define META_STR_READY         "READY"         /* Ready Signal          */
 #define	META_STR_REQ           "METAMETA"      /* PC META Request      */
 #define META_STR_ACK  	       "ATEMATEM"      /* TARGET META Ack Response */
@@ -31,10 +56,26 @@
 #define ATE_SZ_MAX_PBUF       20			   /* max protocol buffer size */
 
 
+/**************************************************************************
+ *  DEBUG FLAG
+ **************************************************************************/
  //#define META_DEBUG
 
+/**************************************************************************
+ *  LOCAL VARIABLE DECLARATION
+ **************************************************************************/
 
+/**************************************************************************
+ *  FUNCTION IMPLEMENTATION
+ **************************************************************************/
 
+/******************************************************************************
+ * meta_detection
+ * 
+ * DESCRIPTION:
+ *   Detect META mode is on or off
+ *
+******************************************************************************/
 extern BOOT_ARGUMENT *g_boot_arg;
 BOOL meta_detection(void)
 {  

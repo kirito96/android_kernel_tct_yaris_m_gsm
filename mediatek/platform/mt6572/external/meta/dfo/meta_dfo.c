@@ -27,6 +27,9 @@ void META_Dfo_SetCallback(DFO_CNF_CB callback)
 
 bool    META_Dfo_Init(void)
 {
+#ifdef NOT_SUPPORT_DFO
+    return false;
+#endif
     // Read DFO from NVRAM
     F_ID fid;
     int rec_size = 0;

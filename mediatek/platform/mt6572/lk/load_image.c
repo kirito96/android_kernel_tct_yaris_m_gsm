@@ -1,6 +1,8 @@
 #include <sys/types.h>
 #include <stdint.h>
-
+#include <debug.h>
+#include <string.h>
+#include <malloc.h>
 
 #include <mt_partition.h>
 #include <platform/mt_typedefs.h>
@@ -8,6 +10,7 @@
 #include <platform/mt_reg_base.h>
 #include <platform/bootimg.h>
 #include <platform/errno.h>
+#include <platform/mt_gpt.h>
 
 #define MODULE_NAME "LK_BOOT"
 
@@ -108,7 +111,7 @@ static int mboot_common_load_part_info(part_dev_t *dev, char *part_name, part_hd
 int mboot_common_load_part(char *part_name, unsigned long addr)
 {
     long len;
-	  unsigned long begin;
+	  //unsigned long begin;
 #ifdef MTK_EMMC_SUPPORT
 	  unsigned long long start_addr;
 #else
@@ -147,7 +150,8 @@ int mboot_common_load_part(char *part_name, unsigned long addr)
         goto exit;
     }
 
-	begin = get_timer(0);
+	//begin = 
+	get_timer(0);
 
 	//****************
     //* read image data
@@ -178,10 +182,9 @@ exit:
 int mboot_common_load_logo(unsigned long logo_addr, char* filename)
 {
     int ret;
-    long len;
 
 #if (CONFIG_COMMANDS & CFG_CMD_FAT)
-    len = file_fat_read(filename, (unsigned char *)logo_addr, 0);
+    long len = file_fat_read(filename, (unsigned char *)logo_addr, 0);
 
     if (len > 0)
         return (int)len;
@@ -292,7 +295,7 @@ static int mboot_android_check_bootimg_hdr(part_dev_t *dev, char *part_name, boo
 	//***************
     //* check partition magic
 	//*
-    if (strncmp(boot_hdr->magic,BOOT_MAGIC, sizeof(BOOT_MAGIC))!=0) {
+    if (strncmp((char*)boot_hdr->magic,BOOT_MAGIC, sizeof(BOOT_MAGIC))!=0) {
         printf("[%s] boot image header magic error\n", MODULE_NAME);
         return -1;
     }
@@ -304,8 +307,8 @@ static int mboot_android_check_bootimg_hdr(part_dev_t *dev, char *part_name, boo
 	{
 		unsigned int k_pg_cnt = 0;
 		unsigned int r_pg_cnt = 0;
-		unsigned int b_pg_cnt = 0;
-		unsigned int size_b = 0;
+		//unsigned int b_pg_cnt = 0;
+		//unsigned int size_b = 0;
 
 		g_kmem_off =  CFG_BOOTIMG_LOAD_ADDR;
 
@@ -402,7 +405,7 @@ static int mboot_android_check_recoveryimg_hdr(part_dev_t *dev, char *part_name,
 	//***************
     //* check partition magic
 	//*
-    if (strncmp(boot_hdr->magic,BOOT_MAGIC, sizeof(BOOT_MAGIC))!=0) {
+    if (strncmp((char*)boot_hdr->magic,BOOT_MAGIC, sizeof(BOOT_MAGIC))!=0) {
         printf("[%s] Recovery image header magic error\n", MODULE_NAME);
         return -1;
     }
@@ -457,8 +460,7 @@ static int mboot_android_check_recoveryimg_hdr(part_dev_t *dev, char *part_name,
  **********************************************************/
 static int mboot_android_check_factoryimg_hdr(char *part_name, boot_img_hdr *boot_hdr)
 {
-    int len;
-    ulong addr;
+    //ulong addr;
 
     //**********************************
 	// TODO : fix pg_sz assignment
@@ -470,7 +472,7 @@ static int mboot_android_check_factoryimg_hdr(char *part_name, boot_img_hdr *boo
     //*
 
 #if (CONFIG_COMMANDS & CFG_CMD_FAT)
-    len = file_fat_read(part_name, (uchar*) boot_hdr, sizeof(boot_img_hdr));
+    int len = file_fat_read(part_name, (uchar*) boot_hdr, sizeof(boot_img_hdr));
 
     if (len < 0) {
         printf("[%s] %s Factory image header read error. LINE: %d\n", MODULE_NAME, part_name, __LINE__);
@@ -489,7 +491,7 @@ static int mboot_android_check_factoryimg_hdr(char *part_name, boot_img_hdr *boo
 	//***************
     //* check partition magic
 	//*
-    if (strncmp(boot_hdr->magic,BOOT_MAGIC, sizeof(BOOT_MAGIC))!=0) {
+    if (strncmp((char*)boot_hdr->magic,BOOT_MAGIC, sizeof(BOOT_MAGIC))!=0) {
         printf("[%s] Factory image header magic error\n", MODULE_NAME);
         return -1;
     }
@@ -497,7 +499,7 @@ static int mboot_android_check_factoryimg_hdr(char *part_name, boot_img_hdr *boo
 	//***************
 	//* follow bootimg.h to calculate the location of rootfs
 	//*
-	if(len != -1)
+	//if(len != -1)
 	{
 		unsigned int k_pg_cnt = 0;
 
@@ -538,8 +540,8 @@ static int mboot_android_check_factoryimg_hdr(char *part_name, boot_img_hdr *boo
 int mboot_android_load_bootimg_hdr(char *part_name, unsigned long addr)
 {
     long len;
-	unsigned long begin;
-	unsigned long start_addr;
+	//unsigned long begin;
+	//unsigned long start_addr;
     part_t *part;
     part_dev_t *dev;
     boot_img_hdr *boot_hdr;
@@ -558,7 +560,7 @@ int mboot_android_load_bootimg_hdr(char *part_name, unsigned long addr)
     	return -ENOENT;
     }
 
-    start_addr = part->startblk * BLK_SIZE;
+    //start_addr = part->startblk * BLK_SIZE;
 
     boot_hdr = (boot_img_hdr*)malloc(sizeof(boot_img_hdr));
     if (!boot_hdr)
@@ -581,8 +583,8 @@ int mboot_android_load_bootimg_hdr(char *part_name, unsigned long addr)
 int mboot_android_load_recoveryimg_hdr(char *part_name, unsigned long addr)
 {
     long len;
-	unsigned long begin;
-	unsigned long start_addr;
+	//unsigned long begin;
+	//unsigned long start_addr;
     part_t *part;
     part_dev_t *dev;
     boot_img_hdr *boot_hdr;
@@ -601,7 +603,7 @@ int mboot_android_load_recoveryimg_hdr(char *part_name, unsigned long addr)
     	return -ENOENT;
     }
 
-    start_addr = part->startblk * BLK_SIZE;
+    //start_addr = part->startblk * BLK_SIZE;
 
     boot_hdr = (boot_img_hdr*)malloc(sizeof(boot_img_hdr));
     if (!boot_hdr)
@@ -651,7 +653,7 @@ int mboot_android_load_factoryimg_hdr(char *part_name, unsigned long addr)
 int mboot_android_load_bootimg(char *part_name, unsigned long addr)
 {
     long len;
-	unsigned long begin;
+	//unsigned long begin;
 #ifdef MTK_EMMC_SUPPORT
 	unsigned long long start_addr;
 #else
@@ -701,7 +703,7 @@ int mboot_android_load_bootimg(char *part_name, unsigned long addr)
 	//* check kernel header
 	//*
 	g_kimg_sz = mboot_android_check_img_info(PART_KERNEL,(part_hdr_t *)(g_kmem_off - MKIMG_HEADER_SZ));
-	if(g_kimg_sz == -1) {
+	if((int)g_kimg_sz == -1) {
         len = -EIO;
         goto exit;
 }
@@ -710,7 +712,7 @@ int mboot_android_load_bootimg(char *part_name, unsigned long addr)
 	//* check rootfs header
 	//*
 	g_rimg_sz = mboot_android_check_img_info(PART_ROOTFS,(part_hdr_t *)(g_rmem_off - MKIMG_HEADER_SZ));
-	if(g_rimg_sz == -1) {
+	if((int)g_rimg_sz == -1) {
         len = -EIO;
         goto exit;
     }
@@ -735,7 +737,7 @@ exit:
 int mboot_android_load_recoveryimg(char *part_name, unsigned long addr)
 {
     long len;
-	unsigned long begin;
+	//unsigned long begin;
 #ifdef MTK_EMMC_SUPPORT
 	unsigned long long start_addr;
 #else
@@ -787,7 +789,7 @@ int mboot_android_load_recoveryimg(char *part_name, unsigned long addr)
 	//* check kernel header
 	//*
 	g_kimg_sz = mboot_android_check_img_info(PART_KERNEL,(part_hdr_t *)(g_kmem_off - MKIMG_HEADER_SZ));
-	if(g_kimg_sz == -1) {
+	if((int)g_kimg_sz == -1) {
         len = -EIO;
         goto exit;
 }
@@ -796,7 +798,7 @@ int mboot_android_load_recoveryimg(char *part_name, unsigned long addr)
 	//* check rootfs header
 	//*
 	g_rimg_sz = mboot_android_check_img_info(PART_RECOVERY,(part_hdr_t *)(g_rmem_off - MKIMG_HEADER_SZ));
-	if(g_rimg_sz == -1) {
+	if((int)g_rimg_sz == -1) {
         len = -EIO;
         goto exit;
     }
@@ -822,7 +824,7 @@ exit:
 int mboot_android_load_factoryimg(char *part_name, unsigned long addr)
 {
     int len = 0;
-	unsigned long start_addr;
+	//unsigned long start_addr;
 
 	//***************
 	//* not to include unused header
@@ -842,7 +844,7 @@ int mboot_android_load_factoryimg(char *part_name, unsigned long addr)
 	//*
 
 	g_kimg_sz = mboot_android_check_img_info(PART_KERNEL,(part_hdr_t *)(g_kmem_off - MKIMG_HEADER_SZ));
-	if(g_kimg_sz == -1) {
+	if((int)g_kimg_sz == -1) {
         len = -EIO;
         goto exit;
     }
@@ -851,7 +853,7 @@ int mboot_android_load_factoryimg(char *part_name, unsigned long addr)
 	//* check rootfs header
 	//*
 	g_rimg_sz = mboot_android_check_img_info(PART_ROOTFS,(part_hdr_t *)(g_rmem_off - MKIMG_HEADER_SZ));
-	if(g_rimg_sz == -1) {
+	if((int)g_rimg_sz == -1) {
         len = -EIO;
         goto exit;
     }
@@ -905,7 +907,7 @@ int mboot_recovery_load_raw_part(char *part_name, unsigned long *addr, unsigned 
 #endif
 	begin = get_timer(0);
 
-    len = dev->read(dev, start_addr, addr, size);
+    len = dev->read(dev, start_addr, (uchar*)addr, size);
     if (len < 0)
 		{
         len = -EIO;
@@ -1003,10 +1005,15 @@ int mboot_mem_preserved_load_part(char *part_name, unsigned long sram_addr, unsi
     skip = (skip /BLK_SIZE + 1) * BLK_SIZE;
 	//****************
     //* read image data
-	//*
-	printf("read the data of %s\n", part_name, skip );
+    //*
 
-    //read sram header first
+    //flush and invalidate dma data, NAND will copy by CPU, eMMC is DMA directly
+    arch_clean_invalidate_cache_range((addr_t)mem_addr,(size_t)0x20000);
+    arch_clean_invalidate_cache_range((addr_t)sram_addr,(size_t)0x1660);
+
+    printf("read the data of %s, skip=0x%x\n", part_name, skip );
+    printf("[MEM]start DMA sram header part[%s] dev_s=0x%x, ram_s=0x%x, size=0x%x\n",part_name,(start_addr + skip),(u32)mem_addr, BLK_SIZE );
+    //read sram header first, for getting image size
     len = dev->read(dev, start_addr + skip, (uchar*)mem_addr, BLK_SIZE);
     if (len < 0) {
         len = -EIO;
@@ -1014,16 +1021,24 @@ int mboot_mem_preserved_load_part(char *part_name, unsigned long sram_addr, unsi
     }
 
     //read sram image
-    printf("[MEM] ------- start DMA part[%s] dev_s=0x%x, ram_s=x%x size=0x%x -------- \n",part_name,(start_addr + skip + BLK_SIZE),mem_addr, size );
     pre_header = (MEM_PRE_HEADER *)mem_addr;
     size =(pre_header->m_file_len /BLK_SIZE + 1) * BLK_SIZE;
-    len = dev->read(dev, start_addr + skip + BLK_SIZE, (uchar*)mem_addr + BLK_SIZE, size );
+    printf("[MEM]start DMA (skip header) part[%s] dev_s=0x%x, ram_s=0x%x, size=0x%x\n",part_name,(start_addr + skip + BLK_SIZE),(u32)(mem_addr + BLK_SIZE), size );
+    len = dev->read(dev, start_addr + skip + BLK_SIZE, (uchar*)(mem_addr + BLK_SIZE), size );
 
-    printf("[MEM] ------- start memcpy mem_s=0x%x, sram_start size=0x%x -------- \n",part_name,(mem_addr),sram_addr, pre_header->m_file_len );
+    //flush and invalidate dma data, NAND will copy by CPU, eMMC is DMA directly
+    arch_clean_invalidate_cache_range((addr_t)mem_addr,(size_t)0x20000);
+    arch_clean_invalidate_cache_range((addr_t)sram_addr,(size_t)0x1660);
+
+    printf("[MEM]start memcpy sram_start=0x%x, mem_s=0x%x, size=0x%x\n",sram_addr, mem_addr, pre_header->m_file_len );
     memcpy((char *)sram_addr, (char *)mem_addr, pre_header->m_file_len);
 
+    //flush and invalidate dma data, NAND will copy by CPU, eMMC is DMA directly
+    arch_clean_invalidate_cache_range((addr_t)mem_addr,(size_t)0x20000);
     //read mem preloader header first
     skip = skip + size;
+  	printf("read the mem pre of %s, skip=0x%x\n", part_name, skip );
+    printf("[MEM]start DMA mem header part[%s] dev_s=0x%x, ram_s=0x%x, size=0x%x\n",part_name,(start_addr + skip),(u32)mem_addr, BLK_SIZE );
     //read mem header first
     len = dev->read(dev, start_addr + skip, (uchar*)mem_addr, BLK_SIZE);
     if (len < 0) {
@@ -1034,9 +1049,11 @@ int mboot_mem_preserved_load_part(char *part_name, unsigned long sram_addr, unsi
     //read mem image
     pre_header = (MEM_PRE_HEADER *)mem_addr;
     size =(pre_header->m_file_len /BLK_SIZE + 1) * BLK_SIZE;
-    printf("[MEM] ------- start DMA part[%s] dev_s=0x%x, ram_s=x%x size=0x%x -------- \n",part_name,(start_addr + skip),mem_addr, size );
+    printf("[MEM]start DMA (skip header) part[%s] dev_s=0x%x, ram_s=0x%x, size=0x%x\n",part_name,(start_addr + skip + BLK_SIZE),(u32)(mem_addr + BLK_SIZE), size );
     len = dev->read(dev, start_addr + skip + BLK_SIZE, (uchar*)mem_addr + BLK_SIZE, size );
 
+    //flush and invalidate dma data, NAND will copy by CPU, eMMC is DMA directly
+    arch_clean_invalidate_cache_range((addr_t)mem_addr,(size_t)0x20000);
 
 #if 0
         name = PART_SRAM_PRELD;

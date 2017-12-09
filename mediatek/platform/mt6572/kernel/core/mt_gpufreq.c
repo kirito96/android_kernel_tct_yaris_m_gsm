@@ -1,3 +1,9 @@
+/*
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ */
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -30,6 +36,9 @@
 #include "mach/mt_cpufreq.h"
 #include "platform_pmm.h"
 #include "devinfo.h"
+/***************************
+* debug message
+****************************/
 #define dprintk(fmt, args...)                                           \
 do {                                                                    \
     if (mt_gpufreq_debug) {                                             \
@@ -47,6 +56,9 @@ static struct early_suspend mt_gpufreq_early_suspend_handler =
     .resume  = NULL,
 };
 #endif
+/***************************
+* MT6572 GPU Power Table
+****************************/
 static struct mt_gpufreq_power_info mt_gpufreqs_golden_power[] = {
     {.gpufreq_khz = GPU_DVFS_F0, .gpufreq_volt = GPU_VCORE_V0, .gpufreq_power = 326},
     {.gpufreq_khz = GPU_DVFS_F1, .gpufreq_volt = GPU_VCORE_V0, .gpufreq_power = 276},
@@ -55,12 +67,12 @@ static struct mt_gpufreq_power_info mt_gpufreqs_golden_power[] = {
     {.gpufreq_khz = GPU_DVFS_F2, .gpufreq_volt = GPU_VCORE_V0, .gpufreq_power = 206},
     {.gpufreq_khz = GPU_DVFS_F2, .gpufreq_volt = GPU_VCORE_V1, .gpufreq_power = 172},
 };
-//OPP setting 
+//OPP setting
 #define NORMAL_MAX_OPP 0
 static const struct mt_gpufreq_info mt6572_gpufreq[] = {
     {.gpufreq_khz = GPU_DVFS_F0,
      .gpufreq_lower_bound = 30,
-     .gpufreq_upper_bound = 100, 
+     .gpufreq_upper_bound = 100,
      .gpufreq_volt = GPU_VCORE_V1,
      .gpufreq_remap = 100,
     },
@@ -75,20 +87,27 @@ static const struct mt_gpufreq_info mt6572_gpufreq[] = {
 static const struct mt_gpufreq_info mt6572m_gpufreq[] = {
     {.gpufreq_khz = GPU_DVFS_F1,
      .gpufreq_lower_bound = 0,
-     .gpufreq_upper_bound = 100, 
+     .gpufreq_upper_bound = 100,
      .gpufreq_volt = GPU_VCORE_V1,
      .gpufreq_remap = 100,
     },
 };
 
+/**************************
+* enable GPU DVFS count
+***************************/
+#ifdef CONFIG_GPU_DVFS
 static int g_gpufreq_dvfs_disable_count = 0;
+#endif
 static unsigned int g_cur_freq = GPU_DVFS_F0;
 static unsigned int g_cur_volt = GPU_VCORE_V1;
 
 static unsigned int g_cur_load = 0;
- 
+
 /* In default settiing, freq_table[0] is max frequency, freq_table[num-1] is min frequency,*/
+#ifdef CONFIG_GPU_DVFS
 static unsigned int g_gpufreq_max_id = NORMAL_MAX_OPP;
+#endif
 
 /* If not limited, it should be set to freq_table[0] (MAX frequency) */
 static unsigned int g_limited_max_id;
@@ -96,16 +115,18 @@ static unsigned int g_limited_min_id;
 
 static bool mt_gpufreq_debug = false;
 static bool mt_gpufreq_pause = false;
+#ifdef CONFIG_GPU_DVFS
 static bool mt_gpufreq_keep_max_frequency = false;
 static bool mt_gpufreq_keep_specific_frequency = false;
 static unsigned int mt_gpufreq_fixed_frequency = 0;
 static unsigned int mt_gpufreq_fixed_voltage = 0;
+#endif
 
 static DEFINE_SPINLOCK(mt_gpufreq_lock);
 
 static unsigned int mt_gpufreqs_num = 0;
 static unsigned int mt_gpufreqs_power_num = 0;
-static struct mt_gpufreq_info *mt_gpufreqs;
+static const struct mt_gpufreq_info *mt_gpufreqs;
 static struct mt_gpufreq_power_info *mt_gpufreqs_power;
 //static struct mt_gpufreq_power_info *mt_gpufreqs_default_power;
 
@@ -113,7 +134,22 @@ static struct mt_gpufreq_power_info *mt_gpufreqs_power;
 //static bool mt_gpufreq_registered_statewrite = false;
 //static bool mt_gpufreq_already_non_registered = false;
 
+/*#ifdef GPU_CLOCK_RATIO
+//static DEFINE_SPINLOCK(mt_gpufreq_load_lock);
+//static struct mt_gpufreq_info *mt_gpufreqs_test;
+
+#endif
+
+static unsigned int mt_gpufreq_enable_mainpll = 0;
+static unsigned int mt_gpufreq_enable_mmpll = 0;
+*/
+/******************************
+* Extern Function Declaration
+*******************************/
 //extern int mtk_gpufreq_register(struct mt_gpufreq_power_info *freqs, int num);
+/**************************
+* GPU DVFS timer & thread
+***************************/
 static struct hrtimer mt_gpufreq_timer;
 struct task_struct *mt_gpufreq_thread = NULL;
 static DECLARE_WAIT_QUEUE_HEAD(mt_gpufreq_timer_waiter);
@@ -122,21 +158,36 @@ static int mt_gpufreq_sample_s = 0;
 static int mt_gpufreq_sample_ns = 200000000; // 200ms
 static int mt_gpufreq_timer_flag = 0;
 
+/******************************
+* Extern Function Declaration
+*******************************/
 extern int pmic_get_gpu_status_bit_info(void);
-static int mt_gpufreq_target(int idx);
+int mt_gpufreq_target(int idx);
+/******************************
+* Internal prototypes
+*******************************/
 enum hrtimer_restart mt_gpufreq_timer_func(struct hrtimer *timer);
 static int mt_gpufreq_thread_handler(void *unused);
-static int mt_gpufreq_keep_max_freq()
+/**************************************
+* check if maximum frequency is needed
+***************************************/
+#ifdef CONFIG_GPU_DVFS
+static int mt_gpufreq_keep_max_freq(void)
 {
     if (mt_gpufreq_keep_max_frequency == true)
         return 1;
 
     return 0;
 }
+#endif
 //Todo: this function should be provided by ME team
-unsigned int mt_get_gpu_loading()
+unsigned int mt_get_gpu_loading(void)
 {
+#ifdef MTK_GPU_SUPPORT
     unsigned int loading = gpu_get_current_utilization();
+#else
+    unsigned int loading = 0;
+#endif
     if(loading > 100){
         dprintk("loading > 100%: loading = %d\n", loading);
         return 100;
@@ -146,7 +197,49 @@ unsigned int mt_get_gpu_loading()
     }
 }
 
+/*****************************************************************
+* Check if gpufreq registration is done
+*****************************************************************/
+/*bool mt_gpufreq_is_registered_get(void)
+{
+    if((mt_gpufreq_registered == true) || (mt_gpufreq_already_non_registered == true))
+        return true;
+    else
+        return false;
+}
+EXPORT_SYMBOL(mt_gpufreq_is_registered_get);
+*/
 /* Default power table when mt_gpufreq_non_register() */
+/*static void mt_setup_gpufreqs_default_power_table(int num)
+{
+    int j = 0;
+
+    mt_gpufreqs_default_power = kzalloc((1) * sizeof(struct mt_gpufreq_power_info), GFP_KERNEL);
+    if (mt_gpufreqs_default_power == NULL)
+    {
+        xlog_printk(ANDROID_LOG_INFO, "Power/GPU_DVFS", "GPU default power table memory allocation fail\n");
+        return;
+    }
+
+    mt_gpufreqs_default_power[0].gpufreq_khz = g_cur_freq;
+
+    for (j = 0; j < ARRAY_SIZE(mt_gpufreqs_golden_power); j++)
+    {
+        if (g_cur_freq == mt_gpufreqs_golden_power[j].gpufreq_khz)
+        {
+            mt_gpufreqs_default_power[0].gpufreq_power = mt_gpufreqs_golden_power[j].gpufreq_power;
+            break;
+        }
+    }
+
+    xlog_printk(ANDROID_LOG_INFO, "Power/GPU_DVFS", "mt_gpufreqs_default_power[0].gpufreq_khz = %u\n", mt_gpufreqs_default_power[0].gpufreq_khz);
+    xlog_printk(ANDROID_LOG_INFO, "Power/GPU_DVFS", "mt_gpufreqs_default_power[0].gpufreq_power = %u\n", mt_gpufreqs_default_power[0].gpufreq_power);
+
+    #ifdef CONFIG_THERMAL
+    mtk_gpufreq_register(mt_gpufreqs_default_power, 1);
+    #endif
+}
+*/
 static void mt_setup_gpufreqs_power_table(int num)
 {
     int i = 0, j = 0, power_idx = 0;
@@ -182,17 +275,24 @@ unsigned int get_gpu_level()
     ver = (ver >> 27) & 0x00000001;
     return ver;
 }
-static int mt_setup_gpufreqs_table(struct mt_gpufreq_info *gpufreqs, int num)
+/***********************************************
+* register frequency table to gpufreq subsystem
+************************************************/
+static int mt_setup_gpufreqs_table(const struct mt_gpufreq_info *gpufreqs, int num)
 {
-    int i = 0;
+    // int i = 0; // <-XXX
+    unsigned long flags;
 
+    spin_lock_irqsave(&mt_gpufreq_lock, flags);
     mt_gpufreqs = gpufreqs;
+    spin_unlock_irqrestore(&mt_gpufreq_lock, flags);
+
     mt_gpufreqs_num = num;
 
     if (mt_gpufreqs == NULL)
         return -ENOMEM;
 
-    /* Initial frequency and voltage was already set in mt_gpufreq_set_initial() */    
+    /* Initial frequency and voltage was already set in mt_gpufreq_set_initial() */
     g_limited_max_id = 0;
     g_limited_min_id = mt_gpufreqs_num - 1;
 
@@ -202,8 +302,12 @@ static int mt_setup_gpufreqs_table(struct mt_gpufreq_info *gpufreqs, int num)
     return 0;
 }
 
+/*****************************
+* set GPU DVFS status
+******************************/
 int mt_gpufreq_state_set(int enabled)
 {
+#ifdef CONFIG_GPU_DVFS
     ktime_t ktime = ktime_set(mt_gpufreq_sample_s, mt_gpufreq_sample_ns);
 
     if (enabled)
@@ -251,13 +355,90 @@ int mt_gpufreq_state_set(int enabled)
         mt_gpufreq_target(g_gpufreq_max_id);
         hrtimer_cancel(&mt_gpufreq_timer);
     }
-
+#endif //CONFIG_GPU_DVFS
     return 0;
 }
 EXPORT_SYMBOL(mt_gpufreq_state_set);
 
 
+/***********************************************************
+* 1. 3D driver will check efuse and set initial frequency and voltage
+* 2. When GPU idle in intial, voltage could be set directly.
+************************************************************/
+/*void mt_gpufreq_set_initial(unsigned int freq_new, unsigned int volt_new)
+{
+    xlog_printk(ANDROID_LOG_INFO, "Power/GPU_DVFS", "mt_gpufreq_set_initial, freq_new = %d, volt_new = %d, g_cur_freq = %d\n", freq_new, volt_new, g_cur_freq);
+    g_freq_new_init_keep = freq_new;
+    g_volt_new_init_keep = volt_new;
 
+    mt_gpufreq_check_freq_and_set_pll();
+
+    if(freq_new == g_cur_freq)
+    {
+        g_volt_set_init_step_1 = 1;
+        return;
+    }
+
+    if (freq_new > g_cur_freq)
+    {
+        #ifdef MT_BUCK_ADJUST
+        if (pmic_get_gpu_status_bit_info() == 0) // 1: VCORE, 0: VRF18_2
+        {
+            g_volt_set_init_step_2 = 1;
+            mt_gpu_volt_switch_initial(volt_new);
+            udelay(PMIC_SETTLE_TIME);
+        }
+        #endif
+
+        mt_gpu_clock_switch(freq_new);
+    }
+    else
+    {
+        mt_gpu_clock_switch(freq_new);
+
+        #ifdef MT_BUCK_ADJUST
+        if (pmic_get_gpu_status_bit_info() == 0) // 1: VCORE, 0: VRF18_2
+        {
+            g_volt_set_init_step_3 = 1;
+            mt_gpu_volt_switch_initial(volt_new);
+        }
+        #endif
+    }
+
+    g_cur_freq = freq_new;
+    g_cur_volt = volt_new;
+    xlog_printk(ANDROID_LOG_INFO, "Power/GPU_DVFS", "mt_gpufreq_set_initial, g_cur_freq = %d, g_cur_volt = %d\n", g_cur_freq, g_cur_volt);
+}
+EXPORT_SYMBOL(mt_gpufreq_set_initial);
+*/
+
+/*static void mt_vcore_volt_set(unsigned int target_volt)
+{
+    switch (target_volt)
+    {
+      case GPU_POWER_VCORE_OD:
+        dprintk("switch to GPU_POWER_VCORE_OD: %d mV\n", GPU_POWER_VCORE_OD);
+        spm_dvfs_ctrl_volt(0);
+        //udelay(PMIC_SETTLE_TIME);
+        break;
+      case GPU_POWER_VCORE_NORMAL:
+        dprintk("switch to GPU_POWER_VCORE_NORMAL: %d mV\n", GPU_POWER_VCORE_NORMAL);
+        spm_dvfs_ctrl_volt(2);
+        //udelay(PMIC_SETTLE_TIME);
+        break;
+      default:
+        break;
+    }
+}*/
+/*****************************************
+* frequency ramp up and ramp down handler
+******************************************/
+/***********************************************************
+* [note]
+* 1. frequency ramp up need to wait voltage settle
+* 2. frequency ramp down do not need to wait voltage settle
+************************************************************/
+#ifdef CONFIG_GPU_DVFS
 static void mt_gpufreq_set(unsigned int old_freq, unsigned int target_freq, unsigned int old_volt, unsigned int target_volt)
 {
     unsigned int whpll_dds = 0, cur_vcore, new_vcore;
@@ -267,7 +448,7 @@ static void mt_gpufreq_set(unsigned int old_freq, unsigned int target_freq, unsi
 
     if( target_freq > PLL_MAX_FREQ || target_freq < PLL_MIN_FREQ){
         dprintk("set_whpll_freq: freq [%d] out of range\n", target_freq);
-        return -1;
+        return;
     }
     else
     {
@@ -316,6 +497,7 @@ static void mt_gpufreq_set(unsigned int old_freq, unsigned int target_freq, unsi
     g_cur_freq = target_freq;
     g_cur_volt = target_volt;
 }
+#endif /* CONFIG_GPU_DVFS */
 
 static int mt_gpufreq_look_up(unsigned int load)
 {
@@ -351,11 +533,25 @@ static int mt_gpufreq_look_up(unsigned int load)
     return (mt_gpufreqs_num - 1);
 }
 
-static int mt_gpufreq_target(int idx)
+/**********************************
+* gpufreq target callback function
+***********************************/
+/*************************************************
+* [note]
+* 1. handle frequency change request
+* 2. call mt_gpufreq_set to set target frequency
+**************************************************/
+int mt_gpufreq_target(int idx)
 {
+#ifdef CONFIG_GPU_DVFS
     unsigned long flags, target_freq, target_volt;
 
     spin_lock_irqsave(&mt_gpufreq_lock, flags);
+    if (mt_gpufreqs == NULL)
+    {
+        spin_unlock_irqrestore(&mt_gpufreq_lock, flags);
+        return -1;
+    }
 
     /**********************************
     * look up for the target GPU OPP
@@ -404,7 +600,7 @@ static int mt_gpufreq_target(int idx)
             dprintk("Limit! Target freq %d > Thermal limit frequency %d\n", target_freq, mt_gpufreqs[g_limited_max_id].gpufreq_khz);
         }
     }
-    
+
 
     /************************************************
     * target frequency == current frequency, skip it
@@ -417,29 +613,42 @@ static int mt_gpufreq_target(int idx)
     }
 
     dprintk("GPU current frequency %d MHz, target frequency %d MHz\n", g_cur_freq / 1000, target_freq / 1000);
-	
+
     /******************************
     * set to the target freeuency
     *******************************/
     mt_gpufreq_set(g_cur_freq, target_freq, g_cur_volt, target_volt);
 
     spin_unlock_irqrestore(&mt_gpufreq_lock, flags);
-
+#endif /* CONFIG_GPU_DVFS */
     return 0;
 }
 
+/*********************************
+* early suspend callback function
+**********************************/
 void mt_gpufreq_early_suspend(struct early_suspend *h)
 {
     mt_gpufreq_state_set(0);
 }
 
+/*******************************
+* late resume callback function
+********************************/
 void mt_gpufreq_late_resume(struct early_suspend *h)
 {
     mt_gpufreq_state_set(1);
 }
 
+/************************************************
+* frequency adjust interface for thermal protect
+*************************************************/
+/******************************************************
+* parameter: target power
+*******************************************************/
 void mt_gpufreq_thermal_protect(unsigned int limited_power)
 {
+#ifdef CONFIG_GPU_DVFS
     int i, j;
     //unsigned int limited_freq = 0;
 
@@ -456,7 +665,7 @@ void mt_gpufreq_thermal_protect(unsigned int limited_power)
         {
             if( (mt_gpufreqs_power[i].gpufreq_volt == get_cur_vcore()) && (mt_gpufreqs_power[i].gpufreq_power <= limited_power))
             {
-                //limited_freq = mt_gpufreqs[i].gpufreq_khz; 
+                //limited_freq = mt_gpufreqs[i].gpufreq_khz;
                 dprintk("power table: %d \n", mt_gpufreqs_power[i].gpufreq_power);
 
                 for(j = 0; j < mt_gpufreqs_num; j++){
@@ -475,13 +684,17 @@ void mt_gpufreq_thermal_protect(unsigned int limited_power)
         dprintk("GPU cap to minimum freq\n");
         //mt_gpufreq_target(g_limited_max_id);
     }
-
+#endif //CONFIG_GPU_DVFS
     return ;
 }
 EXPORT_SYMBOL(mt_gpufreq_thermal_protect);
+/************************************************
+* return current GPU frequency
+*************************************************/
 unsigned int mt_gpufreq_max_power(void)
 {
     int i;
+#ifdef CONFIG_GPU_DVFS
     for(i = 0; i < mt_gpufreqs_power_num ; i++){
         if(mt_gpufreqs_power[i].gpufreq_volt == get_cur_vcore()){
             return mt_gpufreqs_power[i].gpufreq_power;
@@ -489,11 +702,24 @@ unsigned int mt_gpufreq_max_power(void)
     }
     dprintk("Fail to get GPU MAX power!\n");
     return mt_gpufreqs_power[0].gpufreq_power;
+#else
+    printk(KERN_WARNING "GPU DVFS is NOT enabled\n");
+    for(i = 0; i < ARRAY_SIZE(mt_gpufreqs_golden_power); i++){
+        if(mt_gpufreqs_golden_power[i].gpufreq_volt == get_cur_vcore() && \
+           mt_gpufreqs_golden_power[i].gpufreq_khz == GPU_DVFS_F1){
+            return mt_gpufreqs_golden_power[i].gpufreq_power;
+        }
+    }
+
+    dprintk("Fail to get GPU MAX power!\n");
+    return mt_gpufreqs_golden_power[0].gpufreq_power;
+#endif
 }
 
 unsigned int mt_gpufreq_min_power(void)
 {
     int i;
+#ifdef CONFIG_GPU_DVFS
     for(i = mt_gpufreqs_power_num-1; i >=0 ; i--){
         if(mt_gpufreqs_power[i].gpufreq_volt == get_cur_vcore()){
             return mt_gpufreqs_power[i].gpufreq_power;
@@ -501,6 +727,18 @@ unsigned int mt_gpufreq_min_power(void)
     }
     dprintk("Fail to get GPU MIN power!\n");
     return mt_gpufreqs_power[mt_gpufreqs_power_num-1].gpufreq_power;
+#else
+    printk(KERN_WARNING "GPU DVFS is NOT enabled\n");
+    for(i = 0; i < ARRAY_SIZE(mt_gpufreqs_golden_power); i++){
+        if(mt_gpufreqs_golden_power[i].gpufreq_volt == get_cur_vcore() && \
+           mt_gpufreqs_golden_power[i].gpufreq_khz == GPU_DVFS_F1){
+            return mt_gpufreqs_golden_power[i].gpufreq_power;
+        }
+    }
+
+    dprintk("Fail to get GPU MIN power!\n");
+    return mt_gpufreqs_golden_power[0].gpufreq_power;
+#endif
 }
 
 unsigned int mt_gpufreq_cur_volt(void)
@@ -509,6 +747,9 @@ unsigned int mt_gpufreq_cur_volt(void)
     return g_cur_volt;
 }
 EXPORT_SYMBOL(mt_gpufreq_cur_volt);
+/************************************************
+* return current GPU frequency
+*************************************************/
 unsigned int mt_gpufreq_cur_freq(void)
 {
     dprintk("current GPU frequency is %d MHz\n", g_cur_freq / 1000);
@@ -516,6 +757,9 @@ unsigned int mt_gpufreq_cur_freq(void)
 }
 EXPORT_SYMBOL(mt_gpufreq_cur_freq);
 
+/************************************************
+* return current GPU loading
+*************************************************/
 unsigned int mt_gpufreq_cur_load(void)
 {
     dprintk("current GPU load is %d\n", g_cur_load);
@@ -523,6 +767,10 @@ unsigned int mt_gpufreq_cur_load(void)
 }
 EXPORT_SYMBOL(mt_gpufreq_cur_load);
 
+/******************************
+* show current GPU DVFS stauts
+*******************************/
+#ifdef CONFIG_GPU_DVFS
 static int mt_gpufreq_state_read(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
     int len = 0;
@@ -537,11 +785,14 @@ static int mt_gpufreq_state_read(char *buf, char **start, off_t off, int count, 
     return len;
 }
 
+/****************************************
+* set GPU DVFS stauts by sysfs interface
+*****************************************/
 static ssize_t mt_gpufreq_state_write(struct file *file, const char *buffer, unsigned long count, void *data)
 {
     int enabled = 0;
 
-    if (sscanf(buffer, "%d", &enabled) == 1)
+    if ((sscanf(buffer, "%d", &enabled) == 1) &&  (GPU_LEVEL_0 != get_gpu_level()))
     {
         if (enabled == 1)
         {
@@ -561,12 +812,19 @@ static ssize_t mt_gpufreq_state_write(struct file *file, const char *buffer, uns
     }
     else
     {
-        xlog_printk(ANDROID_LOG_INFO, "Power/GPU_DVFS", "bad argument!! argument should be \"1\" or \"0\"\n");
+        if(GPU_LEVEL_0 == get_gpu_level()){
+            xlog_printk(ANDROID_LOG_INFO, "Power/GPU_DVFS", "Not Support \n");
+        }
+        else
+            xlog_printk(ANDROID_LOG_INFO, "Power/GPU_DVFS", "bad argument!! argument should be \"1\" or \"0\"\n");
     }
 
     return count;
 }
 
+/****************************
+* show current limited power
+*****************************/
 static int mt_gpufreq_limited_power_read(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
     int len = 0;
@@ -578,6 +836,9 @@ static int mt_gpufreq_limited_power_read(char *buf, char **start, off_t off, int
     return len;
 }
 
+/**********************************
+* limited power for thermal protect
+***********************************/
 static ssize_t mt_gpufreq_limited_power_write(struct file *file, const char *buffer, unsigned long count, void *data)
 {
     unsigned int power = 0;
@@ -595,6 +856,9 @@ static ssize_t mt_gpufreq_limited_power_write(struct file *file, const char *buf
     return -EINVAL;
 }
 
+/***************************
+* show current debug status
+****************************/
 static int mt_gpufreq_debug_read(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
     int len = 0;
@@ -609,13 +873,16 @@ static int mt_gpufreq_debug_read(char *buf, char **start, off_t off, int count, 
     return len;
 }
 
+/***********************
+* enable debug message
+************************/
 static ssize_t mt_gpufreq_debug_write(struct file *file, const char *buffer, unsigned long count, void *data)
 {
     int debug = 0;
 
     if (sscanf(buffer, "%d", &debug) == 1)
     {
-        if (debug == 0) 
+        if (debug == 0)
         {
             mt_gpufreq_debug = 0;
             return count;
@@ -638,6 +905,9 @@ static ssize_t mt_gpufreq_debug_write(struct file *file, const char *buffer, uns
     return -EINVAL;
 }
 
+/********************
+* show sampling rate
+*********************/
 static int mt_gpufreq_sampling_rate_read(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
     int len = 0;
@@ -649,6 +919,9 @@ static int mt_gpufreq_sampling_rate_read(char *buf, char **start, off_t off, int
     return len;
 }
 
+/********************
+* set sampling rate
+*********************/
 static ssize_t mt_gpufreq_sampling_rate_write(struct file *file, const char *buffer, unsigned long count, void *data)
 {
     int len = 0, s = 0, ns = 0;
@@ -676,9 +949,12 @@ static ssize_t mt_gpufreq_sampling_rate_write(struct file *file, const char *buf
     return -EINVAL;
 }
 
+/********************
+* show GPU OPP table
+*********************/
 static int mt_gpufreq_opp_dump_read(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
-    int i = 0, j = 0, len = 0;
+    int i = 0, /* j = 0, */ len = 0; // <-XXX
     char *p = buf;
 
     p += sprintf(p, "Current Freq: %d\n", g_cur_freq);
@@ -697,6 +973,9 @@ static int mt_gpufreq_opp_dump_read(char *buf, char **start, off_t off, int coun
     return len;
 }
 
+/***************************
+* show current specific frequency status
+****************************/
 static int mt_gpufreq_fixed_frequency_read(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
     int len = 0;
@@ -711,6 +990,9 @@ static int mt_gpufreq_fixed_frequency_read(char *buf, char **start, off_t off, i
     return len;
 }
 
+/***********************
+* enable specific frequency
+************************/
 static ssize_t mt_gpufreq_fixed_frequency_write(struct file *file, const char *buffer, unsigned long count, void *data)
 {
     int enable = 0;
@@ -719,7 +1001,7 @@ static ssize_t mt_gpufreq_fixed_frequency_write(struct file *file, const char *b
 
     if (sscanf(buffer, "%d %d %d", &enable, &fixed_freq, &fixed_volt) == 3)
     {
-        if (enable == 0) 
+        if (enable == 0)
         {
             mt_gpufreq_keep_specific_frequency = false;
             return count;
@@ -729,6 +1011,7 @@ static ssize_t mt_gpufreq_fixed_frequency_write(struct file *file, const char *b
             mt_gpufreq_keep_specific_frequency = true;
             mt_gpufreq_fixed_frequency = fixed_freq;
             mt_gpufreq_fixed_voltage = fixed_volt;
+            mt_gpufreq_set(g_cur_freq, mt_gpufreq_fixed_frequency, g_cur_volt, mt_gpufreq_fixed_voltage);
             return count;
         }
         else
@@ -740,21 +1023,25 @@ static ssize_t mt_gpufreq_fixed_frequency_write(struct file *file, const char *b
     {
         xlog_printk(ANDROID_LOG_INFO, "Power/GPU_DVFS", "bad argument!! should be [enable fixed_freq fixed_volt]\n");
     }
-	
+
     return -EINVAL;
 }
 
+/********************
+* show variable dump
+*********************/
 static int mt_gpufreq_var_dump(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
     int len = 0;
     char *p = buf;
 
-    
+
     //debug purpose, I will implement if needed
-	
+
     len = p - buf;
     return len;
 }
+#endif /* CONFIG_GPU_DVFS */
 
 enum hrtimer_restart mt_gpufreq_timer_func(struct hrtimer *timer)
 {
@@ -792,6 +1079,9 @@ static int mt_gpufreq_thread_handler(void *unused)
     return 0;
 }
 
+/*********************************
+* mediatek gpufreq registration
+**********************************/
 int mt_gpufreq_register(void)
 {
     unsigned int ver;
@@ -804,15 +1094,16 @@ int mt_gpufreq_register(void)
      * setup gpufreq table
      ***********************/
     xlog_printk(ANDROID_LOG_INFO, "Power/GPU_DVFS", "setup gpufreqs table\n");
-    
+
     ver = get_gpu_level();
 
     if(ver == GPU_LEVEL_0){
         mt_setup_gpufreqs_table(ARRAY_AND_SIZE(mt6572m_gpufreq));
         g_cur_freq = GPU_DVFS_F1;
+        mt_gpufreq_pause = true;
     }
-    else{    
-    	
+    else{
+
 #ifdef CONFIG_HAS_EARLYSUSPEND
         mt_gpufreq_early_suspend_handler.suspend = mt_gpufreq_early_suspend;
         mt_gpufreq_early_suspend_handler.resume = mt_gpufreq_late_resume;
@@ -848,14 +1139,39 @@ int mt_gpufreq_register(void)
 }
 EXPORT_SYMBOL(mt_gpufreq_register);
 
+/*********************************
+* mediatek gpufreq non registration
+**********************************/
+/*int mt_gpufreq_non_register(void)
+{
+    if(mt_gpufreq_already_non_registered == false)
+    {
+        mt_gpufreq_already_non_registered = true;
+        mt_setup_gpufreqs_default_power_table(1);
 
+        hrtimer_init(&mt_gpufreq_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+        mt_gpufreq_state_set(0);
+        xlog_printk(ANDROID_LOG_INFO, "Power/GPU_DVFS", "mt_gpufreq_non_register() done\n");
+    }
+    else
+    {
+        xlog_printk(ANDROID_LOG_INFO, "Power/GPU_DVFS", "mt_gpufreq_non_register() already called !\n");
+    }
+    return 0;
+}
+EXPORT_SYMBOL(mt_gpufreq_non_register);*/
+
+/**********************************
+* mediatek gpufreq initialization
+***********************************/
+#ifdef CONFIG_GPU_DVFS
 static int __init mt_gpufreq_init(void)
 {
     struct proc_dir_entry *mt_entry = NULL;
     struct proc_dir_entry *mt_gpufreq_dir = NULL;
 
     xlog_printk(ANDROID_LOG_INFO, "Power/GPU_DVFS", "mt_gpufreq_init\n");
-		
+
     mt_gpufreq_dir = proc_mkdir("gpufreq", NULL);
     if (!mt_gpufreq_dir)
     {
@@ -924,6 +1240,7 @@ static int __init mt_gpufreq_init(void)
 }
 
 late_initcall(mt_gpufreq_init);
+#endif //CONFIG_GPU_DVFS
 
 MODULE_DESCRIPTION("MediaTek GPU Frequency Scaling driver");
 MODULE_LICENSE("GPL");

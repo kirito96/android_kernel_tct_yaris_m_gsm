@@ -10,34 +10,32 @@
 #include <linux/cpu.h>
 #include <linux/smp.h>
 
-extern void __inner_clean_dcache_L1();
-extern void __inner_clean_dcache_L2();
-extern void __enable_dcache();
-extern void __disable_dcache();
-extern void __enable_icache();
-extern void __disable_icache();
+extern void __inner_clean_dcache_L1(void);
+extern void __inner_clean_dcache_L2(void);
+extern void __enable_dcache(void);
+extern void __disable_dcache(void);
+extern void __enable_icache(void);
+extern void __disable_icache(void);
 
-void dump_data_cache_L1(){
+void dump_data_cache_L1(void){
     unsigned int cache_tag;
     unsigned int cache_level = 0;
     unsigned int cache_way;
     unsigned int cache_set;
     unsigned int elem_idx;
-    unsigned int cache_data1,cache_data2,cache_data3;
+    unsigned int cache_data1 = 0,cache_data2=0;
     unsigned int tag_address;
     unsigned int sec;
     unsigned int tag_MOESI;
     unsigned int dirty_MOESI;
     unsigned int outer_memory_att;
     unsigned int data_cache_size = 64;
-    unsigned int max_cache_level = 2;
     unsigned int max_cache_set = 0x80;
     unsigned int max_cache_way = 0x4;
-    unsigned int tmp;
 
     __inner_clean_dcache_L1();
     __disable_dcache();
-    printk("[CPU%] Dump L1 D cache...\n",smp_processor_id());
+    printk("[CPU%d] Dump L1 D cache...\n",smp_processor_id());
     printk("ADDRESS\tSEC\tSET\tWAY\tMOESI\t00\t04\t08\t0C\t10\t14\t18\t1C\t20\t24\t28\t2C\t30\t34\t38\t3C\n");
     for (cache_set = 0; cache_set < max_cache_set; cache_set++)
     {
@@ -82,27 +80,25 @@ void dump_data_cache_L1(){
     }
     __enable_dcache();
 }
-void dump_data_cache_L2(){
+void dump_data_cache_L2(void){
     unsigned int cache_tag;
     unsigned int cache_level = 2;
     unsigned int cache_way;
     unsigned int cache_set;
     unsigned int elem_idx;
-    unsigned int cache_data1,cache_data2,cache_data3;
+    unsigned int cache_data1 = 0,cache_data2 = 0;
     unsigned int tag_address;
     unsigned int sec;
     unsigned int tag_MOESI;
     unsigned int dirty_MOESI;
     unsigned int outer_memory_att;
     unsigned int data_cache_size = 64;
-    unsigned int max_cache_level = 2;
     unsigned int max_cache_set = 0x800;
     unsigned int max_cache_way = 0x8;
-    unsigned int tmp;
 
     __inner_clean_dcache_L2();
     __disable_dcache();
-    printk("[CPU%] Dump L2 D cache...\n",smp_processor_id());
+    printk("[CPU%d] Dump L2 D cache...\n",smp_processor_id());
     printk("ADDRESS\tSEC\tSET\tWAY\tMOESI\t00\t04\t08\t0C\t10\t14\t18\t1C\t20\t24\t28\t2C\t30\t34\t38\t3C\n");
 
     for (cache_set = 0; cache_set < max_cache_set; cache_set++)
@@ -152,7 +148,7 @@ void dump_data_cache_L2(){
 unsigned long mt_icache_dump(unsigned int cache_way, unsigned int cache_set, unsigned int elem_idx)
 {
     unsigned int cache_level = 1;
-    unsigned int cache_data1,cache_data2;
+    unsigned int cache_data1 = 0, cache_data2 = 0;
     unsigned int cache_tag;
     __disable_icache();
 
@@ -181,13 +177,12 @@ unsigned long mt_icache_dump(unsigned int cache_way, unsigned int cache_set, uns
 
 
 
-void dump_inst_cache(const char *lvl, unsigned long v_addr)
+void dump_inst_cache(const char *lvl, unsigned int v_addr)
 {
     /* dump a line of addr */
     unsigned int cache_level = 1;
     unsigned int tag, way, set, idx;
-    unsigned int inst_cache_size = 32;
-    unsigned int tag_address, cache_data1;
+    unsigned int tag_address, cache_data1 = 0;
     unsigned int p_addr;
     char str[sizeof(" 12345678") * 8 + 1];
 
@@ -251,13 +246,13 @@ void dump_inst_cache(const char *lvl, unsigned long v_addr)
 }
 
 
-void dump_inst_cache_all(){
+void dump_inst_cache_all(void){
     unsigned int cache_tag;
     unsigned int cache_level = 1;
     unsigned int cache_way;
     unsigned int cache_set;
     unsigned int elem_idx;
-    unsigned int cache_data1,cache_data2,cache_data3;
+    unsigned int cache_data1 = 0,cache_data2 = 0,cache_data3 = 0;
     unsigned int valid;
     unsigned int tag_address;
     unsigned int sec;
@@ -266,7 +261,7 @@ void dump_inst_cache_all(){
 
     __disable_icache();
 
-    printk("[CPU%] Dump L1 I cache...\n",smp_processor_id());
+    printk("[CPU%d] Dump L1 I cache...\n",smp_processor_id());
     printk("ADDRESS\tSEC\tSET\tWAY\tVALID\tarm_state\t00\t04\t08\t0C\t10\t14\t18\t1C\n");
     for (cache_set = 0; cache_set < 512; cache_set++)
     {
@@ -342,27 +337,28 @@ static ssize_t cache_dump_store(struct device_driver *driver, const char *buf,
 {
         char *p = (char *)buf;
         unsigned int num;
-        unsigned int data;
 
         num = simple_strtoul(p, &p, 10);
         get_online_cpus();
-        switch(num)
-        {
-            case 1:
-                    on_each_cpu(dump_data_cache_L1, NULL, true);
-                    dump_data_cache_L2();
-                    break;
-            case 2:
-                    on_each_cpu(dump_inst_cache_all, NULL, true);
-                    break;
-            case 3:
-                    on_each_cpu(dump_inst_cache_all, NULL, true);
-                    on_each_cpu(dump_data_cache_L1, NULL, true);
-                    dump_data_cache_L2();
-                    break;
+        switch(num){
+        case 1:
+            on_each_cpu((void *)dump_data_cache_L1, NULL, true);
+            dump_data_cache_L2();
+            break;
+        case 2:
+            on_each_cpu((void *)dump_inst_cache_all, NULL, true);
+            break;
+        case 3:
+            on_each_cpu((void *)dump_inst_cache_all, NULL, true);
+            on_each_cpu((void *)dump_data_cache_L1, NULL, true);
+            dump_data_cache_L2();
+            break;
 #if 0
         case 4: /*  cacuse a uefine instruction abort */
+            unsigned int data;
             printk("\n\n====== Gen Undefine Instruction ====== \n");
+            //BUG();
+
             data = 0;
             /* read a write only address to cause abort*/
             asm volatile(

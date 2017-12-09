@@ -262,6 +262,10 @@ static CAM_PIPE_MGR_STATUS_ENUM CamPipeMgr_LockPipe(CAM_PIPE_MGR_LOCK_STRUCT* pL
     else
     {
         CamPipeMgr_SpinUnlock();
+        if(pLock->Timeout > CAM_PIPE_MGR_TIMEOUT_MAX)
+        {
+            pLock->Timeout = CAM_PIPE_MGR_TIMEOUT_MAX;
+        }
         Timeout = wait_event_interruptible_timeout(
                     CamPipeMgr.WaitQueueHead, 
                     (CamPipeMgr.PipeMask & pLock->PipeMask) == 0,
@@ -728,6 +732,25 @@ static long CamPipeMgr_Ioctl(
         {
             if(copy_from_user(&Mode, (void*)Param, sizeof(CAM_PIPE_MGR_MODE_STRUCT)) == 0)
             {
+                if((Mode.ScenHw > CAM_PIPE_MGR_SCEN_HW_VSS) || (Mode.ScenHw<0))
+                {
+                    LOG_ERR("ScenHw(%d) > max(%d)",Mode.ScenHw,CAM_PIPE_MGR_SCEN_HW_VSS);
+                    Ret = -EFAULT;
+                    goto EXIT;
+                }
+                if((Mode.ScenSw > CAM_PIPE_MGR_SCEN_SW_N3D) || (Mode.ScenSw<0))
+                {
+                    LOG_ERR("ScenSw(%d) > max(%d)",Mode.ScenSw,CAM_PIPE_MGR_SCEN_SW_N3D);
+                    Ret = -EFAULT;
+                    goto EXIT;
+                }
+                if((Mode.Dev > CAM_PIPE_MGR_DEV_VT) || (Mode.Dev<0))
+                {
+                    LOG_ERR("Dev(%d) > max(%d)",Mode.Dev,CAM_PIPE_MGR_DEV_VT);
+                    Ret = -EFAULT;
+                    goto EXIT;
+                }
+                //
                 LOG_MSG("SET_MODE:Sw(%d),Hw(%d)",Mode.ScenSw,Mode.ScenHw);
                 if((CamPipeMgr.PipeMask | CamPipeMgr.PipeLockTable[Mode.ScenHw]) ^ CamPipeMgr.PipeLockTable[Mode.ScenHw])
                 {
@@ -757,6 +780,25 @@ static long CamPipeMgr_Ioctl(
         //
         case CAM_PIPE_MGR_GET_MODE:
         {
+            if((CamPipeMgr.Mode.ScenHw > CAM_PIPE_MGR_SCEN_HW_VSS) ||(CamPipeMgr.Mode.ScenHw <0))
+            {
+                LOG_ERR("ScenHw(%d) > max(%d)",CamPipeMgr.Mode.ScenHw,CAM_PIPE_MGR_SCEN_HW_VSS);
+                Ret = -EFAULT;
+                goto EXIT;
+            }
+            if((CamPipeMgr.Mode.ScenSw > CAM_PIPE_MGR_SCEN_SW_N3D) || (CamPipeMgr.Mode.ScenSw<0))
+            {
+                LOG_ERR("ScenSw(%d) > max(%d)",CamPipeMgr.Mode.ScenSw,CAM_PIPE_MGR_SCEN_SW_N3D);
+                Ret = -EFAULT;
+                goto EXIT;
+            }
+            if((CamPipeMgr.Mode.Dev > CAM_PIPE_MGR_DEV_VT) || (CamPipeMgr.Mode.Dev<0))
+            {
+                LOG_ERR("Dev(%d) > max(%d)",CamPipeMgr.Mode.Dev,CAM_PIPE_MGR_DEV_VT);
+                Ret = -EFAULT;
+                goto EXIT;
+            }
+            //
             if(copy_to_user((void*)Param, &(CamPipeMgr.Mode),  sizeof(CAM_PIPE_MGR_MODE_STRUCT)) == 0)
             {
                 //do nothing.

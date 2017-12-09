@@ -2,7 +2,10 @@
 #define __LCD_REG_H__
 
 #include <stddef.h>
-#include "disp_drv_platform.h"
+#include <mach/mt_typedefs.h>
+#include <mach/sync_write.h>
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -280,7 +283,6 @@ typedef struct
    UINT32                    	rsv_1FA4[7];    	// CFA4..CFBC
 } volatile LCD_REGS, *PLCD_REGS;
 
-#ifndef BUILD_UBOOT
 STATIC_ASSERT(0x0000 == offsetof(LCD_REGS, STATUS));
 STATIC_ASSERT(0x0004 == offsetof(LCD_REGS, INT_ENABLE));
 STATIC_ASSERT(0x0028 == offsetof(LCD_REGS, SERIAL_CFG));
@@ -293,7 +295,7 @@ STATIC_ASSERT((0xF00) == offsetof(LCD_REGS, PCMD0));
 STATIC_ASSERT((0xF80) == offsetof(LCD_REGS, SCMD0));
 
 STATIC_ASSERT(0xFC0 == sizeof(LCD_REGS));
-#endif
+
 #define LCD_A0_LOW_OFFSET  (0x0)
 #define LCD_A0_HIGH_OFFSET (0x10)
 

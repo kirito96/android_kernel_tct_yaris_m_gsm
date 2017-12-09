@@ -5,6 +5,8 @@
 /* declare function prototype */
 #endif
 
+#define CMD_LEN 10
+static char myCmdBuf[CMD_LEN];
 
 void evdo_host_wakeup(void)
 {
@@ -13,65 +15,66 @@ void evdo_host_wakeup(void)
 #endif
 }
 
-static char myCmdBuf[10];
-static ssize_t EVDO_HOST_RESET_Write_Proc(struct file *file, const char *buf, unsigned long len, void *data)
+ssize_t evdo_host_reset_proc_read(struct file *file_ptr, char __user *user_buffer, size_t count, loff_t *position)
 {
-	int ret = copy_from_user(myCmdBuf, buf, len);
-	if (ret < 0)
-		return -1;
+	printk(KERN_WARNING "count : %d, position : %d\n", count, (unsigned int)*position);
 
-	myCmdBuf[len] = '\0';
-	printk(KERN_WARNING "EVDO_HOST_RESET_Write_Proc(), myCmdBuf : %s\n", myCmdBuf);
-
-#if 0		
-	/* call correct IP reset  func here */
-#endif
-
-	return -2;  
-}
-
-
-static int EVDO_HOST_RESET_Read_Proc(char *buf, char **start, off_t off, int count, int *eof, void *data)
-{
-	char *p = buf;
-	int len = 0;
-
-	if (off != 0)
+	if( *position >= CMD_LEN)
 		return 0;
+	
+	if( *position + count > CMD_LEN)
+		count = CMD_LEN - *position;
 
-	printk(KERN_WARNING "EVDO_HOST_RESET_Read_Proc\n");
+	if( copy_to_user(user_buffer, myCmdBuf, count) != 0 )
+	{
+		return -EFAULT;	
+	}
 
-	p += sprintf(p, "%d\n",  1);
-
-	*start = buf + off;
-
-	len = p - buf;
-	if (len > off)
-		len -= off;
-	else
-		len = 0;
-
-	return len < count ? len : count;
+	*position += count;
+	return count;
 }
 
+ssize_t evdo_host_reset_proc_write(struct file *file_ptr, const char __user *user_buffer, size_t count, loff_t *position)
+{
+	int ret = copy_from_user((char *) myCmdBuf, user_buffer, count);
+
+	myCmdBuf[count] = '\0';
+	printk(KERN_WARNING "%s(), myCmdBuf : %s\n", __func__, myCmdBuf);
+	
+	if(ret != 0)
+	{
+		return -EFAULT;
+	}
+
+	/*
+	   do things here 
+	*/
+
+	return count;
+}
+
+struct file_operations evdo_host_reset_proc_fops = {
+	.read = evdo_host_reset_proc_read,
+	.write = evdo_host_reset_proc_write
+};
 
 static int __init mtk_evdo_host_interface_init(void)
 {
-
-	printk(KERN_WARNING "mtk_evdo_host_interface_init\n");
+	// temporaily obsoleted 
+/*
 	struct proc_dir_entry *prEntry;
+	printk(KERN_WARNING "mtk_evdo_host_interface_init\n");
 
-	prEntry = create_proc_entry("EVDO_HOST_RESET", 0660, 0);
+	prEntry = proc_create("EVDO_HOST_RESET", 0660, 0, &evdo_host_reset_proc_fops);
 	if (prEntry)
 	{
-		prEntry->read_proc = EVDO_HOST_RESET_Read_Proc;
-		prEntry->write_proc = EVDO_HOST_RESET_Write_Proc;
 		printk(KERN_WARNING "add /proc/EVDO_HOST_RESET ok\n");
 	}
 	else
 	{
 		printk(KERN_WARNING "add /proc/EVDO_HOST_RESET fail\n");
 	}
+*/
 
 	return 0;
 }

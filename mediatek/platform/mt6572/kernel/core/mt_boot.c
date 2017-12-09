@@ -24,14 +24,12 @@
 
 /* hardware version register */
 #define VER_BASE            (DEVINFO_BASE)
-#define APHW_CODE           (VER_BASE + 0x08)
-#define APHW_SUBCODE        (VER_BASE + 0x0C)
-#define APHW_VER            (VER_BASE + 0x00)
-#define APSW_VER            (VER_BASE + 0x04)
+#define APHW_CODE           (VER_BASE)
+#define APHW_SUBCODE        (VER_BASE + 0x04)
+#define APHW_VER            (VER_BASE + 0x08)
+#define APSW_VER            (VER_BASE + 0x0C)
 
-/* this vairable will be set by mt_fixup */
-BOOTMODE g_boot_mode __nosavedata = UNKNOWN_BOOT;
-boot_reason_t g_boot_reason __nosavedata = BR_UNKNOWN;
+/* this vairable will be set by mt_fixup.c */
 META_COM_TYPE g_meta_com_type = META_UNKNOWN_COM;
 unsigned int g_meta_com_id = 0;
 
@@ -113,11 +111,9 @@ static struct sysfs_ops boot_sysfs_ops = {
 
 /* boot attribute */
 struct attribute boot_attr = {BOOT_SYSFS_ATTR, 0644};
-//struct attribute md_attr = {MD_SYSFS_ATTR, 0664};
 struct attribute info_attr = {INFO_SYSFS_ATTR, 0644};
 static struct attribute *boot_attrs[] = {
     &boot_attr,
-//    &md_attr,
     &info_attr,
     NULL
 };
@@ -143,13 +139,6 @@ static struct file_operations boot_fops = {
 /* boot device class */
 static struct class *boot_class;
 static struct device *boot_device;
-
-
-/* return boot mode */
-BOOTMODE get_boot_mode(void)
-{
-    return g_boot_mode;
-}
 
 /* return hardware version */
 unsigned int get_chip_code(void)
@@ -180,30 +169,6 @@ CHIP_SW_VER mt_get_chip_sw_ver(void)
 CHIP_VER get_chip_eco_ver(void) /*TO BE REMOVED*/
 {   
     return DRV_Reg32(APHW_VER);
-}
-/* for convenience, simply check is meta mode or not */
-bool is_meta_mode(void)
-{   
-    if(g_boot_mode == META_BOOT)
-    {   
-        return true;
-    }
-    else
-    {   
-        return false;
-    }
-}
-
-bool is_advanced_meta_mode(void)
-{
-    if (g_boot_mode == ADVMETA_BOOT)
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
 }
 
 bool com_is_enable(void)  // usb android will check whether is com port enabled default. in normal boot it is default enabled. 
@@ -364,8 +329,5 @@ module_init(boot_mod_init);
 module_exit(boot_mod_exit);
 MODULE_DESCRIPTION("MT6572 Boot Information Querying Driver");
 MODULE_LICENSE("Proprietary");
-EXPORT_SYMBOL(is_meta_mode);
-EXPORT_SYMBOL(is_advanced_meta_mode);
-EXPORT_SYMBOL(get_boot_mode);
 EXPORT_SYMBOL(boot_register_md_func);
 EXPORT_SYMBOL(mt_get_chip_sw_ver);

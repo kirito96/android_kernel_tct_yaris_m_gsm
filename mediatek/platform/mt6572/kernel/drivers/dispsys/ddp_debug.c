@@ -14,13 +14,11 @@
 #include "ddp_bls.h"
 #include "ddp_color.h"
 #include "ddp_drv.h"
-#include "ddp_dpfd.h"
-#include "ddp_rot.h"
-#include "ddp_scl.h"
 #include "ddp_wdma.h"
+#include "ddp_hal.h"
 #include "ddp_path.h"
 
-#include "disp_drv.h"
+#include "disp_drv_ddp.h"
 #include <mach/m4u.h>
 // ---------------------------------------------------------------------------
 //  External variable declarations
@@ -32,6 +30,8 @@
 struct DDP_MMP_Events_t DDP_MMP_Events;
 
 struct dentry *debugfs = NULL;
+unsigned int gUltraLevel = 4; // RDMA ultra aggressive level
+unsigned int gEnableUltra = 0;
 
 static const long int DEFAULT_LOG_FPS_WND_SIZE = 30;
 
@@ -39,7 +39,7 @@ static const long int DEFAULT_LOG_FPS_WND_SIZE = 30;
 unsigned char pq_debug_flag=0;
 unsigned char aal_debug_flag=0;
 
-#if defined(DDP_DRV_DBG)
+#if defined(DDP_DRV_DBG_ON)
     unsigned int ddp_drv_dbg_log = 0;    // default off, use "adb shell "echo ddp_drv_dbg_log:1 > sys/kernel/debug/dispsys" to enable
     unsigned int ddp_drv_irq_log = 0;    // default off
     unsigned int ddp_drv_info_log = 1;    // default on, important msg, not err
@@ -51,7 +51,7 @@ unsigned char aal_debug_flag=0;
     unsigned int ddp_drv_err_log = 1;
 #endif
 
-#if defined(LCD_DRV_DBG)
+#if defined(LCD_DRV_DBG_ON)
     size_t dbi_drv_dbg_log = true;
     size_t dbi_drv_dbg_func_log = false;    // function entry log, default off
     size_t dsi_drv_dbg_log = true;
@@ -116,6 +116,7 @@ void init_ddp_mmp_events(void)
         DDP_MMP_Events.CMDQ_IRQ = MMProfileRegisterEvent(DDP_MMP_Events.DDP_IRQ, "CMDQ_IRQ");
         DDP_MMP_Events.Mutex_IRQ = MMProfileRegisterEvent(DDP_MMP_Events.DDP_IRQ, "Mutex_IRQ");
         DDP_MMP_Events.WAIT_INTR = MMProfileRegisterEvent(DDP_MMP_Events.DDP, "WAIT_IRQ");
+        DDP_MMP_Events.Debug = MMProfileRegisterEvent(DDP_MMP_Events.DDP, "Debug");
 
         MMProfileEnableEventRecursive(DDP_MMP_Events.MutexParent, 1);
         MMProfileEnableEventRecursive(DDP_MMP_Events.BackupReg, 1);
@@ -128,6 +129,8 @@ void init_ddp_mmp_events(void)
 //  Command Processor
 // ---------------------------------------------------------------------------
 static char dbg_buf[2048];
+extern void mtkfb_dump_layer_info(void);
+extern unsigned int gNeedToRecover;
 
 static void process_dbg_opt(const char *opt)
 {
@@ -261,6 +264,124 @@ static void process_dbg_opt(const char *opt)
         {
            ddp_mem_test2();
         }
+#if 0
+        else if(enable==4)
+        {
+            DDP_IRQ_ERR("test 4");
+        }
+#endif
+        else if(enable==5)
+        {
+            DISP_MSG("SMI_LARB_MON_REQ0=0x%x, SMI_LARB_MON_REQ1=0x%x, SMI_0=0x%x, SMI_600=0x%x, SMI_604=0x%x, SMI_610=0x%x, SMI_614=0x%x, \
+                              color_h_cnt=%d, color_line_cnt=%d, ovl_add_con=0x%x, ovl_ctrl_flow=0x%x \n", 
+                              *(volatile unsigned int*)0xf4010450, 
+                              *(volatile unsigned int*)0xf4010454,
+                              *(volatile unsigned int*)0xf4010000,
+                              *(volatile unsigned int*)0xf4010600,
+                              *(volatile unsigned int*)0xf4010604,
+                              *(volatile unsigned int*)0xf4010610,
+                              *(volatile unsigned int*)0xf4010614,
+                              *(volatile unsigned int*)0xf400b404,
+                              *(volatile unsigned int*)0xf400b408,
+                              DISP_REG_GET(DISP_REG_OVL_ADDCON_DBG),
+                              DISP_REG_GET(DISP_REG_OVL_FLOW_CTRL_DBG));
+             sprintf(dbg_buf + strlen(dbg_buf), "SMI_LARB_MON_REQ0=0x%x, SMI_LARB_MON_REQ1=0x%x, SMI_0=0x%x, SMI_600=0x%x, SMI_604=0x%x, SMI_610=0x%x, SMI_614=0x%x,"
+                       "color_h_cnt=%d, color_line_cnt=%d, ovl_add_con=0x%x, ovl_ctrl_flow=0x%x \n",
+                       *(volatile unsigned int*)0xf4010450, 
+                       *(volatile unsigned int*)0xf4010454,
+                       *(volatile unsigned int*)0xf4010000,
+                       *(volatile unsigned int*)0xf4010600,
+                       *(volatile unsigned int*)0xf4010604,
+                       *(volatile unsigned int*)0xf4010610,
+                       *(volatile unsigned int*)0xf4010614,
+                       *(volatile unsigned int*)0xf400b404,
+                       *(volatile unsigned int*)0xf400b408,
+                       DISP_REG_GET(DISP_REG_OVL_ADDCON_DBG),
+                       DISP_REG_GET(DISP_REG_OVL_FLOW_CTRL_DBG));               
+        }
+        else if(enable==6)
+        {
+            mtkfb_dump_layer_info();
+        }
+        else if (enable == 7)
+        {
+            gNeedToRecover = 1;
+        }
+#if 0
+        else if(enable==8)
+        {
+            DISP_MSG("disp_clock_check start! \n");      
+            disp_clock_check();
+            DISP_MSG("disp_clock_check end! \n");      
+        }
+        else if(enable==9)
+        {
+            DISP_MSG("ddp dump info ! \n"); 
+            ddp_dump_info(DISP_MODULE_OVL);
+            ddp_dump_info(DISP_MODULE_RDMA0);
+            ddp_dump_info(DISP_MODULE_COLOR);
+            ddp_dump_info(DISP_MODULE_BLS);            
+            ddp_dump_info(DISP_MODULE_CONFIG);
+            ddp_dump_info(DISP_MODULE_MUTEX);
+            ddp_dump_info(DISP_MODULE_RDMA1);
+            ddp_dump_info(DISP_MODULE_WDMA0);
+            ddp_dump_info(DISP_MODULE_DSI_CMD);
+            ddp_dump_info(DISP_MODULE_DPI0);
+        }
+        else if(enable==10)
+        {
+            DISP_MSG("ddp dump reg ! \n"); 
+            disp_dump_reg(DISP_MODULE_OVL);
+            disp_dump_reg(DISP_MODULE_RDMA0);
+            disp_dump_reg(DISP_MODULE_COLOR);
+            disp_dump_reg(DISP_MODULE_BLS);            
+            disp_dump_reg(DISP_MODULE_CONFIG);
+            disp_dump_reg(DISP_MODULE_MUTEX);
+            disp_dump_reg(DISP_MODULE_RDMA1);
+            disp_dump_reg(DISP_MODULE_WDMA0);
+            
+            disp_print_reg(DISP_MODULE_OVL);
+            disp_print_reg(DISP_MODULE_RDMA0);
+            disp_print_reg(DISP_MODULE_COLOR);
+            disp_print_reg(DISP_MODULE_BLS);            
+            disp_print_reg(DISP_MODULE_CONFIG);
+            disp_print_reg(DISP_MODULE_MUTEX);
+            disp_print_reg(DISP_MODULE_RDMA1);
+            disp_print_reg(DISP_MODULE_WDMA0);
+            disp_print_reg(DISP_MODULE_DSI_CMD);
+            disp_print_reg(DISP_MODULE_DPI0);
+        }
+#endif
+        else if((enable>=11)&&(enable<=15))
+        {
+            gEnableUltra = 1;
+            gUltraLevel = enable - 11;
+            sprintf(buf, "gUltraLevel: %d, DISP_REG_RDMA_MEM_GMC_SETTING_0=0x%x, DISP_REG_RDMA_FIFO_CON=0x%x \n", 
+                gUltraLevel,
+                DISP_REG_GET(DISP_REG_RDMA_MEM_GMC_SETTING_0),
+                DISP_REG_GET(DISP_REG_RDMA_FIFO_CON)); 
+            DISP_MSG("ddp debug set gUltraLevel = %d, DISP_REG_RDMA_MEM_GMC_SETTING_0=0x%x, DISP_REG_RDMA_FIFO_CON=0x%x \n", 
+                gUltraLevel,
+                DISP_REG_GET(DISP_REG_RDMA_MEM_GMC_SETTING_0),
+                DISP_REG_GET(DISP_REG_RDMA_FIFO_CON));
+        }
+        else if(enable==21)
+        {
+            sprintf(buf, "base:\n\
+                      config f4+0 \n\
+                      ovl 7\n\
+                      rdma 8\n\
+                      rdma1 12\n\
+                      wdma 9\n\
+                      bls a\n\
+                      color b\n\
+                      dsi c\n\
+                      dpi d\n\
+                      mm_mutex e\n\
+                      mm_cmdq f\n\
+                      smi_larb0 10\n\
+                      smi_common 11\n");
+        }
     }
     else if (0 == strncmp(opt, "mmp", 3))
     {
@@ -268,15 +389,19 @@ static void process_dbg_opt(const char *opt)
     }
     else if (0 == strncmp(opt, "dpfd_ut1:", 9))
     {
+#if 0
         char *p = (char *)opt + 9;
         unsigned int channel = (unsigned int) simple_strtoul(p, &p, 10);        
         //ddpk_testfunc_1(channel);
+#endif
     }
     else if (0 == strncmp(opt, "dpfd_ut2:", 9))
     {
+#if 0
         char *p = (char *)opt + 9;
         unsigned int channel = (unsigned int) simple_strtoul(p, &p, 10);        
         //ddpk_testfunc_2(channel);
+#endif
     }
     else if (0 == strncmp(opt, "dpfd:log", 8))
     {
@@ -634,7 +759,7 @@ int ddp_mem_test(void)
 
     config.srcModule = DISP_MODULE_OVL;
     config.addr = (unsigned int)pSrcPa; 
-    config.inFormat = DISP_COLOR_FORMAT_RGB888; 
+    config.inFormat = eRGB888; 
     config.pitch = DDP_TEST_WIDTH;
     config.srcROI.x = 0;
     config.srcROI.y = 0; 
@@ -643,7 +768,7 @@ int ddp_mem_test(void)
     config.srcWidth = DDP_TEST_WIDTH;
     config.srcHeight = DDP_TEST_HEIGHT;
     config.dstModule = DISP_MODULE_WDMA0;
-    config.outFormat = WDMA_OUTPUT_FORMAT_RGB888; 
+    config.outFormat = eRGB888; 
     config.dstAddr = (unsigned int)pDstPa; 
     config.dstWidth = DDP_TEST_WIDTH; 
     config.dstHeight = DDP_TEST_HEIGHT;

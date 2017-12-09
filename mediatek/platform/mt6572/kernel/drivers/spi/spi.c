@@ -21,9 +21,10 @@
 
 #include <mach/mt_spi.h>
 //#include <mach/mt_gpio.h>
-#include <mach/mt_clkmgr.h>
 #include <mach/emi_mpu.h>
 #include "mach/memory.h"
+#include "mt_spi_hal.h"
+#include <mach/mt_clkmgr.h>
 
 #define SPI_DRV_NAME	"mt-spi"
 
@@ -68,12 +69,19 @@ static atomic_t rec_log_count = ATOMIC_INIT(0);
 static unsigned long long rec_msg_time[SPI_REC_MSG_MAX];
 static unsigned long long rec_time;
 
+/*should coding in file kernel/arch/arm/kernel/irq.c.
+	extern unsigned long long spi_rec_t0;
+	spi_rec_t0 = sched_clock();
+*/
 unsigned long long spi_rec_t0; // record interrupt act
 
 
 DEFINE_SPINLOCK(msg_rec_lock);
 //	static unsigned long long t_rec[4];
 
+/*
+	the function invoke time averrage 2us.
+*/
 
 static inline void spi_rec_time(const char *str)
 {
@@ -147,6 +155,13 @@ static inline void spi_rec_time(const char *str)
 #endif
 
 //static void disable_clk(void);
+/*
+void mt_spi_msgdone_handler(void *data)
+{
+	disable_clk();
+	return;
+}
+*/
 //DECLARE_WORK(mt_spi_msgdone_workqueue,mt_spi_msgdone_handler);
 
 
@@ -1229,10 +1244,10 @@ void spi_check_mpu_violation(u32 addr, int wr_vio)
 {
     printk(KERN_CRIT "SPI checks EMI MPU violation.\n");
     printk(KERN_CRIT "addr = 0x%x, %s violation.\n", addr, wr_vio? "Write": "Read");
-    printk(KERN_CRIT "DMA SRC = 0x%x.\n", __raw_readl(SPI_BASE + SPI_TX_SRC_REG));
-    printk(KERN_CRIT "DMA DST = 0x%x.\n", __raw_readl(SPI_BASE + SPI_RX_DST_REG));
-    printk(KERN_CRIT "DMA COUNT = 0x%x.\n", __raw_readl(SPI_BASE + SPI_CFG1_REG));
-    printk(KERN_CRIT "DMA CON = 0x%x.\n", __raw_readl(SPI_BASE + SPI_CMD_REG));
+    printk(KERN_CRIT "DMA SRC = 0x%x.\n", __raw_readl((void *)(SPI_BASE + SPI_TX_SRC_REG)));
+    printk(KERN_CRIT "DMA DST = 0x%x.\n", __raw_readl((void *)(SPI_BASE + SPI_RX_DST_REG)));
+    printk(KERN_CRIT "DMA COUNT = 0x%x.\n", __raw_readl((void *)(SPI_BASE + SPI_CFG1_REG)));
+    printk(KERN_CRIT "DMA CON = 0x%x.\n", __raw_readl((void *)(SPI_BASE + SPI_CMD_REG)));
 }
 
 static int __init mt_spi_init(void)

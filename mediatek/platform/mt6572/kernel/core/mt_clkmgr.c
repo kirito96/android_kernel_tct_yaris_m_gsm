@@ -46,9 +46,9 @@
 // Macro definition
 /*=============================================================*/
 
-#define BIT(_bit_)          (unsigned int)(1 << (_bit_))
-#define BITS(_bits_, _val_) ((BIT(((1)?_bits_)+1)-BIT(((0)?_bits_))) & (_val_<<((0)?_bits_)))
-#define BITMASK(_bits_)     (BIT(((1)?_bits_)+1)-BIT(((0)?_bits_)))
+// #define BIT(_bit_)          (unsigned int)(1 << (_bit_))
+#define BITS(_bits_, _val_) ((((unsigned) -1 >> (31 - ((1) ? _bits_))) & ~((1U << ((0) ? _bits_)) - 1)) & ((_val_)<<((0) ? _bits_)))
+#define BITMASK(_bits_)     (((unsigned) -1 >> (31 - ((1) ? _bits_))) & ~((1U << ((0) ? _bits_)) - 1))
 
 
 /*=============================================================*/
@@ -184,8 +184,12 @@
 
 #endif // defined(CONFIG_CLKMGR_SHOWLOG)
 
+#ifndef spm_read
 #define spm_read  clk_readl
+#endif
+#ifndef spm_write
 #define spm_write clk_writel
+#endif
 
 bool is_ddr3(void)
 {
@@ -385,7 +389,7 @@ static struct cg_clk_ops general_gate_cg_clk_ops; // XXX: set/clr/sta addr are d
 static struct cg_clk_ops general_en_cg_clk_ops;   // XXX: set/clr/sta addr are diff
 static struct cg_clk_ops wo_clr_cg_clk_ops;       // XXX: without CLR (i.e. set/clr/sta addr are same)
 static struct cg_clk_ops ao_cg_clk_ops;           // XXX: always on
-static struct cg_clk_ops mfg_cg_clk_ops;          // XXX: mfg
+// static struct cg_clk_ops mfg_cg_clk_ops;          // XXX: mfg /* not used */
 
 static struct cg_clk clks[] = // NR_CLKS
 {
@@ -707,7 +711,7 @@ static struct cg_clk_ops ao_cg_clk_ops =
 };
 
 // mfg_cg_clk_ops
-
+#if 0	/* not used */
 static int mfg_cg_clk_get_state_op(struct cg_clk *clk)
 {
     ENTER_FUNC(FUNC_LV_OP);
@@ -723,14 +727,14 @@ static struct cg_clk_ops mfg_cg_clk_ops =
     .enable         = ao_cg_clk_enable_op,
     .disable        = ao_cg_clk_disable_op,
 };
-
+#endif	/* not used */
 //
 // CG_GRP variable & function
 //
 static struct cg_grp_ops general_en_cg_grp_ops;
 static struct cg_grp_ops general_gate_cg_grp_ops;
 static struct cg_grp_ops ctrl0_cg_grp_ops;
-static struct cg_grp_ops mfg_cg_grp_ops;
+// static struct cg_grp_ops mfg_cg_grp_ops; /* not used */
 
 static struct cg_grp grps[] = // NR_GRPS
 {
@@ -934,7 +938,7 @@ static struct cg_grp_ops ctrl0_cg_grp_ops =
 };
 
 // mfg_cg_grp
-
+#if 0	/* not used */
 static int get_clk_state_locked(struct cg_clk *clk);
 
 static int mfg_cg_grp_dump_regs_op(struct cg_grp *grp, unsigned int *ptr)
@@ -963,7 +967,7 @@ static struct cg_grp_ops mfg_cg_grp_ops =
     .get_state = general_gate_cg_grp_get_state_op,
     .dump_regs = mfg_cg_grp_dump_regs_op,
 };
-
+#endif	/* not used */
 //
 // enable_clock() / disable_clock()
 //
@@ -1166,7 +1170,7 @@ static struct
 };
 #endif  // XXX: debug for MT_CG_APDMA_SW_CG
 
-int enable_clock(cg_clk_id id, const char *name)
+int mt_enable_clock(enum cg_clk_id id, const char *name)
 {
     int err;
     unsigned long flags;
@@ -1212,9 +1216,9 @@ int enable_clock(cg_clk_id id, const char *name)
 
 #endif  // CONFIG_CLKMGR_EMULATION
 }
-EXPORT_SYMBOL(enable_clock);
+EXPORT_SYMBOL(mt_enable_clock);
 
-int disable_clock(cg_clk_id id, const char *name)
+int mt_disable_clock(enum cg_clk_id id, const char *name)
 {
     int err;
     unsigned long flags;
@@ -1263,7 +1267,7 @@ int disable_clock(cg_clk_id id, const char *name)
 
 #endif  // CONFIG_CLKMGR_EMULATION
 }
-EXPORT_SYMBOL(disable_clock);
+EXPORT_SYMBOL(mt_disable_clock);
 
 int clock_is_on(cg_clk_id id)
 {
@@ -1777,7 +1781,10 @@ static int glitch_free_clkmux_sel_op(struct clkmux *mux, cg_clk_id clksrc)
 
         // set clkmux reg (inc. non glitch free / half glitch free / glitch free case)
         reg_val = (clk_readl(mux->base_addr) & ~mux->map[i].mask) | mux->map[i].val;
-        clk_writel(mux->base_addr, reg_val & ~(mux->map[i].mask & GFMUX_BIT_MASK_FOR_HALF_GF_OP)); // XXX: tricky for half glitch free case (set rg_xxx_gfmux_sel 0 first)
+        if (mux->map[i].mask & GFMUX_BIT_MASK_FOR_HALF_GF_OP)
+        {
+            clk_writel(mux->base_addr, clk_readl(mux->base_addr) & ~(mux->map[i].mask & GFMUX_BIT_MASK_FOR_HALF_GF_OP)); // XXX: tricky for half glitch free case (set rg_xxx_gfmux_sel 0 first)
+        }
         clk_writel(mux->base_addr, reg_val);
 
         // (just) help to enable/disable src clock if necessary (i.e. drain cg is on original)
@@ -2365,7 +2372,7 @@ static unsigned int sdm_pll_vco_calc_op(struct pll *pll)
     unsigned int vco_f = 0;
     unsigned int vco = 0;
 
-    volatile unsigned int con0 = clk_readl(pll->base_addr);     // XPLL_CON0
+    // volatile unsigned int con0 = clk_readl(pll->base_addr);     // XPLL_CON0 /* not used */
     volatile unsigned int con1 = clk_readl(pll->base_addr + 4); // XPLL_CON1
 
     unsigned int vcodivsel  = 0; // (con0 >> 19) & 0x1; // bit[19]  // XXX: always zero
@@ -2422,7 +2429,7 @@ static int sdm_pll_hp_enable_op(struct pll *pll)
     }
 
     vco = pll->ops->vco_calc(pll);
-    err = freqhopping_config(pll->hp_id, vco, 1);
+    err = freqhop_config(pll->hp_id, vco, 1);
 
     EXIT_FUNC(FUNC_LV_OP);
     return err;
@@ -2442,7 +2449,7 @@ static int sdm_pll_hp_disable_op(struct pll *pll)
     }
 
     vco = pll->ops->vco_calc(pll);
-    err = freqhopping_config(pll->hp_id, vco, 0);
+    err = freqhop_config(pll->hp_id, vco, 0);
 
     EXIT_FUNC(FUNC_LV_OP);
     return err;
@@ -2489,7 +2496,7 @@ static unsigned int univ_pll_vco_calc_op(struct pll *pll)
 {
     unsigned int vco = 0;
 
-    volatile unsigned int con0 = clk_readl(pll->base_addr);     // UNIVPLL_CON0
+    // volatile unsigned int con0 = clk_readl(pll->base_addr);     // UNIVPLL_CON0 /* not used */
     volatile unsigned int con1 = clk_readl(pll->base_addr + 4); // UNIVPLL_CON1
 
     unsigned int vcodivsel  = 0; // (con0 >> 19) & 0x1; // bit[19]      // XXX: always zero
@@ -3150,7 +3157,6 @@ static int spm_mtcmos_ctrl_general_locked(struct subsys *sys,
 {
     int i;
     int err = 0;
-    volatile unsigned int val;
     unsigned long expired = jiffies + HZ/10;
 
     ENTER_FUNC(FUNC_LV_API);
@@ -3168,10 +3174,24 @@ static int spm_mtcmos_ctrl_general_locked(struct subsys *sys,
             spm_write(INFRA_TOPAXI_PROTECTEN, spm_read(INFRA_TOPAXI_PROTECTEN) | sys->bus_prot_mask);
             while ((spm_read(INFRA_TOPAXI_PROTECTSTA1) & sys->bus_prot_mask) != sys->bus_prot_mask)
             {
-                if (time_after(expired, jiffies))
+                if (time_after(jiffies, expired))
                 {
                     WARN_ON(1);
                     break;
+                }
+                /*
+                 * FIXME: Workaround for CONNSYS
+                 * The clock of bus protect ip of CONNSYS comes from conn2ap_ahb_hclk_ck.
+                 * Bus protect ip won't return ACK if no clock.
+                 * If CONNSYS bus goes to idle mode, clock will be gated.
+                 * Issue a dummy read to enable bus clock temporarily.
+                 */
+                if (unlikely(sys == &syss[SYS_CON]))
+                {
+                    /*
+                     * Issue a dummy read (read chip id) to CONNSYS.
+                     */
+                    *(volatile unsigned int *)0xF8070008;
                 }
             }
         }
@@ -3190,7 +3210,7 @@ static int spm_mtcmos_ctrl_general_locked(struct subsys *sys,
                && ((spm_read(sys->ctl_addr) & sys->sram_pdn_ack_bits) != sys->sram_pdn_ack_bits)    // wait until SRAM_PDN_ACK all 1
                )
         {
-            if (time_after(expired, jiffies))
+            if (time_after(jiffies, expired))
             {
                 WARN_ON(1);
                 break;
@@ -3206,7 +3226,7 @@ static int spm_mtcmos_ctrl_general_locked(struct subsys *sys,
                || (spm_read(SPM_PWR_STATUS_S) & sys->sta_mask)
                )
         {
-            if (time_after(expired, jiffies))
+            if (time_after(jiffies, expired))
             {
                 WARN_ON(1);
                 break;
@@ -3224,7 +3244,7 @@ static int spm_mtcmos_ctrl_general_locked(struct subsys *sys,
                || !(spm_read(SPM_PWR_STATUS_S) & sys->sta_mask)
                )
         {
-            if (time_after(expired, jiffies))
+            if (time_after(jiffies, expired))
             {
                 WARN_ON(1);
                 break;
@@ -3247,20 +3267,20 @@ static int spm_mtcmos_ctrl_general_locked(struct subsys *sys,
                && (spm_read(sys->ctl_addr) & sys->sram_pdn_ack_bits)                                // wait until SRAM_PDN_ACK all 0
                )
         {
-            if (time_after(expired, jiffies))
+            if (time_after(jiffies, expired))
             {
                 WARN_ON(1);
                 break;
             }
         }
 
-        // BUS_PROTECT
+        // BUS_PROTECT                                                                              // disable BUS protect
         if (0 != sys->bus_prot_mask)
         {
             spm_write(INFRA_TOPAXI_PROTECTEN, spm_read(INFRA_TOPAXI_PROTECTEN) & ~sys->bus_prot_mask);
             while (spm_read(INFRA_TOPAXI_PROTECTSTA1) & sys->bus_prot_mask)
             {
-                if (time_after(expired, jiffies))
+                if (time_after(jiffies, expired))
                 {
                     WARN_ON(1);
                     break;
@@ -3596,7 +3616,7 @@ static int disable_subsys_locked(struct subsys *sys, int force_off)
     int err;
     int local_state = sys->state;//get_subsys_local_state(sys);
     int i;
-    struct cg_grp *grp;
+    const struct cg_grp *grp;
 
     ENTER_FUNC(FUNC_LV_LOCKED);
 
@@ -4079,7 +4099,7 @@ unsigned int mt_get_cpu_freq(void)
         break;
     }
 
-    clk_mux_sel = DRV_Reg32(TOP_CKMUXSEL) & BITMASK(4:0);
+    clk_mux_sel = DRV_Reg32(TOP_CKDIV1) & BITMASK(4:0);
 
     switch (clk_mux_sel)
     {
@@ -4139,6 +4159,7 @@ EXPORT_SYMBOL(mt_get_cpu_freq);
 //
 static void dump_clk_info(void);
 
+#if 0	/* XXX: for bring up */
 static void subsys_all_force_on(void)
 {
 #if 1
@@ -4185,6 +4206,7 @@ static void cg_all_force_on(void)
 
     EXIT_FUNC(FUNC_LV_BODY);
 }
+#endif	/* XXX: for bring up */
 
 static void mt_subsys_init(void)
 {
@@ -4245,6 +4267,7 @@ static void mt_plls_init(void)
     EXIT_FUNC(FUNC_LV_API);
 }
 
+#if 0	// TODO: FIXME
 static void mt_plls_enable_hp(void)
 {
     int i;
@@ -4264,6 +4287,7 @@ static void mt_plls_enable_hp(void)
 
     EXIT_FUNC(FUNC_LV_API);
 }
+#endif	// TODO: FIXME
 
 static void mt_clks_init(void)
 {
@@ -4464,7 +4488,7 @@ int mt_clkmgr_init(void)
 
     initialized = 1;
 
-    mt_freqhopping_init();
+    mt_freqhop_init();
 #if 0   // TODO: FIXME
     mt_plls_enable_hp();
 #endif  // TODO: FIXME
@@ -4525,6 +4549,8 @@ bool clkmgr_idle_can_enter(unsigned int *condition_mask, unsigned int *block_mas
 //
 // Golden setting
 //
+#if defined(CONFIG_MT_ENG_BUILD)
+
 typedef enum
 {
     MODE_NORMAL,
@@ -4621,7 +4647,7 @@ static void _golden_setting_init(struct golden *g, unsigned int *buf, unsigned i
     }
 }
 
-static int _golden_setting_add(struct golden *g, unsigned int addr, unsigned int mask, unsigned golden_val)
+static void _golden_setting_add(struct golden *g, unsigned int addr, unsigned int mask, unsigned golden_val)
 {
     if (   NULL != g
         && FALSE == g->is_golden_log
@@ -4774,6 +4800,8 @@ static int _snapshot_golden_setting(struct golden *g, const char *func, const un
     }
 }
 
+#endif /* CONFIG_MT_ENG_BUILD */
+
 int snapshot_golden_setting(const char *func, const unsigned int line)
 {
 #if defined(CONFIG_MT_ENG_BUILD)
@@ -4783,6 +4811,7 @@ int snapshot_golden_setting(const char *func, const unsigned int line)
 #endif
 }
 
+#if defined(CONFIG_MT_ENG_BUILD)
 static int _parse_mask_val(char *buf, unsigned int *mask, unsigned int *golden_val)
 {
     unsigned int i, bit_shift;
@@ -4948,6 +4977,7 @@ static char * _gen_color_str(const unsigned int mask, const unsigned int golden_
 #undef EC
 #undef XXXX
 }
+#endif /* CONFIG_MT_ENG_BUILD */
 
 //
 // DEBUG related
@@ -4974,7 +5004,6 @@ void dump_clk_info_by_id(cg_clk_id id)
 
 static void dump_clk_info(void)
 {
-    struct cg_clk *clk;
     int i;
 
     for (i = 0; i < NR_CLKS; i++)
@@ -4985,6 +5014,8 @@ static void dump_clk_info(void)
 #if 0   // XXX: dump for control table
     for (i = 0; i < NR_CLKS; i++)
     {
+        struct cg_clk *clk;
+
         clk = &clks[i];
 
         clk_info("[%s,\t"HEX_FMT",\t"HEX_FMT",\t"HEX_FMT",\t%d,\t%s]\n",
@@ -5406,14 +5437,14 @@ static int subsys_test_write(struct file *file, const char *buffer,
 
     desc[len] = '\0';
 
-    if (sscanf(desc, "%s %d %d", cmd, &id, &force_off) == 3)
+    if (sscanf(desc, "%s %d %d", cmd, (int *)&id, &force_off) == 3)
     {
         if (!strcmp(cmd, "disable"))
         {
             err = disable_subsys_force(id, "test");
         }
     }
-    else if (sscanf(desc, "%s %d", cmd, &id) == 2)
+    else if (sscanf(desc, "%s %d", cmd, (int *)&id) == 2)
     {
         if (!strcmp(cmd, "enable"))
         {
@@ -5484,9 +5515,9 @@ static int udelay_test_write(struct file *file, const char *buffer,
 
     if (sscanf(desc, "%u", &delay) == 1)
     {
-        // pre = clk_readl(0xF0008028); // TODO: FIXME: BAD CODING STYLE, ??? global timer ???
+        pre = 0; // clk_readl(0xF0008028); // TODO: FIXME: BAD CODING STYLE, ??? global timer ???
         udelay(delay);
-        // pos = clk_readl(0xF0008028); // TODO: FIXME: BAD CODING STYLE, ??? global timer ???
+        pos = 0; // clk_readl(0xF0008028); // TODO: FIXME: BAD CODING STYLE, ??? global timer ???
         clk_info("udelay(%u) test: pre="HEX_FMT", pos="HEX_FMT", delta=%u\n",
                  delay, pre, pos, pos - pre);
     }
@@ -5494,6 +5525,8 @@ static int udelay_test_write(struct file *file, const char *buffer,
     EXIT_FUNC(FUNC_LV_BODY);
     return count;
 }
+
+#if defined(CONFIG_MT_ENG_BUILD)
 
 static int golden_test_read(char *page, char **start, off_t off,
                             int count, int *eof, void *data)
@@ -5571,6 +5604,8 @@ static int golden_test_read(char *page, char **start, off_t off,
                 {
                     p += sprintf(p, "@ %s():%d\n", snapshot->func, snapshot->line);
                 }
+
+		start_p = p;
 
                 for (i = buf_golden_setting_idx, buf_golden_setting_idx = 0; i < _golden.nr_golden_setting; i++)
                 {
@@ -5766,6 +5801,8 @@ static int golden_test_write(struct file *file, const char *buffer,
     return count;
 }
 
+#endif /* CONFIG_MT_ENG_BUILD */
+
 #if 0   // XXX: for debugfs
 static ssize_t debug_read(struct file *file,
                           char __user *ubuf, size_t count, loff_t *ppos)
@@ -5857,6 +5894,7 @@ void mt_clkmgr_debug_init(void)
         entry->write_proc = udelay_test_write;
     }
 
+#if defined(CONFIG_MT_ENG_BUILD)
     {
         #define GOLDEN_SETTING_BUF_SIZE (2 * PAGE_SIZE)
 
@@ -5877,6 +5915,7 @@ void mt_clkmgr_debug_init(void)
             }
         }
     }
+#endif /* CONFIG_MT_ENG_BUILD */
 
 #if 0   // XXX: for debugfs
     {
@@ -5901,9 +5940,7 @@ static int mt_clkmgr_debug_bringup_init(void)
     }
 #endif  // XXX: temp solution for init function not issued
 
-#if defined(CONFIG_MT_ENG_BUILD)
     mt_clkmgr_debug_init();
-#endif // CONFIG_MT_ENG_BUILD
 
     EXIT_FUNC(FUNC_LV_API);
     return 0;

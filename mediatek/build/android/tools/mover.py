@@ -1,4 +1,7 @@
 #!/proj/map/bin/python/bin/python
+
+
+
 import re,os,sys
 
 files = [re.sub(r"[\r\n]","",x.strip()) for x in open("movelist","r").readlines()]

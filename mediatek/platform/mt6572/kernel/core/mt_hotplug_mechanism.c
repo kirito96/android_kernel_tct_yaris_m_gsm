@@ -1,4 +1,13 @@
+/*
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ */
 
+/*********************************
+* include
+**********************************/
 #include <linux/kernel.h> 
 #include <linux/module.h>
 #include <linux/init.h>
@@ -11,6 +20,9 @@
 
 
 
+/*********************************
+* macro
+**********************************/
 #ifdef CONFIG_HAS_EARLYSUSPEND
 
 #define STATE_INIT                  0
@@ -19,10 +31,16 @@
 
 #endif //#ifdef CONFIG_HAS_EARLYSUSPEND
 
-
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
+#ifdef CONFIG_INTELLI_PLUG 
+static int g_enable = 0;
+#else
 static int g_enable = 1;
+#endif
+
+/*********************************
+* glabal variable
+**********************************/
+#ifdef CONFIG_HAS_EARLYSUSPEND
 static struct early_suspend mt_hotplug_mechanism_early_suspend_handler =
 {
     .level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 250,
@@ -36,11 +54,17 @@ static int g_test1 = 0;
 
 
 
-extern void hp_disable_cpu_hp(int disable);
-extern struct mutex hp_onoff_mutex;
+/*********************************
+* extern function
+**********************************/
+extern void hp_set_dynamic_cpu_hotplug_enable(int enable);
+extern struct mutex bl_onoff_mutex;
 
 
 
+/*********************************
+* early suspend callback function
+**********************************/
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void mt_hotplug_mechanism_early_suspend(struct early_suspend *h)
 {
@@ -50,9 +74,9 @@ static void mt_hotplug_mechanism_early_suspend(struct early_suspend *h)
     {
         int i = 0;
         
-        mutex_lock(&hp_onoff_mutex);
+        mutex_lock(&bl_onoff_mutex);
         
-        hp_disable_cpu_hp(1);
+        hp_set_dynamic_cpu_hotplug_enable(0);
 
         for (i = (num_possible_cpus() - 1); i > 0; i--)
         {
@@ -60,7 +84,7 @@ static void mt_hotplug_mechanism_early_suspend(struct early_suspend *h)
                 cpu_down(i);
         }
         
-        mutex_unlock(&hp_onoff_mutex);
+        mutex_unlock(&bl_onoff_mutex);
     }
 
     g_cur_state = STATE_ENTER_EARLY_SUSPEND;
@@ -71,6 +95,9 @@ static void mt_hotplug_mechanism_early_suspend(struct early_suspend *h)
 
 
 
+/*******************************
+* late resume callback function
+********************************/
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void mt_hotplug_mechanism_late_resume(struct early_suspend *h)
 {
@@ -78,7 +105,7 @@ static void mt_hotplug_mechanism_late_resume(struct early_suspend *h)
 
     if (g_enable)
     {
-        hp_disable_cpu_hp(0);
+        hp_set_dynamic_cpu_hotplug_enable(1);
     }
 
     g_cur_state = STATE_ENTER_LATE_RESUME;
@@ -89,6 +116,9 @@ static void mt_hotplug_mechanism_late_resume(struct early_suspend *h)
 
 
 
+/**************************************************************
+* mt hotplug mechanism control interface for procfs test0
+***************************************************************/
 static int mt_hotplug_mechanism_read_test0(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
     char *p = buf;
@@ -134,6 +164,9 @@ static int mt_hotplug_mechanism_write_test0(struct file *file, const char *buffe
 
 
 
+/**************************************************************
+* mt hotplug mechanism control interface for procfs test1
+***************************************************************/
 static int mt_hotplug_mechanism_read_test1(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
     char *p = buf;
@@ -171,6 +204,9 @@ static int mt_hotplug_mechanism_write_test1(struct file *file, const char *buffe
 
 
 
+/*******************************
+* kernel module init function
+********************************/
 static int __init mt_hotplug_mechanism_init(void)
 {
     struct proc_dir_entry *entry = NULL;
@@ -211,6 +247,9 @@ module_init(mt_hotplug_mechanism_init);
 
 
 
+/*******************************
+* kernel module exit function
+********************************/
 static void __exit mt_hotplug_mechanism_exit(void)
 {
     HOTPLUG_INFO("mt_hotplug_mechanism_exit");
@@ -219,6 +258,9 @@ module_exit(mt_hotplug_mechanism_exit);
 
 
 
+/**************************************************************
+* mt hotplug mechanism control interface for thermal protect
+***************************************************************/
 void mt_hotplug_mechanism_thermal_protect(int limited_cpus)
 {
     HOTPLUG_INFO("mt_hotplug_mechanism_thermal_protect\n");

@@ -38,6 +38,7 @@
 #include <platform/mt_reg_base.h>
 #include <platform/mt_gpt.h>
 #include <platform/mt_irq.h>
+#include <platform/sync_write.h>
 
 #include <debug.h>
 
@@ -145,7 +146,7 @@ extern void lk_nand_irq_handler(unsigned int irq);
 enum handler_return platform_irq(struct arm_iframe *frame)
 {
 	unsigned int irq = DRV_Reg32(GIC_CPU_BASE + GIC_CPU_INTACK);
-    
+	
 	if(irq == MT_GPT_IRQ_ID)
 		lk_scheduler();
 	if(irq == MT_USB0_IRQ_ID)
@@ -156,9 +157,7 @@ enum handler_return platform_irq(struct arm_iframe *frame)
 	if(irq == MT_NFI_IRQ_ID)
 		lk_nand_irq_handler(irq);
 #endif
-
-	//return INT_NO_RESCHEDULE;
-	return INT_RESCHEDULE;
+	return INT_NO_RESCHEDULE;
 }
 
 void platform_fiq(struct arm_iframe *frame)
@@ -193,7 +192,6 @@ void mt_irq_set_polarity(unsigned int irq, unsigned int polarity)
 
 void mt_irq_set_sens(unsigned int irq, unsigned int sens)
 {
-    //unsigned long flags;
     unsigned int config;
 
     if (sens == MT65xx_EDGE_SENSITIVE) {
@@ -249,8 +247,6 @@ void mt_irq_ack(unsigned int irq)
  */
 int mt_irq_mask_all(struct mtk_irq_mask *mask)
 {
-    unsigned long flags;
-
     if (mask) {
 
         mask->mask0 = DRV_Reg32(GIC_ICDISER0);
@@ -288,8 +284,6 @@ int mt_irq_mask_all(struct mtk_irq_mask *mask)
  */
 int mt_irq_mask_restore(struct mtk_irq_mask *mask)
 {
-    unsigned long flags;
-
     if (!mask) {
         return -1;
     }

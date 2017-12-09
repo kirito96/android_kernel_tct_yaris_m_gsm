@@ -66,7 +66,7 @@ typedef unsigned long long uint64;
 #define PM_MANAGER_API
 #define AUDIO_MEMORY_SRAM
 #define AUDIO_MEM_IOREMAP
-//#define DL1_MEM_FIXED_IN_SRAM
+#define MTK_AUDIO_DYNAMIC_SRAM_SUPPORT
 
 // below for audio debugging
 #define DEBUG_AUDDRV

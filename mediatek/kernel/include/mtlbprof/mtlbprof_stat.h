@@ -3,6 +3,7 @@
 #include <linux/sched.h>
 #include <linux/spinlock.h>
 #include <mtlbprof/mtlbprof.h>
+#include <linux/version.h>
 
 #define MT_LBPROF_VERSION 4
 
@@ -39,7 +40,11 @@ void mt_lbprof_rqinfo(char *strings){
 	char msg2[5];
 	int i;
 	for_each_possible_cpu(i){
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
 		snprintf(msg2, 4, "%lu:", cpu_rq(i)->nr_running);
+#else
+		snprintf(msg2, 4, "%u:", cpu_rq(i)->nr_running);
+#endif
 		strcat(strings, msg2);
 	}
 }
@@ -177,15 +182,19 @@ void mt_lbprof_update_state_has_lock(int cpu, int rq_cnt)
 		period_time += delta;
 	}
 
-	if(rq_cnt != MT_LBPROF_UPDATE_STATE){
-		per_cpu(lb_state, cpu) = rq_cnt;
-	}
-
 	for_each_cpu(tmp_cpu, cpu_possible_mask){
 		snprintf(tmp_state, 5, "%d ", per_cpu(lb_state, tmp_cpu));
 		strncat(pre_state, tmp_state, 3);
-		if ( tmp_cpu == cpu && rq_cnt != MT_LBPROF_UPDATE_STATE )
+		if ( tmp_cpu == cpu && rq_cnt != MT_LBPROF_UPDATE_STATE ){
+			if((per_cpu(lb_state, cpu) == MT_LBPROF_ALLOW_UNBLANCE_STATE)  && 
+		    		((rq_cnt == MT_LBPROF_IDLE_STATE ) || (rq_cnt == MT_LBPROF_NO_TASK_STATE) ) ){
+				continue;
+			}else{
+				per_cpu(lb_state, tmp_cpu) = rq_cnt;
+			}
+		
 			continue;
+		}
 
 		if ( (tmp_cpu!= cpu) && (per_cpu(lb_state, tmp_cpu) == MT_LBPROF_ALLOW_UNBLANCE_STATE))
 			continue;
@@ -260,7 +269,7 @@ void mt_lbprof_update_status(void)
 	unsigned long long end_idle_time = 0;
 	unsigned long lb_idle_time = 0 ;
 	unsigned long cpu_load, period_time_32;
-	char cpu_load_info[30]="", cpu_load_info_tmp[8];
+	char cpu_load_info[80]="", cpu_load_info_tmp[8];
 
 	if( !mt_lbprof_start )
 		return;
@@ -322,10 +331,12 @@ void mt_lbprof_update_status(void)
 #else /* CONFIG_MT_LOAD_BALANCE_PROFILER */
 int mt_lbprof_enable(void)
 {
+	return 0;
 }
 
 int mt_lbprof_disable(void)
 {
+	return 0;
 }
 
 void mt_lbprof_update_status(void)

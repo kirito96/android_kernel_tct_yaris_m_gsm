@@ -1,4 +1,3 @@
-
 #ifndef _AAA_UTILITY_H_
 #define _AAA_UTILITY_H_
 

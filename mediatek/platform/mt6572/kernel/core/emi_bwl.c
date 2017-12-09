@@ -302,48 +302,93 @@ static const unsigned int emi_arbg_lpddr3_val[] =
 /**********************************************/
 
 /****************** For PCDDR3 ******************/
-
-static const unsigned int emi_arba_pcddr3_val[] =
+/****************** x32 bits ******************/
+static const unsigned int emi_arba_pcddr3_32_val[] =
 {
 #define X_CON_SCE(con_sce, arba, arbb, arbc, arbd, arbe, arbf, arbg) arba,
-#include "mach/con_sce_pcddr3.h"
+#include "mach/con_sce_pcddr3_32.h"
 #undef X_CON_SCE
 };
 
-static const unsigned int emi_arbb_pcddr3_val[] =
+static const unsigned int emi_arbb_pcddr3_32_val[] =
 {
 #define X_CON_SCE(con_sce, arba, arbb, arbc, arbd, arbe, arbf, arbg) arbb,
-#include "mach/con_sce_pcddr3.h"
+#include "mach/con_sce_pcddr3_32.h"
 #undef X_CON_SCE
 };
-static const unsigned int emi_arbc_pcddr3_val[] =
+static const unsigned int emi_arbc_pcddr3_32_val[] =
 {
 #define X_CON_SCE(con_sce, arba, arbb, arbc, arbd, arbe, arbf, arbg) arbc,
-#include "mach/con_sce_pcddr3.h"
+#include "mach/con_sce_pcddr3_32.h"
 #undef X_CON_SCE
 };
-static const unsigned int emi_arbd_pcddr3_val[] =
+static const unsigned int emi_arbd_pcddr3_32_val[] =
 {
 #define X_CON_SCE(con_sce, arba, arbb, arbc, arbd, arbe, arbf, arbg) arbd,
-#include "mach/con_sce_pcddr3.h"
+#include "mach/con_sce_pcddr3_32.h"
 #undef X_CON_SCE
 };
-static const unsigned int emi_arbe_pcddr3_val[] =
+static const unsigned int emi_arbe_pcddr3_32_val[] =
 {
 #define X_CON_SCE(con_sce, arba, arbb, arbc, arbd, arbe, arbf, arbg) arbe,
-#include "mach/con_sce_pcddr3.h"
+#include "mach/con_sce_pcddr3_32.h"
 #undef X_CON_SCE
 };
-static const unsigned int emi_arbf_pcddr3_val[] =
+static const unsigned int emi_arbf_pcddr3_32_val[] =
 {
 #define X_CON_SCE(con_sce, arba, arbb, arbc, arbd, arbe, arbf, arbg) arbf,
-#include "mach/con_sce_pcddr3.h"
+#include "mach/con_sce_pcddr3_32.h"
 #undef X_CON_SCE
 };
-static const unsigned int emi_arbg_pcddr3_val[] =
+static const unsigned int emi_arbg_pcddr3_32_val[] =
 {
 #define X_CON_SCE(con_sce, arba, arbb, arbc, arbd, arbe, arbf, arbg) arbg,
-#include "mach/con_sce_pcddr3.h"
+#include "mach/con_sce_pcddr3_32.h"
+#undef X_CON_SCE
+};
+
+/****************** x16 bits ******************/
+static const unsigned int emi_arba_pcddr3_16_val[] =
+{
+#define X_CON_SCE(con_sce, arba, arbb, arbc, arbd, arbe, arbf, arbg) arba,
+#include "mach/con_sce_pcddr3_16.h"
+#undef X_CON_SCE
+};
+
+static const unsigned int emi_arbb_pcddr3_16_val[] =
+{
+#define X_CON_SCE(con_sce, arba, arbb, arbc, arbd, arbe, arbf, arbg) arbb,
+#include "mach/con_sce_pcddr3_16.h"
+#undef X_CON_SCE
+};
+static const unsigned int emi_arbc_pcddr3_16_val[] =
+{
+#define X_CON_SCE(con_sce, arba, arbb, arbc, arbd, arbe, arbf, arbg) arbc,
+#include "mach/con_sce_pcddr3_16.h"
+#undef X_CON_SCE
+};
+static const unsigned int emi_arbd_pcddr3_16_val[] =
+{
+#define X_CON_SCE(con_sce, arba, arbb, arbc, arbd, arbe, arbf, arbg) arbd,
+#include "mach/con_sce_pcddr3_16.h"
+#undef X_CON_SCE
+};
+static const unsigned int emi_arbe_pcddr3_16_val[] =
+{
+#define X_CON_SCE(con_sce, arba, arbb, arbc, arbd, arbe, arbf, arbg) arbe,
+#include "mach/con_sce_pcddr3_16.h"
+#undef X_CON_SCE
+};
+static const unsigned int emi_arbf_pcddr3_16_val[] =
+{
+#define X_CON_SCE(con_sce, arba, arbb, arbc, arbd, arbe, arbf, arbg) arbf,
+#include "mach/con_sce_pcddr3_16.h"
+#undef X_CON_SCE
+};
+static const unsigned int emi_arbg_pcddr3_16_val[] =
+{
+#define X_CON_SCE(con_sce, arba, arbb, arbc, arbd, arbe, arbf, arbg) arbg,
+#include "mach/con_sce_pcddr3_16.h"
 #undef X_CON_SCE
 };
 
@@ -371,6 +416,8 @@ int get_ddr_type(void)
     {
 	  return PCDDR3;
     }
+
+    return LPDDR2;	
 }
 
 /*
@@ -418,9 +465,7 @@ int mtk_mem_bw_ctrl(int sce, int op)
         highest = CON_SCE_NORMAL;
     }
 
-#if (CFG_FPGA_PLATFORM)
-
-#else  
+#if 1
     /* set new EMI bandwidth limiter value */
     if (highest != cur_con_sce) {
     if(get_ddr_type() == LPDDR1)
@@ -484,13 +529,26 @@ int mtk_mem_bw_ctrl(int sce, int op)
     }
     else if(get_ddr_type() == PCDDR3)
     {    
-	mt65xx_reg_sync_writel(emi_arba_pcddr3_val[highest], EMI_ARBA);
-	mt65xx_reg_sync_writel(emi_arbb_pcddr3_val[highest], EMI_ARBB);
-	mt65xx_reg_sync_writel(emi_arbc_pcddr3_val[highest], EMI_ARBC);
-	mt65xx_reg_sync_writel(emi_arbd_pcddr3_val[highest], EMI_ARBD);
-	mt65xx_reg_sync_writel(emi_arbe_pcddr3_val[highest], EMI_ARBE);
-	mt65xx_reg_sync_writel(emi_arbf_pcddr3_val[highest], EMI_ARBF);	
-	mt65xx_reg_sync_writel(emi_arbg_pcddr3_val[highest], EMI_ARBG);
+       if (0x00070000 == (readl(EMI_CONN)& 0x00070000))   //PCDDR3x32 
+       {
+       	mt65xx_reg_sync_writel(emi_arba_pcddr3_32_val[highest], EMI_ARBA);
+       	mt65xx_reg_sync_writel(emi_arbb_pcddr3_32_val[highest], EMI_ARBB);
+       	mt65xx_reg_sync_writel(emi_arbc_pcddr3_32_val[highest], EMI_ARBC);
+       	mt65xx_reg_sync_writel(emi_arbd_pcddr3_32_val[highest], EMI_ARBD);
+       	mt65xx_reg_sync_writel(emi_arbe_pcddr3_32_val[highest], EMI_ARBE);
+       	mt65xx_reg_sync_writel(emi_arbf_pcddr3_32_val[highest], EMI_ARBF);	
+       	mt65xx_reg_sync_writel(emi_arbg_pcddr3_32_val[highest], EMI_ARBG);
+       }
+	else  //PCDDR3x16
+	{	       
+       	mt65xx_reg_sync_writel(emi_arba_pcddr3_16_val[highest], EMI_ARBA);
+       	mt65xx_reg_sync_writel(emi_arbb_pcddr3_16_val[highest], EMI_ARBB);
+       	mt65xx_reg_sync_writel(emi_arbc_pcddr3_16_val[highest], EMI_ARBC);
+       	mt65xx_reg_sync_writel(emi_arbd_pcddr3_16_val[highest], EMI_ARBD);
+       	mt65xx_reg_sync_writel(emi_arbe_pcddr3_16_val[highest], EMI_ARBE);
+       	mt65xx_reg_sync_writel(emi_arbf_pcddr3_16_val[highest], EMI_ARBF);	
+       	mt65xx_reg_sync_writel(emi_arbg_pcddr3_16_val[highest], EMI_ARBG);
+	}
     }
         cur_con_sce = highest;	
     }

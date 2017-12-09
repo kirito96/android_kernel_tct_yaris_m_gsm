@@ -22,7 +22,8 @@ namespace android
 #define BGS_PLAY_BUFFER_LEN     (3072)  // AudioMTKStreamOut write max 16384 bytes * (16000Hz / 44100Hz) * (1ch / 2ch) = 2972 bytes
 
 #ifdef BGS_USE_SINE_WAVE
-static const uint16_t table_1k_tone_16000_hz[] = {
+static const uint16_t table_1k_tone_16000_hz[] =
+{
     0x0000, 0x30FC, 0x5A82, 0x7641,
     0x7FFF, 0x7641, 0x5A82, 0x30FB,
     0x0001, 0xCF05, 0xA57E, 0x89C0,
@@ -43,7 +44,8 @@ BGSPlayBuffer::BGSPlayBuffer()
     strftime(path, 80, "/sdcard/mtklog/audio_dump/%a_%b_%Y_%H_%M_%S_BGSBefore_BLI.pcm", timeinfo);
     ALOGD("fopen path is : %s", path);
     pOutFile = fopen(path, "w");
-    if (pOutFile == NULL) {
+    if (pOutFile == NULL)
+    {
         ALOGD("Fail to Open %s", path);
     }
 #endif
@@ -70,13 +72,11 @@ status_t BGSPlayBuffer::InitBGSPlayBuffer(BGSPlayer *playPointer,
           mRingBuf.pBufBase, mRingBuf.pRead - mRingBuf.pBufBase, mRingBuf.pWrite - mRingBuf.pBufBase, mRingBuf.bufLen);
 
     // set blisrc
-    uint32_t srcBufLen = 0;
-    BLI_GetMemSize(sampleRate, chNum, BGS_TARGET_SAMPLE_RATE, BGS_CHANNEL_NUM, &srcBufLen);
-    char *pSrcBuf = new char[srcBufLen];
-    mBliHandlerBuffer = BLI_Open(sampleRate, chNum, BGS_TARGET_SAMPLE_RATE, BGS_CHANNEL_NUM, pSrcBuf, NULL);
+    mBliSrc = new MtkAudioSrc(sampleRate, chNum, BGS_TARGET_SAMPLE_RATE, BGS_CHANNEL_NUM, SRC_IN_Q1P15_OUT_Q1P15);
+    mBliSrc->Open();
 
-    ALOGD("%s(), pSrcBuf: %p, mBliHandlerBuffer: %p, srcBufLen: %d", __FUNCTION__, pSrcBuf, mBliHandlerBuffer, srcBufLen);
-    ASSERT(pSrcBuf != NULL && mBliHandlerBuffer != NULL);
+    ALOGD("%s(), mBliSrc: %p", __FUNCTION__, mBliSrc);
+    ASSERT(mBliSrc != NULL);
 
     // set blisrc converted buffer
     mBliOutputLinearBuffer = new char[BGS_PLAY_BUFFER_LEN];
@@ -90,8 +90,12 @@ BGSPlayBuffer::~BGSPlayBuffer()
     mBGSPlayBufferMutex.lock();
 
     // delete blisrc handler buffer
-    BLI_Close(mBliHandlerBuffer, NULL);
-    delete[] mBliHandlerBuffer;
+    if (mBliSrc)
+    {
+        mBliSrc->Close();
+        delete mBliSrc;
+        mBliSrc = NULL;
+    }
 
     // delete blisrc converted buffer
     delete[] mBliOutputLinearBuffer;
@@ -100,7 +104,8 @@ BGSPlayBuffer::~BGSPlayBuffer()
     delete[] mRingBuf.pBufBase;
 
 #ifdef DUMP_BGS_BLI_BUF
-    if (pOutFile != NULL) {
+    if (pOutFile != NULL)
+    {
         fclose(pOutFile);
     }
 #endif
@@ -122,14 +127,20 @@ uint32_t BGSPlayBuffer::Write(char *buf, uint32_t num)
     uint32_t leftCount = num;
     uint16_t dataCountInBuf = 0;
     uint32_t tryCount = 0;
-    while (tryCount < 10) { // max mLatency = 92, max sleep (10 * 10) ms here
+    while (tryCount < 10) // max mLatency = 92, max sleep (10 * 10) ms here
+    {
         // BLISRC: output buffer: buf => local buffer: mRingBuf
-        if (leftCount > 0) { 
+        if (leftCount > 0)
+        {
             // get free space in ring buffer
             uint32_t outCount = RingBuf_getFreeSpace(&mRingBuf);
 
             // do conversion
-            uint32_t consumed = BLI_Convert(mBliHandlerBuffer, (int16_t *)buf, &leftCount, (int16_t *)mBliOutputLinearBuffer, &outCount);
+            ASSERT(mBliSrc != NULL);
+            uint32_t consumed = leftCount;
+            mBliSrc->Process((int16_t *)buf, &leftCount, (int16_t *)mBliOutputLinearBuffer, &outCount);
+            consumed -= leftCount;
+
             buf += consumed;
             SLOGV("%s(), buf consumed = %u, leftCount = %u, outCount = %u",
                   __FUNCTION__, consumed, leftCount, outCount);
@@ -140,23 +151,27 @@ uint32_t BGSPlayBuffer::Write(char *buf, uint32_t num)
                   mRingBuf.pRead - mRingBuf.pBufBase, mRingBuf.pWrite - mRingBuf.pBufBase, RingBuf_getDataCount(&mRingBuf));
         }
 
+        // leave while loop
+        if (leftCount <= 0)
+        {
+            break;
+        }
+
         // wait modem side to retrieve data
         status_t retval = mBGSPlayBufferCondition.waitRelative(mBGSPlayBufferMutex, milliseconds(10));
         dataCountInBuf = RingBuf_getDataCount(&mRingBuf);
-        if (retval != NO_ERROR) {
+        if (retval != NO_ERROR)
+        {
             SLOGV("%s(), tryCount = %u, leftCount = %u, dataCountInBuf = %u",
                   __FUNCTION__, tryCount, leftCount, dataCountInBuf);
             tryCount++;
         }
 
-        // leave while loop
-        if (leftCount == 0 && dataCountInBuf == 0) {
-            break;
-        }
     }
 
     // leave warning message if need
-    if (leftCount != 0 || dataCountInBuf != 0) {
+    if (leftCount != 0 || dataCountInBuf != 0)
+    {
         ALOGW("%s(), still leftCount = %u, dataCountInBuf = %u.", __FUNCTION__, leftCount, dataCountInBuf);
     }
 
@@ -180,7 +195,8 @@ BGSPlayer *BGSPlayer::GetInstance()
     static Mutex mGetInstanceLock;
     Mutex::Autolock _l(mGetInstanceLock);
 
-    if (mBGSPlayer == NULL) {
+    if (mBGSPlayer == NULL)
+    {
         mBGSPlayer = new BGSPlayer();
     }
     ASSERT(mBGSPlayer != NULL);
@@ -202,7 +218,7 @@ BGSPlayer::~BGSPlayer()
     DestroyBGSPlayBuffer();
 
 #ifdef DUMP_BGS_DATA
-    if (pOutFile != NULL) fclose(pOutFile);
+    if (pOutFile != NULL) { fclose(pOutFile); }
 #endif
 }
 
@@ -250,7 +266,8 @@ bool BGSPlayer::Open(SpeechDriverInterface *pSpeechDriver, uint8_t uplink_gain, 
     strftime(path, 80, "/sdcard/mtklog/audio_dump/%a_%b_%Y_%H_%M_%S_RecBGS.pcm", timeinfo);
     ALOGD("fopen path is : %s", path);
     pOutFile = fopen(path, "w");
-    if (pOutFile == NULL) {
+    if (pOutFile == NULL)
+    {
         ALOGD("Fail to Open %s", path);
     }
 #endif
@@ -275,7 +292,8 @@ uint32_t BGSPlayer::PutDataToSpeaker(char *target_ptr, uint16_t num_data_request
     uint16_t write_count = 0;
 
 #ifndef BGS_USE_SINE_WAVE
-    if (mBGSPlayBuffer == NULL) {
+    if (mBGSPlayBuffer == NULL)
+    {
         ALOGW("%s(), mBGSPlayBuffer == NULL, return 0.", __FUNCTION__);
         return 0;
     }
@@ -284,7 +302,8 @@ uint32_t BGSPlayer::PutDataToSpeaker(char *target_ptr, uint16_t num_data_request
 
     // check data count in mBGSPlayBuffer
     uint16_t dataCountInBuf = RingBuf_getDataCount(&mBGSPlayBuffer->mRingBuf);
-    if (dataCountInBuf == 0) { // no data in buffer, just return 0
+    if (dataCountInBuf == 0) // no data in buffer, just return 0
+    {
         SLOGV("%s(), dataCountInBuf == 0, return 0.", __FUNCTION__);
         mBGSPlayBuffer->mBGSPlayBufferMutex.unlock();
         return 0;
@@ -309,18 +328,21 @@ uint32_t BGSPlayer::PutDataToSpeaker(char *target_ptr, uint16_t num_data_request
     remain_count = write_count = num_data_request;
     tmp_ptr = target_ptr;
 
-    if (remain_count > (kSizeSinewaveTable - i4Count)) {
+    if (remain_count > (kSizeSinewaveTable - i4Count))
+    {
         memcpy(tmp_ptr, table_1k_tone_16000_hz + (i4Count >> 1), kSizeSinewaveTable - i4Count);
         tmp_ptr += (kSizeSinewaveTable - i4Count);
         remain_count -= (kSizeSinewaveTable - i4Count);
         i4Count = 0;
     }
-    while (remain_count > kSizeSinewaveTable) {
+    while (remain_count > kSizeSinewaveTable)
+    {
         memcpy(tmp_ptr, table_1k_tone_16000_hz, kSizeSinewaveTable);
         tmp_ptr += kSizeSinewaveTable;
         remain_count -= kSizeSinewaveTable;
     }
-    if (remain_count > 0) {
+    if (remain_count > 0)
+    {
         memcpy(tmp_ptr, table_1k_tone_16000_hz, remain_count);
         i4Count = remain_count;
     }
@@ -341,7 +363,7 @@ bool BGSPlayer::Close()
     mSpeechDriver->BGSoundOff();
 
 #ifdef DUMP_BGS_DATA
-    if (pOutFile != NULL) fclose(pOutFile);
+    if (pOutFile != NULL) { fclose(pOutFile); }
 #endif
 
     return true;

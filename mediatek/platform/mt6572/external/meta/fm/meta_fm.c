@@ -1,3 +1,105 @@
+/*****************************************************************************
+*  Copyright Statement:
+*  --------------------
+*  This software is protected by Copyright and the information contained
+*  herein is confidential. The software may not be copied and the information
+*  contained herein may not be used or disclosed except with the written
+*  permission of MediaTek Inc. (C) 2008
+*
+*  BY OPENING THIS FILE, BUYER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+*  THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+*  RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO BUYER ON
+*  AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+*  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+*  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+*  NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+*  SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+*  SUPPLIED WITH THE MEDIATEK SOFTWARE, AND BUYER AGREES TO LOOK ONLY TO SUCH
+*  THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. MEDIATEK SHALL ALSO
+*  NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE RELEASES MADE TO BUYER'S
+*  SPECIFICATION OR TO CONFORM TO A PARTICULAR STANDARD OR OPEN FORUM.
+*
+*  BUYER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND CUMULATIVE
+*  LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+*  AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+*  OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY BUYER TO
+*  MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+*
+*  THE TRANSACTION CONTEMPLATED HEREUNDER SHALL BE CONSTRUED IN ACCORDANCE
+*  WITH THE LAWS OF THE STATE OF CALIFORNIA, USA, EXCLUDING ITS CONFLICT OF
+*  LAWS PRINCIPLES.  ANY DISPUTES, CONTROVERSIES OR CLAIMS ARISING THEREOF AND
+*  RELATED THERETO SHALL BE SETTLED BY ARBITRATION IN SAN FRANCISCO, CA, UNDER
+*  THE RULES OF THE INTERNATIONAL CHAMBER OF COMMERCE (ICC).
+*
+*****************************************************************************/
+/*****************************************************************************
+ *
+ * Filename:
+ * ---------
+ *   meta_fm.h
+ *
+ * Project:
+ * --------
+ *   YUSU
+ *
+ * Description:
+ * ------------
+ *   FM meta implement.
+ *
+ * Author:
+ * -------
+ *  LiChunhui (MTK80143)
+ *
+ *============================================================================
+ *             HISTORY
+ * Below this line, this part is controlled by CC/CQ. DO NOT MODIFY!!
+ *------------------------------------------------------------------------------
+ * $Revision:$
+ * $Modtime:$
+ * $Log:$
+ *
+ * 12 11 2012 run.liu
+ * [ALPS00405328] [FM]MR1 BIONIC_FORTIFY_INLINE build error
+ * .
+ *
+ * 10 31 2012 run.liu
+ * [ALPS00381117] [FM][Meta mode][6589]enable FM meta mode on 6589+6628 project
+ * .
+ *
+ * 10 29 2012 run.liu
+ * [ALPS00381117] [FM][Meta mode][6589]enable FM meta mode on 6589+6628 project
+ * .
+ * mask audio API
+ *
+ * 01 26 2011 hongcheng.xia
+ * [ALPS00030208] [Need Patch] [Volunteer Patch][MT6620 FM]enable FM Meta mode
+ * .
+ *
+ * 11 18 2010 hongcheng.xia
+ * [ALPS00135614] [Need Patch] [Volunteer Patch]MT6620 FM Radio code check in
+ * .
+ *
+ * 11 16 2010 hongcheng.xia
+ * [ALPS00135614] [Need Patch] [Volunteer Patch]MT6620 FM Radio code check in
+ * .
+ *
+ * 11 15 2010 hongcheng.xia
+ * [ALPS00135614] [Need Patch] [Volunteer Patch]MT6620 FM Radio code check in
+ * .
+ *
+ * 11 15 2010 hongcheng.xia
+ * [ALPS00135614] [Need Patch] [Volunteer Patch]MT6620 FM Radio code check in
+ * .
+ *
+ * 08 28 2010 chunhui.li
+ * [ALPS00123709] [Bluetooth] meta mode check in
+ * for FM meta enable
+
+ *
+ *------------------------------------------------------------------------------
+ * Upper this line, this part is controlled by CC/CQ. DO NOT MODIFY!!
+ *============================================================================
+ ****************************************************************************/
 #include <stdio.h>   /* Standard input/output definitions */
 #include <string.h>  /* String function definitions */
 #include <unistd.h>  /* UNIX standard function definitions */
@@ -25,7 +127,7 @@
 
 #define  FM_META_DEBUG     1
 #define  FM_RDS_ENABLE     1 // 1: enable RDS, 0:disable RDS
-#define FM_AUDIO_SUPPORT 1//audio maybe not support meta mode
+#define FM_AUDIO_SUPPORT 0//audio maybe not support meta mode
 #define  FM_AUDIO_TX 
 #undef   LOG_TAG
 #define  LOG_TAG  "FM_META"
@@ -92,6 +194,18 @@ pthread_t fm_rds_thd;
 static void *fm_rds_thread(void *priv);
 
 
+/********************************************************************************
+//FUNCTION:
+//		fm_rds_thread
+//DESCRIPTION:
+//		FM RDS data get and parse thread.
+//
+//PARAMETERS:
+//		void
+//RETURN VALUE:
+//		void
+//
+********************************************************************************/
 static void *fm_rds_thread(void *priv)
 {
     FM_CNF *pFM_CNF = (FM_CNF *)priv;
@@ -375,6 +489,19 @@ static void *fm_rds_thread(void *priv)
 #endif
 
 
+/********************************************************************************
+//FUNCTION:
+//		META_FM_init
+//DESCRIPTION:
+//		FM Init for META test.
+//
+//PARAMETERS:
+//		void
+//RETURN VALUE:
+//		true : success
+//      false: failed
+//
+********************************************************************************/
 bool META_FM_init()
 {
     g_fm_fd = open(FM_DEVICE_NAME, O_RDWR);
@@ -404,6 +531,18 @@ bool META_FM_init()
 	return true;
 }
 
+/********************************************************************************
+//FUNCTION:
+//		META_FM_deinit
+//DESCRIPTION:
+//		FM deinit for META test.
+//
+//PARAMETERS:
+//		void
+//RETURN VALUE:
+//		void
+//     
+********************************************************************************/
 void META_FM_deinit()
 {
 #if FM_RDS_ENABLE
@@ -425,6 +564,20 @@ void META_FM_deinit()
 	return;   
 }
 
+/********************************************************************************
+//FUNCTION:
+//		META_FM_OP
+//DESCRIPTION:
+//		META FM test main process function.
+//
+//PARAMETERS:
+//		req: FM Req struct
+//      peer_buff: peer buffer pointer
+//      peer_len: peer buffer length
+//RETURN VALUE:
+//		void
+//      
+********************************************************************************/
 void META_FM_OP(FM_REQ *req, char *peer_buff, unsigned short peer_len) 
 {
 
@@ -447,6 +600,12 @@ void META_FM_OP(FM_REQ *req, char *peer_buff, unsigned short peer_len)
     int i;
     int type = -1;
     int space_mode;
+
+	fm_u16 min_freq = 8750;
+	fm_u16 max_freq = 10800;
+	struct fm_softmute_tune_t cur_freq;
+	fm_u8 seek_space = 10;
+	int band_channel_no = (max_freq-min_freq)/seek_space + 1;
 
     if(g_fm_fd == -1){
         ERR("META_FM_OP invalid FM driver handle\n");
@@ -481,12 +640,11 @@ void META_FM_OP(FM_REQ *req, char *peer_buff, unsigned short peer_len)
                     fm_cnf.fm_result.m_rChipId.m_ucChipId = FM_CHIP_ID_MT6626;
                     break;
                 case 0x6628:
-				case 0x6627://temp solution, need to modify
                     fm_cnf.fm_result.m_rChipId.m_ucChipId = FM_CHIP_ID_MT6628;
                     break;
-				//case 0x6627:
-				//	fm_cnf.fm_result.m_rChipId.m_ucChipId = FM_CHIP_ID_MT6627;
-				//	break;
+				case 0x6627:
+		    		fm_cnf.fm_result.m_rChipId.m_ucChipId = FM_CHIP_ID_MT6627;
+		    		break;
                 case 0x1000:
                 fm_cnf.fm_result.m_rChipId.m_ucChipId = FM_CHIP_ID_AR1000;       
                     break;
@@ -524,15 +682,6 @@ void META_FM_OP(FM_REQ *req, char *peer_buff, unsigned short peer_len)
                 WriteDataToPC(&fm_cnf, sizeof(FM_CNF), NULL, 0);
                 break;
             }
-#if FM_AUDIO_SUPPORT
-            #ifdef FM_ANALOG_INPUT
-			FMLoopbackTest(true);
-            gStatus.audio_path = FM_RX_AUDIO_ANALOG;
-            #else
-			Audio_I2S_Play(true); 
-            gStatus.audio_path = FM_RX_AUDIO_I2S;
-            #endif 		    
-#endif			
 		    bzero(&parm_tune, sizeof(struct fm_tune_parm));
             parm_tune.band = FM_META_BAND;
             parm_tune.freq = FM_META_FREQ_MAX; //default value for FM power up.
@@ -546,10 +695,22 @@ void META_FM_OP(FM_REQ *req, char *peer_buff, unsigned short peer_len)
 				fm_cnf.drv_status = errno;
             }else{
 				fm_cnf.drv_status = -parm_tune.err;
-				if (fm_cnf.drv_status == FM_SUCCESS){
+				if (fm_cnf.drv_status == FM_SUCCESS)
+				{
 					DBG("FM_OP_POWER_ON ok.\n");
                     gStatus.state = FM_ON_RX;
-				}else{
+#if FM_AUDIO_SUPPORT/*alps00671815: audio will assert if open I2S before fm power on*/
+#ifdef FM_ANALOG_INPUT
+                    FMLoopbackTest(true);
+                    gStatus.audio_path = FM_RX_AUDIO_ANALOG;
+#else
+                    Audio_I2S_Play(true); 
+                    gStatus.audio_path = FM_RX_AUDIO_I2S;
+#endif 		    
+#endif			
+				}
+				else
+				{
 					ERR("FM_OP_POWER_ON failed.\n");
 				}
             }            
@@ -1122,6 +1283,7 @@ void META_FM_OP(FM_REQ *req, char *peer_buff, unsigned short peer_len)
             parm_scan.freq = FM_META_FREQ_MAX;
             parm_scan.ScanTBLSize = sizeof(parm_scan.ScanTBL)/sizeof(unsigned short);
             
+            /*
             ret = ioctl(g_fm_fd, FM_IOCTL_SCAN, &parm_scan);
             if (ret){
                 ERR("FM_OP_HW_AUTO_SCAN failed\n");
@@ -1133,8 +1295,33 @@ void META_FM_OP(FM_REQ *req, char *peer_buff, unsigned short peer_len)
 	        fm_cnf.status = META_SUCCESS;
             WriteDataToPC(&fm_cnf, sizeof(FM_CNF), parm_scan.ScanTBL, sizeof(parm_scan.ScanTBL));
             DBG("scan peer_buf 0x%08x, size %d\n", parm_scan.ScanTBL, sizeof(parm_scan.ScanTBL));
-			break;
+			break;*/
+
+			for(i=0; i<band_channel_no; i++)
+			{
+				cur_freq.freq = min_freq+ seek_space*i;
+				
+				DBG("FM_OP_SOFT_MUTE_SEEK i=%d, freq=%d-----1\n", i, cur_freq.freq);
+				ret = ioctl(g_fm_fd, FM_IOCTL_SOFT_MUTE_TUNE, &cur_freq);
+				if (ret) 
+				{
+					LOGE("FM soft mute tune faild:%d\n",ret);
+					parm_scan.err = FM_FAILED;
+					goto scan_out;
+				}
+				
+				if(cur_freq.valid == fm_true)
+				{
+					parm_scan.ScanTBL[i/16] |= 1<<(i%16);
+				}
+			}
 			
+scan_out:			
+	        fm_cnf.status = META_SUCCESS;
+            WriteDataToPC(&fm_cnf, sizeof(FM_CNF), parm_scan.ScanTBL, sizeof(parm_scan.ScanTBL));
+            DBG("scan peer_buf 0x%08x, size %d\n", parm_scan.ScanTBL, sizeof(parm_scan.ScanTBL));
+			break;
+			/*
 	    case FM_OP_HWSEEK:  
             bzero(&parm_seek, sizeof(struct fm_seek_parm));		    
             parm_seek.band = FM_META_BAND;
@@ -1172,6 +1359,136 @@ void META_FM_OP(FM_REQ *req, char *peer_buff, unsigned short peer_len)
 			
 			fm_cnf.status = META_SUCCESS;
 			WriteDataToPC(&fm_cnf, sizeof(FM_CNF), NULL, 0);
+			break;*/
+		case FM_OP_SOFT_MUTE_SEEK:
+            bzero(&parm_seek, sizeof(struct fm_seek_parm));		    
+            parm_seek.band = FM_META_BAND;
+            parm_seek.freq = req->cmd.m_rHWSeek.m_i2StartFreq*seek_space; //soft mute tune frequency range : 8750~10800
+            parm_seek.hilo = FM_AUTO_HILO_OFF;
+            parm_seek.space = FM_SPACE_DEFAULT; //default 100K.
+            parm_seek.err == FM_SUCCESS;
+
+            //DBG("FM_OP_SOFT_MUTE_SEEK req->cmd.m_rFreqRange.m_i2StartFreq:%d\n", req->cmd.m_rFreqRange.m_i2StartFreq);
+            //DBG("FM_OP_SOFT_MUTE_SEEK req->cmd.m_rFreqRange.m_i2StopFreq :%d\n", req->cmd.m_rFreqRange.m_i2StopFreq);
+
+            if (req->cmd.m_rHWSeek.m_ucDirection == 1){	//seek up
+                parm_seek.seekdir = FM_SEEK_UP; 
+				
+				for (i=((parm_seek.freq-min_freq)/seek_space+1); i<band_channel_no; i++)
+				{
+					cur_freq.freq = min_freq + seek_space*i;
+					DBG("FM_OP_SOFT_MUTE_SEEK i=%d, freq=%d-----1\n", i, cur_freq.freq);
+						
+					ret = ioctl(g_fm_fd, FM_IOCTL_SOFT_MUTE_TUNE, &cur_freq);
+					if (ret) 
+					{
+						LOGE("FM soft mute tune faild:%d\n",ret);
+						parm_seek.err = FM_FAILED;
+						goto out;
+					}
+					
+					if(cur_freq.valid == fm_false)
+					{
+						continue;
+					}
+					else
+					{
+						parm_seek.freq = cur_freq.freq;
+						goto out;
+					}
+				}
+				
+				for (i=0; i<((parm_seek.freq-min_freq)/seek_space); i++)
+				{
+					cur_freq.freq = min_freq + seek_space*i;
+					DBG("FM_OP_SOFT_MUTE_SEEK i=%d, freq=%d-----2\n", i, cur_freq.freq);
+					
+					ret = ioctl(g_fm_fd, FM_IOCTL_SOFT_MUTE_TUNE, &cur_freq);
+					if (ret) 
+					{
+						LOGE("FM soft mute tune faild:%d\n",ret);
+						parm_seek.err = FM_FAILED;
+						goto out;
+					}
+					
+					if(cur_freq.valid == fm_false)
+					{
+						continue;
+					}
+					else
+					{
+						parm_seek.freq = cur_freq.freq;
+						goto out;
+					}
+				}
+            }
+			else{    									//seek down
+                parm_seek.seekdir = FM_SEEK_DOWN;
+
+				for (i=((parm_seek.freq-min_freq)/seek_space-1); i>=0; i--)
+				{
+					cur_freq.freq = min_freq + seek_space*i;
+					DBG("FM_OP_SOFT_MUTE_SEEK i=%d, freq=%d-----3\n", i, cur_freq.freq);
+
+					ret = ioctl(g_fm_fd, FM_IOCTL_SOFT_MUTE_TUNE, &cur_freq);
+					if (ret) 
+					{
+						LOGE("FM soft mute tune faild:%d\n",ret);
+						parm_seek.err = FM_FAILED;
+						goto out;
+					}
+					
+					if(cur_freq.valid == fm_false)
+					{
+						continue;
+					}
+					else
+					{
+						parm_seek.freq = cur_freq.freq;
+						goto out;
+					}
+				}
+				
+				for (i=(band_channel_no-1); i>((parm_seek.freq-min_freq)/seek_space); i--)
+				{
+					cur_freq.freq = min_freq + seek_space*i;
+					DBG("FM_OP_SOFT_MUTE_SEEK i=%d, freq=%d-----4\n", i, cur_freq.freq);
+
+					ret = ioctl(g_fm_fd, FM_IOCTL_SOFT_MUTE_TUNE, &cur_freq);
+					if (ret) 
+					{
+						LOGE("FM soft mute tune faild:%d\n",ret);
+						parm_seek.err = FM_FAILED;
+						goto out;
+					}
+					
+					if(cur_freq.valid == fm_false)
+					{
+						continue;
+					}
+					else
+					{
+						parm_seek.freq = cur_freq.freq;
+						goto out;
+					}
+				}
+            }
+
+out:
+			if(parm_seek.err == FM_SUCCESS){
+			    if(parm_seek.freq >= req->cmd.m_rFreqRange.m_i2StopFreq){
+			        fm_cnf.fm_result.m_rHWSeek.m_i2EndFreq = parm_seek.freq/seek_space;
+			    }else{			        
+			        fm_cnf.fm_result.m_rHWSeek.m_i2EndFreq = 0;	           
+			    }
+			}else{
+			    fm_cnf.fm_result.m_rHWSeek.m_i2EndFreq = -1;	 
+			    ERR("FM_OP_SOFT_MUTE_SEEK failed:%d:%d\n", ret, parm_seek.err);
+			}	
+			
+			fm_cnf.status = META_SUCCESS;
+			WriteDataToPC(&fm_cnf, sizeof(FM_CNF), NULL, 0);
+			
 			break;
 		
 		case FM_OP_GET_RXFILTER_BW:

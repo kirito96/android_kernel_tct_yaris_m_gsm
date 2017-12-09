@@ -56,6 +56,14 @@ resethandler:
     ORR r0, r0, r1
     MSR cpsr_cxsf, r0
 
+    BL apmcu_disable_dcache
+    BL apmcu_dcache_clean_invalidate
+    BL apmcu_dsb
+    BL apmcu_icache_invalidate
+    BL apmcu_disable_icache
+    BL apmcu_isb
+    BL apmcu_disable_smp
+
     /* enable I+Z+SMP bits and disable D bit */
     MRC p15, 0, ip, c1, c0, 0
     ORR ip, ip, #0x1840   /* I+Z+SMP bits */

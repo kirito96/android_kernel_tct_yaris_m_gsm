@@ -11,15 +11,9 @@
 #include <linux/dma-mapping.h>
 #include "tpd_custom_ft5316.h"
 
-#ifdef MT6575
-#include <mach/mt6575_pm_ldo.h>
-#include <mach/mt6575_typedefs.h>
-#include <mach/mt6575_boot.h>
-#else
 #include <mach/mt_pm_ldo.h>
 #include <mach/mt_typedefs.h>
 #include <mach/mt_boot.h>
-#endif
 
 #include "cust_gpio_usage.h"
 
@@ -35,24 +29,13 @@ static DECLARE_WAIT_QUEUE_HEAD(waiter);
  
  
 static void tpd_eint_interrupt_handler(void);
- 
-#ifdef MT6575 
- extern void mt65xx_eint_unmask(unsigned int line);
- extern void mt65xx_eint_mask(unsigned int line);
- extern void mt65xx_eint_set_hw_debounce(kal_uint8 eintno, kal_uint32 ms);
- extern kal_uint32 mt65xx_eint_set_sens(kal_uint8 eintno, kal_bool sens);
- extern void mt65xx_eint_registration(kal_uint8 eintno, kal_bool Dbounce_En,
-									  kal_bool ACT_Polarity, void (EINT_FUNC_PTR)(void),
-									  kal_bool auto_umask);
+ #if 0
+extern void mt65xx_eint_unmask(unsigned int line);
+extern void mt65xx_eint_mask(unsigned int line);
+extern void mt65xx_eint_set_hw_debounce(unsigned int eint_num, unsigned int ms);
+extern unsigned int mt65xx_eint_set_sens(unsigned int eint_num, unsigned int sens);
+extern void mt65xx_eint_registration(unsigned int eint_num, unsigned int is_deb_en, unsigned int pol, void (EINT_FUNC_PTR)(void), unsigned int is_auto_umask);
 #endif
-#ifdef MT6577
-	extern void mt65xx_eint_unmask(unsigned int line);
-	extern void mt65xx_eint_mask(unsigned int line);
-	extern void mt65xx_eint_set_hw_debounce(unsigned int eint_num, unsigned int ms);
-	extern unsigned int mt65xx_eint_set_sens(unsigned int eint_num, unsigned int sens);
-	extern void mt65xx_eint_registration(unsigned int eint_num, unsigned int is_deb_en, unsigned int pol, void (EINT_FUNC_PTR)(void), unsigned int is_auto_umask);
-#endif
-
  
 static int __devinit tpd_probe(struct i2c_client *client, const struct i2c_device_id *id);
 static int tpd_detect (struct i2c_client *client, struct i2c_board_info *info);
@@ -142,6 +125,15 @@ int g_v_magnify_x =TPD_VELOCITY_CUSTOM_X;
 int g_v_magnify_y =TPD_VELOCITY_CUSTOM_Y;
 static int tpd_misc_open(struct inode *inode, struct file *file)
 {
+/*
+	file->private_data = adxl345_i2c_client;
+
+	if(file->private_data == NULL)
+	{
+		printk("tpd: null pointer!!\n");
+		return -EINVAL;
+	}
+	*/
 	return nonseekable_open(inode, file);
 }
 /*----------------------------------------------------------------------------*/
@@ -291,6 +283,17 @@ typedef unsigned char         FTS_BOOL;    //8 bit
 
 #define I2C_CTPM_ADDRESS       0x70
 
+/***********************************************************************************************
+Name	:	ft5x0x_i2c_rxdata 
+
+Input	:	*rxdata
+                     *length
+
+Output	:	ret
+
+function	:	
+
+***********************************************************************************************/
 static int ft5x0x_i2c_rxdata(char *rxdata, int length)
 {
 	int ret;
@@ -317,6 +320,17 @@ static int ft5x0x_i2c_rxdata(char *rxdata, int length)
 	
 	return ret;
 }
+/***********************************************************************************************
+Name	:	 
+
+Input	:	
+                     
+
+Output	:	
+
+function	:	
+
+***********************************************************************************************/
 static int ft5x0x_i2c_txdata(char *txdata, int length)
 {
 	int ret;
@@ -337,6 +351,17 @@ static int ft5x0x_i2c_txdata(char *txdata, int length)
 
 	return ret;
 }
+/***********************************************************************************************
+Name	:	 ft5x0x_write_reg
+
+Input	:	addr -- address
+                     para -- parameter
+
+Output	:	
+
+function	:	write register of ft5x0x
+
+***********************************************************************************************/
 static int ft5x0x_write_reg(u8 addr, u8 para)
 {
     u8 buf[3];
@@ -354,6 +379,17 @@ static int ft5x0x_write_reg(u8 addr, u8 para)
 }
 
 
+/***********************************************************************************************
+Name	:	ft5x0x_read_reg 
+
+Input	:	addr
+                     pdata
+
+Output	:	
+
+function	:	read register of ft5x0x
+
+***********************************************************************************************/
 static int ft5x0x_read_reg(u8 addr, u8 *pdata)
 {
 	int ret;
@@ -386,6 +422,17 @@ static int ft5x0x_read_reg(u8 addr, u8 *pdata)
 }
 
 
+/***********************************************************************************************
+Name	:	 ft5x0x_read_fw_ver
+
+Input	:	 void
+                     
+
+Output	:	 firmware version 	
+
+function	:	 read TP firmware version
+
+***********************************************************************************************/
 static unsigned char ft5x0x_read_fw_ver(void)
 {
 	unsigned char ver;
@@ -414,6 +461,17 @@ void delay_qt_ms(unsigned long  w_ms)
 }
 
 
+/*
+[function]: 
+    callback: read data from ctpm by i2c interface,implemented by special user;
+[parameters]:
+    bt_ctpm_addr[in]    :the address of the ctpm;
+    pbt_buf[out]        :data buffer;
+    dw_lenth[in]        :the length of the data buffer;
+[return]:
+    FTS_TRUE     :success;
+    FTS_FALSE    :fail;
+*/
 FTS_BOOL i2c_read_interface(FTS_BYTE bt_ctpm_addr, FTS_BYTE* pbt_buf, FTS_DWRD dw_lenth)
 {
     int ret;
@@ -429,6 +487,17 @@ FTS_BOOL i2c_read_interface(FTS_BYTE bt_ctpm_addr, FTS_BYTE* pbt_buf, FTS_DWRD d
     return FTS_TRUE;
 }
 
+/*
+[function]: 
+    callback: write data to ctpm by i2c interface,implemented by special user;
+[parameters]:
+    bt_ctpm_addr[in]    :the address of the ctpm;
+    pbt_buf[in]        :data buffer;
+    dw_lenth[in]        :the length of the data buffer;
+[return]:
+    FTS_TRUE     :success;
+    FTS_FALSE    :fail;
+*/
 FTS_BOOL i2c_write_interface(FTS_BYTE bt_ctpm_addr, FTS_BYTE* pbt_buf, FTS_DWRD dw_lenth)
 {
     int ret;
@@ -442,6 +511,19 @@ FTS_BOOL i2c_write_interface(FTS_BYTE bt_ctpm_addr, FTS_BYTE* pbt_buf, FTS_DWRD 
     return FTS_TRUE;
 }
 
+/*
+[function]: 
+    send a command to ctpm.
+[parameters]:
+    btcmd[in]        :command code;
+    btPara1[in]    :parameter 1;    
+    btPara2[in]    :parameter 2;    
+    btPara3[in]    :parameter 3;    
+    num[in]        :the valid input parameter numbers, if only command code needed and no parameters followed,then the num is 1;    
+[return]:
+    FTS_TRUE    :success;
+    FTS_FALSE    :io fail;
+*/
 FTS_BOOL cmd_write(FTS_BYTE btcmd,FTS_BYTE btPara1,FTS_BYTE btPara2,FTS_BYTE btPara3,FTS_BYTE num)
 {
     FTS_BYTE write_cmd[4] = {0};
@@ -453,6 +535,16 @@ FTS_BOOL cmd_write(FTS_BYTE btcmd,FTS_BYTE btPara1,FTS_BYTE btPara2,FTS_BYTE btP
     return i2c_write_interface(I2C_CTPM_ADDRESS, write_cmd, num);
 }
 
+/*
+[function]: 
+    write data to ctpm , the destination address is 0.
+[parameters]:
+    pbt_buf[in]    :point to data buffer;
+    bt_len[in]        :the data numbers;    
+[return]:
+    FTS_TRUE    :success;
+    FTS_FALSE    :io fail;
+*/
 FTS_BOOL byte_write(FTS_BYTE* pbt_buf, FTS_DWRD dw_len)
 {
     
@@ -513,12 +605,37 @@ static int CTPDMA_i2c_read(FTS_BYTE slave, FTS_BYTE *buf, FTS_DWRD len)
 }
 
 
+/*
+[function]: 
+    read out data from ctpm,the destination address is 0.
+[parameters]:
+    pbt_buf[out]    :point to data buffer;
+    bt_len[in]        :the data numbers;    
+[return]:
+    FTS_TRUE    :success;
+    FTS_FALSE    :io fail;
+*/
 FTS_BOOL byte_read(FTS_BYTE* pbt_buf, FTS_BYTE bt_len)
 {
     return i2c_read_interface(I2C_CTPM_ADDRESS, pbt_buf, bt_len);
 }
 
 
+/*
+[function]: 
+    burn the FW to ctpm.
+[parameters]:(ref. SPEC)
+    pbt_buf[in]    :point to Head+FW ;
+    dw_lenth[in]:the length of the FW + 6(the Head length);    
+    bt_ecc[in]    :the ECC of the FW
+[return]:
+    ERR_OK        :no error;
+    ERR_MODE    :fail to switch to UPDATE mode;
+    ERR_READID    :read id fail;
+    ERR_ERASE    :erase chip fail;
+    ERR_STATUS    :status error;
+    ERR_ECC        :ecc error.
+*/
 
 
 #define    FTS_PACKET_LENGTH        2
@@ -768,7 +885,7 @@ static void ESD_read_id_workqueue(struct work_struct *work)
 	else
 	{
 
-	 	mt65xx_eint_mask(CUST_EINT_TOUCH_PANEL_NUM);
+	 	mt_eint_mask(CUST_EINT_TOUCH_PANEL_NUM);
 		 if(tpd_state)
 		 {
 			 input_mt_sync(tpd->dev);
@@ -805,12 +922,12 @@ static void ESD_read_id_workqueue(struct work_struct *work)
 		mt_set_gpio_mode(GPIO_CTP_RST_PIN, GPIO_CTP_RST_PIN_M_GPIO);
 		mt_set_gpio_dir(GPIO_CTP_RST_PIN, GPIO_DIR_OUT);
 		mt_set_gpio_out(GPIO_CTP_RST_PIN, GPIO_OUT_ONE);
-	 	 mt65xx_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM); 
+	 	 mt_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM); 
 		 
 		 msleep(200);
 	}
 	if(tpd_halt) 
-		mt65xx_eint_mask(CUST_EINT_TOUCH_PANEL_NUM); 
+		mt_eint_mask(CUST_EINT_TOUCH_PANEL_NUM); 
 	else 
 		queue_delayed_work(ctp_read_id_workqueue, &ctp_read_id_work,400); //schedule a work for the first detection					
 
@@ -957,7 +1074,7 @@ static  void tpd_up(int x, int y,int *count) {
  
 	 do
 	 {
-	  mt65xx_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM); 
+	  mt_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM); 
 		 set_current_state(TASK_INTERRUPTIBLE); 
 		  wait_event_interruptible(waiter,tpd_flag!=0);
 						 
@@ -1040,7 +1157,6 @@ reset_proc:
 	i2c_client = client;
 
    
-#if (defined (MT6575)||defined(MT6577))
     //power on, need confirm with SA
 #ifdef TPD_POWER_SOURCE_CUSTOM
     	hwPowerOn(TPD_POWER_SOURCE_CUSTOM, VOL_2800, "TP");
@@ -1050,19 +1166,12 @@ reset_proc:
 #ifdef TPD_POWER_SOURCE_1800
     	hwPowerOn(TPD_POWER_SOURCE_1800, VOL_1800, "TP");
 #endif    
-#endif	
 
 	#ifdef TPD_CLOSE_POWER_IN_SLEEP	 
 	hwPowerDown(TPD_POWER_SOURCE,"TP");
 	hwPowerOn(TPD_POWER_SOURCE,VOL_3300,"TP");
 	msleep(100);
 	#else
-	#ifdef MT6573
-	mt_set_gpio_mode(GPIO_CTP_EN_PIN, GPIO_CTP_EN_PIN_M_GPIO);
-  mt_set_gpio_dir(GPIO_CTP_EN_PIN, GPIO_DIR_OUT);
-	mt_set_gpio_out(GPIO_CTP_EN_PIN, GPIO_OUT_ONE);
-	msleep(100);
-	#endif
 	mt_set_gpio_mode(GPIO_CTP_RST_PIN, GPIO_CTP_RST_PIN_M_GPIO);
 	mt_set_gpio_dir(GPIO_CTP_RST_PIN, GPIO_DIR_OUT);
 	mt_set_gpio_out(GPIO_CTP_RST_PIN, GPIO_OUT_ZERO);  
@@ -1079,10 +1188,10 @@ reset_proc:
     mt_set_gpio_pull_enable(GPIO_CTP_EINT_PIN, GPIO_PULL_ENABLE);
     mt_set_gpio_pull_select(GPIO_CTP_EINT_PIN, GPIO_PULL_UP);
  
-	  mt65xx_eint_set_sens(CUST_EINT_TOUCH_PANEL_NUM, CUST_EINT_TOUCH_PANEL_SENSITIVE);
-	  mt65xx_eint_set_hw_debounce(CUST_EINT_TOUCH_PANEL_NUM, CUST_EINT_TOUCH_PANEL_DEBOUNCE_CN);
-	  mt65xx_eint_registration(CUST_EINT_TOUCH_PANEL_NUM, CUST_EINT_TOUCH_PANEL_DEBOUNCE_EN, CUST_EINT_TOUCH_PANEL_POLARITY, tpd_eint_interrupt_handler, 1); 
-	  mt65xx_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);
+	  //mt65xx_eint_set_sens(CUST_EINT_TOUCH_PANEL_NUM, CUST_EINT_TOUCH_PANEL_SENSITIVE);
+	  //mt65xx_eint_set_hw_debounce(CUST_EINT_TOUCH_PANEL_NUM, CUST_EINT_TOUCH_PANEL_DEBOUNCE_CN);
+	  mt_eint_registration(CUST_EINT_TOUCH_PANEL_NUM, CUST_EINT_TOUCH_PANEL_TYPE, tpd_eint_interrupt_handler, 1);
+	  mt_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);
  
 	msleep(100);
 #ifdef CONFIG_SUPPORT_FTS_CTP_UPG
@@ -1219,14 +1328,8 @@ reset_proc:
 #ifdef TPD_CLOSE_POWER_IN_SLEEP	
 	hwPowerOn(TPD_POWER_SOURCE,VOL_3300,"TP"); 
 #else
-#ifdef MT6573
-	mt_set_gpio_mode(GPIO_CTP_EN_PIN, GPIO_CTP_EN_PIN_M_GPIO);
-    mt_set_gpio_dir(GPIO_CTP_EN_PIN, GPIO_DIR_OUT);
-	mt_set_gpio_out(GPIO_CTP_EN_PIN, GPIO_OUT_ONE);
-#endif	
 	discard_resume_first_eint = KAL_TRUE;
 
-#ifdef MT6575
     //power on, need confirm with SA
 #ifdef TPD_POWER_SOURCE_CUSTOM
     	hwPowerOn(TPD_POWER_SOURCE_CUSTOM, VOL_2800, "TP");
@@ -1236,7 +1339,6 @@ reset_proc:
 #ifdef TPD_POWER_SOURCE_1800
     	hwPowerOn(TPD_POWER_SOURCE_1800, VOL_1800, "TP");
 #endif    
-#endif	
 	//msleep(100);
 
 	mt_set_gpio_mode(GPIO_CTP_RST_PIN, GPIO_CTP_RST_PIN_M_GPIO);
@@ -1248,7 +1350,7 @@ reset_proc:
     mt_set_gpio_out(GPIO_CTP_RST_PIN, GPIO_OUT_ONE);
 #endif
 	msleep(200);//add this line 
-   mt65xx_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);  
+   mt_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);  
 #ifdef ESD_CHECK	
     	msleep(1);  
 	queue_delayed_work(ctp_read_id_workqueue, &ctp_read_id_work,400); //schedule a work for the first detection					
@@ -1276,17 +1378,11 @@ reset_proc:
 #endif
 	 TPD_DMESG("TPD enter sleep\n");
 	tpd_halt = 1; //add this line 
-	 mt65xx_eint_mask(CUST_EINT_TOUCH_PANEL_NUM);
+	 mt_eint_mask(CUST_EINT_TOUCH_PANEL_NUM);
 #ifdef TPD_CLOSE_POWER_IN_SLEEP	
 	hwPowerDown(TPD_POWER_SOURCE,"TP");
 #else
 i2c_smbus_write_i2c_block_data(i2c_client, 0xA5, 1, &data);  //TP enter sleep mode
-#ifdef MT6573
-mt_set_gpio_mode(GPIO_CTP_EN_PIN, GPIO_CTP_EN_PIN_M_GPIO);
-mt_set_gpio_dir(GPIO_CTP_EN_PIN, GPIO_DIR_OUT);
-mt_set_gpio_out(GPIO_CTP_EN_PIN, GPIO_OUT_ZERO);
-#endif
-#ifdef MT6575
     //power down, need confirm with SA
 #ifdef TPD_POWER_SOURCE_CUSTOM
     	hwPowerDown(TPD_POWER_SOURCE_CUSTOM,  "TP");
@@ -1296,7 +1392,6 @@ mt_set_gpio_out(GPIO_CTP_EN_PIN, GPIO_OUT_ZERO);
 #ifdef TPD_POWER_SOURCE_1800
     	hwPowerDown(TPD_POWER_SOURCE_1800,  "TP");
 #endif    
-#endif	
 #endif
         TPD_DMESG("TPD enter sleep done\n");
 	 //return retval;

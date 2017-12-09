@@ -51,6 +51,9 @@ typedef struct _sensor_data_struct
 } sensor_data_struct;
 
 
+//#define OV5648MIPI_USE_OTP
+
+
 /* SENSOR PREVIEW/CAPTURE VT CLOCK */
 #define OV5648MIPI_PREVIEW_CLK                      84000000
 #define OV5648MIPI_CAPTURE_CLK                      84000000
@@ -64,16 +67,6 @@ typedef struct _sensor_data_struct
 #define OV5648MIPI_MIN_ANALOG_GAIN                  1   /* 1x */
 #define OV5648MIPI_MAX_ANALOG_GAIN                  32  /* 32x */
 
-
-#define OV5648MIPI_FULL_PERIOD_PIXEL_NUMS          (2752) /* 15 fps */
-#define OV5648MIPI_FULL_PERIOD_LINE_NUMS           (1974)
-
-#define OV5648MIPI_PV_PERIOD_PIXEL_NUMS            (1896) /* 30 fps */
-#define OV5648MIPI_PV_PERIOD_LINE_NUMS             (984)
-
-#define OV5648MIPI_VIDEO_PERIOD_PIXEL_NUMS         (2416) /* 30 fps */
-#define OV5648MIPI_VIDEO_PERIOD_LINE_NUMS          (1104)
-
 #define OV5648MIPI_FULL_START_X                    (4)
 #define OV5648MIPI_FULL_START_Y                    (8)
 #define OV5648MIPI_IMAGE_SENSOR_FULL_WIDTH         (2560)
@@ -84,12 +77,21 @@ typedef struct _sensor_data_struct
 #define OV5648MIPI_IMAGE_SENSOR_PV_WIDTH           (1280)
 #define OV5648MIPI_IMAGE_SENSOR_PV_HEIGHT          (960)
 
+#define OV5648MIPI_VIDEO_START_X                   (2)
+#define OV5648MIPI_VIDEO_START_Y                   (2)
+#define OV5648MIPI_IMAGE_SENSOR_VIDEO_WIDTH        (1280)
+#define OV5648MIPI_IMAGE_SENSOR_VIDEO_HEIGHT       (960)
+
 
 /* SENSOR PIXEL/LINE NUMBERS IN ONE PERIOD */
 #define OV5648MIPI_FULL_PERIOD_PIXEL_NUMS          (2816) /* 15 fps */
 #define OV5648MIPI_FULL_PERIOD_LINE_NUMS           (1984)
+
 #define OV5648MIPI_PV_PERIOD_PIXEL_NUMS            (2816) /* 30 fps */
 #define OV5648MIPI_PV_PERIOD_LINE_NUMS             (992)
+
+#define OV5648MIPI_VIDEO_PERIOD_PIXEL_NUMS         (2816) /* 30 fps */
+#define OV5648MIPI_VIDEO_PERIOD_LINE_NUMS          (992)
 
 /* SENSOR READ/WRITE ID */
 #define OV5648MIPI_WRITE_ID (0x6c)
@@ -97,6 +99,32 @@ typedef struct _sensor_data_struct
 
 /* FRAME RATE UNIT */
 #define OV5648MIPI_FPS(x)                          (10 * (x))
+
+
+//OTP Code Start
+#ifdef OV5648MIPI_USE_OTP
+struct OV5648MIPI_otp_struct
+{   
+    // Data
+	kal_uint8 module_id_yy;
+    kal_uint8 module_id_mm;
+    kal_uint8 module_id_dd;
+    
+    kal_uint8 module_id_code;
+    kal_uint8 module_id_vendor_code;
+    kal_uint8 module_id_version;
+
+    //wb
+	kal_uint16 rg_ratio;
+	kal_uint16 bg_ratio;
+	kal_uint16 gb_gr_ratio;	
+};
+#define RG_Typical 0x293
+#define BG_Typical 0x2F4
+#define GB_GR_Typical 0x3FC
+#endif
+//OTP Code End
+
 
 
 /* EXPORT FUNCTIONS */

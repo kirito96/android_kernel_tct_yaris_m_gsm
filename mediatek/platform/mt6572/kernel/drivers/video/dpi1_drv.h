@@ -2,9 +2,9 @@
 #define __DPI1_DRV_H__
 
 #include "dpi_drv.h"
-#include "disp_drv.h"
-#include "lcm_drv.h"
 #include "hdmi_drv.h"
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif

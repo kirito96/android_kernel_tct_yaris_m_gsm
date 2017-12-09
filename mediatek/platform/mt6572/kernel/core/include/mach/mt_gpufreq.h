@@ -6,8 +6,8 @@
 /*********************
 * GPU Frequency List
 **********************/
-#define GPU_DVFS_D0     (565500)   // KHz
-#define GPU_DVFS_F0     (500500)   // KHz
+#define GPU_DVFS_D0     (665500)   // KHz
+#define GPU_DVFS_F0     (600500)   // KHz
 #define GPU_DVFS_F1     (416000)   // KHz
 #define GPU_DVFS_F2     (299000)   // KHz
 

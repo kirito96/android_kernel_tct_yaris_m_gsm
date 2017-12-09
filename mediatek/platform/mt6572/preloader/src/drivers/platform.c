@@ -1,3 +1,39 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ *
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #include "typedefs.h"
 #include "platform.h"
@@ -13,7 +49,6 @@
 #include "mt_rtc.h"
 #include "mt_emi.h"
 #include "mtk_pmic.h"
-#include "mt6577_cpu_power.h"
 #include "mtk_wdt.h"
 #include "ram_console.h"
 #include "cust_sec_ctrl.h"
@@ -45,6 +80,7 @@ kal_bool kpoc_flag = false;
 #if defined(CFG_USB_AUTO_DETECT)
 bool g_usbdl_flag;
 #endif
+
 /*============================================================================*/
 /* EXTERNAL FUNCTIONS                                                         */
 /*============================================================================*/
@@ -114,8 +150,6 @@ int usb_accessory_in(void)
 #endif
 }
 
-extern bool is_uart_cable_inserted(void);
-
 int usb_cable_in(void)
 {
 #if !CFG_FPGA_PLATFORM
@@ -128,7 +162,7 @@ int usb_cable_in(void)
             print("\n%s USB cable in\n", MOD);
             mt_usb_phy_poweron();
             mt_usb_phy_savecurrent();
-            
+
             /* enable pmic hw charger detection */
             #if CFG_BATTERY_DETECT
             if (hw_check_battery())
@@ -272,20 +306,16 @@ void platform_usb_auto_detect_flow()
         print("Preloader going reset and trigger BROM usb auto detectiton!!\n");
 
         /*WDT by pass powerkey reboot*/
-	if(WDT_BY_PASS_PWK_REBOOT==mtk_wdt_boot_check())
-	{
-	 	mtk_arch_reset(1);
-	}
-	else
-	{
-       		mtk_arch_reset(0);
-	}
+        mtk_arch_reset(0);
+
 	}else{
     /*usb download flag have been set*/
     }
 
 }
 #endif
+
+
 void platform_safe_mode(int en, u32 timeout)
 {
     U32 usbdlreg;
@@ -329,9 +359,6 @@ void platform_emergency_download(u32 timeout)
 
     while(1);
 }
-#else
-void platform_safe_mode(int en, u32 timeout){}
-#define platform_emergency_download(x)  do{}while(0)
 #endif
 
 
@@ -390,11 +417,17 @@ static boot_reason_t platform_boot_status(void)
     }
 #endif
 
-#ifndef EVB_PLATFORM
+#ifndef CFG_EVB_PLATFORM
     if (usb_accessory_in()) {
         print("%s USB/charger boot!\n", MOD);
         return BR_USB;
     }
+#ifdef RTC_2SEC_REBOOT_ENABLE
+    if (rtc_2sec_reboot_check()) {
+        print("%s 2sec reboot!\n", MOD);
+        return BR_2SEC_REBOOT;
+    }
+#endif //#ifdef RTC_2SEC_REBOOT_ENABLE
 
     print("%s Unknown boot!\n", MOD);
     pl_power_off();
@@ -478,6 +511,9 @@ void platform_pre_init(void)
     u32 ret;
     u32 pmic_ret;
     u32 pwrap_ret,i;
+#if defined(CFG_MEM_PRESERVED_MODE)
+    u8 *p_tcm;
+#endif //#if defined(CFG_MEM_PRESERVED_MODE)
     #ifdef PL_PROFILING
     u32 profiling_time;
     profiling_time = 0;
@@ -486,6 +522,16 @@ void platform_pre_init(void)
     pwrap_ret = 0;
     i = 0;
     ret = 0;
+#if defined(CFG_MEM_PRESERVED_MODE)
+    // bss init
+    for (p_tcm=(u8 *)&bss_init_emi_baseaddr;p_tcm < (u8 *)BSS_TCM_END;p_tcm = p_tcm +4)
+    {
+        *(u32 *)p_tcm = 0;
+    }
+#endif
+    /* move pll code to audio_sys_ram */
+    memcpy((char *)&Image$$PLL_INIT$$Base, &__load_start_pll_text,
+            &__load_stop_pll_text - &__load_start_pll_text);
 
     /* init timer */
     mtk_timer_init();
@@ -512,10 +558,6 @@ void platform_pre_init(void)
 #endif
 #endif
     ptp_init1();
-    /* move pll code to audio_sys_ram */
-    memcpy((char *)&Image$$PLL_INIT$$Base, &__load_start_pll_text,
-            &__load_stop_pll_text - &__load_start_pll_text);
-
     /* init pll */
     /* for memory preserved mode */
     // do not init pll/emi in memory preserved mode, due to code is located in EMI
@@ -542,18 +584,18 @@ void platform_pre_init(void)
     pwrap_init_preloader();
 
 
-		/* check is uart cable in*/
-    #if (CFG_USB_UART_SWITCH) 
-		platform_vusb_on();
-		if (is_uart_cable_inserted()) {
-			print("\n%s Switch to UART Mode\n", MOD);
-			mt_usb_set_to_uart_mode();
-		} else {
-			print("\n%s Keep stay in USB Mode\n", MOD);
-		}
-		#endif
-		
-    if (platform_sram_repair_enable_check()) 
+    /* check is uart cable in*/
+    #if (CFG_USB_UART_SWITCH)
+    platform_vusb_on();
+    if (is_uart_cable_inserted()) {
+      print("\n%s Switch to UART Mode\n", MOD);
+      mt_usb_set_to_uart_mode();
+    } else {
+      print("\n%s Keep stay in USB Mode\n", MOD);
+    }
+    #endif
+
+    if (platform_sram_repair_enable_check())
     {
         //MM SRAM Repair
         ret = MFG_MM_SRAM_repair();
@@ -571,21 +613,14 @@ void platform_pre_init(void)
     pmic_ret = pmic_init();
 
 //enable long press reboot function***************
-#ifndef EVB_PLATFORM
+#ifndef CFG_EVB_PLATFORM
 #ifdef KPD_PMIC_LPRST_TD
 	#ifdef ONEKEY_REBOOT_NORMAL_MODE_PL
+			printf("ONEKEY_REBOOT_NORMAL_MODE_PL OK\n");
 			pmic_config_interface(TOP_RST_MISC, 0x01, PMIC_RG_PWRKEY_RST_EN_MASK, PMIC_RG_PWRKEY_RST_EN_SHIFT);//pmic_config_interface(TOP_RST_MISC, 0x01, PMIC_RG_PWRKEY_RST_EN_MASK, PMIC_RG_PWRKEY_RST_EN_SHIFT);
-			pmic_config_interface(GPIO_SMT_CON3,0x01, PMIC_RG_HOMEKEY_PUEN_MASK, PMIC_RG_HOMEKEY_PUEN_SHIFT);//pull up homekey pin of PMIC for 89 project
 			pmic_config_interface(TOP_RST_MISC, (U32)KPD_PMIC_LPRST_TD, PMIC_RG_PWRKEY_RST_TD_MASK, PMIC_RG_PWRKEY_RST_TD_SHIFT);
 	#endif
-
-	#ifdef TWOKEY_REBOOT_NORMAL_MODE_PL
-			pmic_config_interface(TOP_RST_MISC, 0x01, PMIC_RG_PWRKEY_RST_EN_MASK, PMIC_RG_PWRKEY_RST_EN_SHIFT);//pmic package function for long press reboot function setting//
-			pmic_config_interface(TOP_RST_MISC, 0x01, PMIC_RG_HOMEKEY_RST_EN_MASK, PMIC_RG_HOMEKEY_RST_EN_SHIFT);;//pmic_config_interface(TOP_RST_MISC, 0x01, PMIC_RG_HOMEKEY_RST_EN_MASK, PMIC_RG_HOMEKEY_RST_EN_SHIFT);
-			pmic_config_interface(GPIO_SMT_CON3,0x01, PMIC_RG_HOMEKEY_PUEN_MASK, PMIC_RG_HOMEKEY_PUEN_SHIFT);//pull up homekey pin of PMIC for 89 project
-			pmic_config_interface(TOP_RST_MISC, (U32)KPD_PMIC_LPRST_TD, PMIC_RG_PWRKEY_RST_TD_MASK, PMIC_RG_PWRKEY_RST_TD_SHIFT);
 	#endif
-#endif
 #endif
 //************************************************
     #ifdef PL_PROFILING
@@ -607,6 +642,10 @@ void platform_init(void)
 {
     u32 ret, tmp;
     boot_reason_t reason;
+#if defined(CFG_MEM_PRESERVED_MODE)
+    u32 new_stack;
+#endif //#if defined(CFG_MEM_PRESERVED_MODE)
+
     #ifdef PL_PROFILING
     u32 profiling_time;
     profiling_time = 0;
@@ -664,7 +703,11 @@ void platform_init(void)
     #endif
 
     g_boot_reason = reason = platform_boot_status();
-    if (reason == BR_RTC || reason == BR_POWER_KEY || reason == BR_USB || reason == BR_WDT || reason == BR_WDT_BY_PASS_PWK)
+    if (reason == BR_RTC || reason == BR_POWER_KEY || reason == BR_USB || reason == BR_WDT || reason == BR_WDT_BY_PASS_PWK
+#ifdef RTC_2SEC_REBOOT_ENABLE
+        || reason == BR_2SEC_REBOOT
+#endif //#ifdef RTC_2SEC_REBOOT_ENABLE
+        )
         rtc_bbpu_power_on();
 
     #ifdef PL_PROFILING
@@ -677,11 +720,11 @@ void platform_init(void)
     printf("#T#enable PMIC kpd clk=%d\n", get_timer(profiling_time));
     #endif
 #else
+    platform_boot_status();
     rtc_bbpu_power_on();
 #endif
 
-#if !defined(CFG_MEM_PRESERVED_MODE)
-#if CFG_EMERGENCY_DL_SUPPORT
+#if CFG_EMERGENCY_DL_SUPPORT && !defined(CFG_MEM_PRESERVED_MODE)
     #ifdef PL_PROFILING
     profiling_time = get_timer(0);
     #endif
@@ -698,13 +741,116 @@ void platform_init(void)
     #ifdef PL_PROFILING
     profiling_time = get_timer(0);
     #endif
-    /* init memory */
-    mt_mem_init();
 
+    //flush cache
+#if defined(CFG_MEM_PRESERVED_MODE)
+    //wake up core 1 and flush core 1 cache
+    print("%s core1 flush start\n", MOD);
+    bootup_slave_cpu();
+    print("%s core1 flush done\n", MOD);
+    //flush core 1 cache
+    print("%s core0 flush start\n", MOD);
+#if 0
+    {
+        u32 i;
+        volatile u32 tmp;
+
+        tmp = 1;
+        // for verify cache flush, write in LK, flush in preloader
+        do {
+        }while(tmp);
+
+        for (i=0;i<0x100;i=i+4)
+        {
+            *(volatile u32 *)(CFG_DRAM_ADDR + 0x120000 + i) = 0xFFFFFFFF;
+        }
+    }
+#endif
+    apmcu_dcache_clean_invalidate();
+    print("%s core0 flush done\n", MOD);
+//    while(1);
+#endif //#if defined(CFG_MEM_PRESERVED_MODE)
+
+
+#if defined(CFG_MEM_PRESERVED_MODE)
+#if 0
+    while( 0x22000001 != DRV_Reg32(0x10007000))
+    {
+        mdelay(100);
+    }
+#endif
+
+#if 0
+    {
+        u32 i;
+
+        DRV_WriteReg32(0x10007000, 0x22000000);
+        printf("start fill in EMI init data pattern:\n");
+        for (i=0x100000;i<0x20000000;i=i+4)
+        {
+            *(volatile u32 *)(CFG_DRAM_ADDR + i) = (i & 0xFFFFFFFF);
+        }
+    }
+#endif
+    new_stack = (BSS_TCM_END - 4);
+    __asm__ volatile(
+    "str    sp, [%1]\n\t"
+    "sub    %0, #4\n\t"
+    "mov    sp, %1\n\t"
+    : "=r" (new_stack)
+    : "0" (new_stack)
+    : "memory");
+#endif //#if defined(CFG_MEM_PRESERVED_MODE)
+
+    // use normal boot preloader to avoid display fail issue,
+    // when memory preserved mode, normal preloader do not init EMI
+#if !defined(CFG_MEM_PRESERVED_MODE)
+    if (TRUE != mtk_wdt_is_mem_preserved())
+#endif
+    {
+        /* init memory */
+        mt_mem_init();
+    }
+
+#if defined(CFG_MEM_PRESERVED_MODE)
+    __asm__ volatile(
+    "mov    %0, sp\n\t"
+    "add    %0, #4\n\t"
+    "ldr    sp, [%1]\n\t"
+    : "=r" (new_stack)
+    : "0" (new_stack)
+    : "memory");
+
+
+printf("stack switch done\n");
+
+#if 0
+    {
+        u32 i;
+
+        printf("start EMI init data verify:\n");
+        for (i=0x100000;i<0x20000000;i=i+4)
+        {
+            if (*(volatile u32 *)(CFG_DRAM_ADDR + i) != (i & 0xFFFFFFFF))
+            {
+                printf("EMI init data verify fail\n");
+                while(1);
+            }
+        }
+        printf("EMI init data verify pass\n");
+        while(1);
+    }
+#endif
+#if 0
+    while( 0x22000001 != DRV_Reg32(0x10007000))
+    {
+        mdelay(100);
+    }
+#endif
+#endif //#if defined(CFG_MEM_PRESERVED_MODE)
     #ifdef PL_PROFILING
     printf("#T#mem_init&tst=%d\n", get_timer(profiling_time));
     #endif
-#endif
 
 #ifdef MTK_MT8193_SUPPORT
 	mt8193_init();
@@ -841,40 +987,12 @@ void platform_post_init(void)
         if (ram_console->start > RAM_CONSOLE_MAX_SIZE)
             ram_console->start = 0;
 
-        ram_console->hw_status = g_rgu_status;
+		ram_console->hw_status = g_rgu_status;
 
         print("%s ram_console(0x%x)=0x%x (boot reason)\n", MOD,
             ram_console->hw_status, g_rgu_status);
-    }
+		    }
 #endif
-
-#if defined(CFG_MEM_PRESERVED_MODE)
-    //wake up core 1 and flush core 1 cache
-    print("%s core1 flush start\n", MOD);
-    bootup_slave_cpu();
-    print("%s core1 flush done\n", MOD);
-    //flush core 1 cache
-    print("%s core0 flush start\n", MOD);
-#if 0
-    {
-        u32 i;
-        volatile u32 tmp;
-
-        tmp = 1;
-        // for verify cache flush, write in LK, flush in preloader
-        do {
-        }while(tmp);
-
-        for (i=0;i<0x100;i=i+4)
-        {
-            *(volatile u32 *)(CFG_DRAM_ADDR + 0x120000 + i) = 0xFFFFFFFF;
-        }
-    }
-#endif
-    apmcu_dcache_clean_invalidate();
-    print("%s core0 flush done\n", MOD);
-//    while(1);
-#endif //#if !defined(CFG_MEM_PRESERVED_MODE)
 
 #if CFG_BOOT_ARGUMENT
     //set UART1 GPIO to mode5, MD
@@ -882,8 +1000,8 @@ void platform_post_init(void)
 
     bootarg->magic = BOOT_ARGUMENT_MAGIC;
     bootarg->mode  = g_boot_mode;
-    //efuse should use seclib_get_devinfo_with_index(),
-    //no need check 3G in 72
+    /* By pass the e_flag for early porting */
+    // bootarg->e_flag = sp_check_platform();
     bootarg->e_flag = 0;
     bootarg->log_port = CFG_UART_LOG;
     bootarg->log_baudrate = CFG_LOG_BAUDRATE;
@@ -901,21 +1019,40 @@ void platform_post_init(void)
     print("%s <0x%x>: 0x%x\n", MOD, &bootarg->e_flag, bootarg->e_flag);
     print("%s boot time: %dms\n", MOD, bootarg->boot_time);
 #endif
+
 }
 
 void platform_error_handler(void)
 {
+    int i = 0;
     /* if log is disabled, re-init log port and enable it */
     if (log_status() == 0) {
         mtk_uart_init(UART_SRC_CLK_FRQ, CFG_LOG_BAUDRATE);
         log_ctrl(1);
     }
-    print("%s preloader fatal error...\n", MOD);
+    print("PL fatal error...\n");
     sec_util_brom_download_recovery_check();
+
+#if defined(ONEKEY_REBOOT_NORMAL_MODE_PL) || defined(TWOKEY_REBOOT_NORMAL_MODE_PL)
+    /* add delay for Long Preessed Reboot count down
+       only pressed power key will have this delay */
+    print("PL delay for Long Press Reboot\n");
+    for ( i=3; i > 0;i-- ) {
+        //mtk_detect_key(MTK_PMIC_PWR_KEY) {
+        if (mtk_detect_key(8)) {
+            platform_wdt_kick();
+            mdelay(5000);   //delay 5s/per kick,
+        } else {
+            break; //Power Key Release,
+        }
+    }
+#endif
+
     /* enter emergency download mode */
     #if CFG_EMERGENCY_DL_SUPPORT
     platform_emergency_download(CFG_EMERGENCY_DL_TIMEOUT_MS);
     #endif
+
     while(1);
 }
 
@@ -1024,4 +1161,16 @@ void bootup_slave_cpu(void)
 #endif
 }
 
+unsigned int mtk_wdt_is_mem_preserved(void)
+{
+    volatile unsigned int wdt_dramc_ctl;
+
+    wdt_dramc_ctl  = DRV_Reg32(MTK_WDT_DRAMC_CTL);
+    if (MTK_WDT_MCU_RG_DRAMC_SREF == (wdt_dramc_ctl & MTK_WDT_MCU_RG_DRAMC_SREF)) {
+        return TRUE;
+    }
+    else {
+        return FALSE;
+    }
+}
 

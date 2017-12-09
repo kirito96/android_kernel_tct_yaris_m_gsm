@@ -35,7 +35,22 @@
 #define APS_FUN(f)               printk(APS_TAG"%s\n", __FUNCTION__)
 #define APS_ERR(fmt, args...)    printk(  APS_TAG"%s %d : "fmt, __FUNCTION__, __LINE__, ##args)
 #define APS_LOG(fmt, args...)    printk( APS_TAG fmt, ##args)
-#define APS_DBG(fmt, args...)    printk( APS_TAG fmt, ##args)                 
+#define APS_DBG(fmt, args...)    printk( APS_TAG fmt, ##args)  
+#define  GPIO_ALS_EINT_PIN    GPIO28
+#define EINT2_PS_N_M_EINT GPIO_MODE_02               
+
+#if 1 //yfpan  
+ #define CUST_EINT_POLARITY_LOW         0
+ #define CUST_EINT_LEVEL_SENSITIVE      1
+ #define CUST_EINT_DEBOUNCE_DISABLE     0
+  	
+ #define CUST_EINT_ALS_NUM              2
+ #define CUST_EINT_ALS_DEBOUNCE_CN      0
+ #define CUST_EINT_ALS_POLARITY         CUST_EINT_POLARITY_LOW
+ #define CUST_EINT_ALS_SENSITIVE        CUST_EINT_LEVEL_SENSITIVE
+ #define CUST_EINT_ALS_DEBOUNCE_EN      CUST_EINT_DEBOUNCE_DISABLE
+#endif //yfpan
+
 /*for interrup work mode support --add by liaoxl.lenovo 12.08.2011*/
 extern void mt65xx_eint_unmask(unsigned int line);
 extern void mt65xx_eint_mask(unsigned int line);
@@ -78,7 +93,7 @@ static int intr_flag_value = 0;
 
 
 /*yi.zheng.hz modify for debug p sensor calibration at 2013-06-27 start*/
-#ifndef USER_BUILD_KERNEL  /*only open in engineer version*/
+#if 1//ndef USER_BUILD_KERNEL  /*only open in engineer version*/
 #define DEBUG_TMD2772_CALIBRATION
 #endif
 
@@ -100,7 +115,7 @@ static struct sensor_init_info tmd2772_init_info = {
 	
 };
 static int tmd2772_init_flag = 0;
-extern int hwmsen_alsps_add(struct sensor_init_info* obj);
+extern int hwmsen_alsps_sensor_add(struct sensor_init_info* obj);
 
 #endif//#if defined(MTK_AUTO_DETECT_ALSPS)
 
@@ -183,7 +198,42 @@ static struct tmd2772_priv *tmd2772_obj = NULL;
 static struct platform_driver tmd2772_alsps_driver;
 #endif
 /*************wwl add psensor get calibration data when calling    end*****************/
+/*******************************************/
+#define C_I2C_FIFO_SIZE         8  
+static int tmd2772_i2c_read_block(struct i2c_client *client, u8 addr, u8 *data, u8 len)
+{
+        u8 beg = addr;
+	struct i2c_msg msgs[2] = {
+		{
+			.addr = client->addr,	.flags = 0,
+			.len = 1,	.buf = &beg
+		},
+		{
+			.addr = client->addr,	.flags = I2C_M_RD,
+			.len = len,	.buf = data,
+		}
+	};
+	int err;
 
+	if (!client)
+		return -EINVAL;
+	else if (len > C_I2C_FIFO_SIZE) {
+		APS_ERR(" length %d exceeds %d\n", len, C_I2C_FIFO_SIZE);
+		return -EINVAL;
+	}
+
+	err = i2c_transfer(client->adapter, msgs, sizeof(msgs)/sizeof(msgs[0]));
+	if (err != 2) {
+		APS_ERR("i2c_transfer error: (%d %p %d) %d\n",
+			addr, data, len, err);
+		err = -EIO;
+	} else {
+		err = 0;
+	}
+	return err;
+
+}
+/****************************************************/
 
 /*----------------------------------------------------------------------------*/
 int tmd2772_get_addr(struct alsps_hw *hw, struct tmd2772_i2c_addr *addr)
@@ -972,10 +1022,10 @@ int tmd2772_setup_eint(struct i2c_client *client)
 
 	g_tmd2772_ptr = obj;
 	
-	mt_set_gpio_mode(EINT2_PS_N, EINT2_PS_N_M_EINT);
-	mt_set_gpio_dir(EINT2_PS_N, GPIO_DIR_IN);
-	mt_set_gpio_pull_enable(EINT2_PS_N, TRUE);
-	mt_set_gpio_pull_select(EINT2_PS_N, GPIO_PULL_UP);
+	mt_set_gpio_mode(GPIO_ALS_EINT_PIN, EINT2_PS_N_M_EINT);
+	mt_set_gpio_dir(GPIO_ALS_EINT_PIN, GPIO_DIR_IN);
+	mt_set_gpio_pull_enable(GPIO_ALS_EINT_PIN, TRUE);
+	mt_set_gpio_pull_select(GPIO_ALS_EINT_PIN, GPIO_PULL_UP);
 
 	mt65xx_eint_set_sens(CUST_EINT_ALS_NUM, CUST_EINT_ALS_SENSITIVE);
 	mt65xx_eint_set_polarity(CUST_EINT_ALS_NUM, CUST_EINT_ALS_POLARITY);
@@ -1578,6 +1628,41 @@ static int tmd2772_get_als_value(struct tmd2772_priv *obj, u16 als)
 	}
 }
 /*----------------------------------------------------------------------------*/
+long tmd2772_read_ps_fx(struct i2c_client *client, u16 *data)
+{
+	struct tmd2772_priv *obj = i2c_get_clientdata(client);    
+	u16 ps_value;    
+	u8 ps_value_low[1], ps_value_high[1];
+	u8 buffer[1];
+	long res = 0;
+
+	if(client == NULL)
+	{
+		APS_DBG("CLIENT CANN'T EQUL NULL\n");
+		return -1;
+	}
+	printk(KERN_ALERT "The func is %s\n",__func__);
+	buffer[0]= TMD2772_CMM_PDATA_L;
+	res = tmd2772_i2c_read_block(client, buffer[0], ps_value_low, 0x01);
+	if(res != 0)
+	{
+		goto EXIT_ERR;
+	}
+	buffer[0]= TMD2772_CMM_PDATA_H;
+	res = tmd2772_i2c_read_block(client, buffer[0], ps_value_high, 0x01);
+	if(res != 0)
+	{
+		goto EXIT_ERR;
+	}
+
+	*data = ps_value_low[0] | (ps_value_high[0]<<8);
+	printk("ps_data=%d, low:%d  high:%d", *data, ps_value_low[0], ps_value_high[0]);
+	return 0;    
+
+EXIT_ERR:
+	APS_ERR("tmd2772_read_ps fail\n");
+	return res;
+}
 long tmd2772_read_ps(struct i2c_client *client, u16 *data)
 {
 	struct tmd2772_priv *obj = i2c_get_clientdata(client);    
@@ -1645,7 +1730,7 @@ static int tmd2772_get_ps_value(struct tmd2772_priv *obj, u16 ps)
     /*Lenovo-sw zhuhc delete 2011-10-12 end*/
 
 //        mdelay(160);
-	tmd2772_read_ps(obj->client,temp_ps);
+	tmd2772_read_ps_fx(obj->client,temp_ps);
 	APS_LOG("c=%d, f=%d, p1=%d, p2=%d, v=%d", ps_cali.close, ps_cali.far_away, ps, temp_ps[0], ps_cali.valid);
 
 /*yi.zheng.hz modify for debug p sensor calibration at 2013-06-27 start*/
@@ -1751,10 +1836,10 @@ static void tmd2772_eint_work(struct work_struct *work)
 	else
 	{
 		//get raw data
-		tmd2772_read_ps(obj->client, &obj->ps);
+		tmd2772_read_ps_fx(obj->client, &obj->ps);
 		//mdelay(160);
 		tmd2772_read_als_ch0(obj->client, &obj->als);
-		APS_DBG("tmd2772_eint_work v2 close=%d far=%d rawdata ps=%d als_ch0=%d!\n",ps_cali.close, ps_cali.far_away, obj->ps,obj->als);
+		APS_DBG("tmd2772_eint_work close=%d far=%d rawdata ps=%d als_ch0=%d!\n",ps_cali.close, ps_cali.far_away, obj->ps,obj->als);
 		//printk("tmd2772_eint_work rawdata ps=%d als_ch0=%d!\n",obj->ps,obj->als);
 		sensor_data.values[0] = tmd2772_get_ps_value(obj, obj->ps);
 		sensor_data.value_divide = 1;
@@ -1875,6 +1960,12 @@ static tmd2772_WriteCalibration(struct PS_CALI_DATA_STRUCT *data_cali)
 	  
 }
 
+static u16 prox_mean_ori;
+//static u16 prox_mean_off;
+static u16 offset_value;
+static u16 thd_low;
+static u16 thd_hi;
+
 static int tmd2772_read_data_for_cali(struct i2c_client *client, struct PS_CALI_DATA_STRUCT *ps_data_cali, int cali_num)
 {
      	int i=0 ,err = 0,j = 0;
@@ -1889,15 +1980,15 @@ static int tmd2772_read_data_for_cali(struct i2c_client *client, struct PS_CALI_
 	u8 myoffset = 0;
 	struct tmd2772_priv *obj = NULL;
 
-        u16 mini, max;
+	int num = cali_num-1;  //We do not use buffer[0] data, because it maybe invalid
 
-	if((cali_num < 5)||(cali_num > M))
+	if((cali_num < 1)||(cali_num > M))
 	goto EXIT_ERR;
 
 #if MIN_CURRENT_MODE
 
 	mdelay(10);		
-	if(err = tmd2772_read_ps(client,tmp))
+	if(err = tmd2772_read_ps_fx(client,tmp))
 	{
 		APS_ERR("tmd2772_read_data_for_cali fail: %d\n", i); 
 		break;
@@ -1916,7 +2007,7 @@ static int tmd2772_read_data_for_cali(struct i2c_client *client, struct PS_CALI_
 		
 		mdelay(10);
 
-		if(err = tmd2772_read_ps(client,tmp))
+		if(err = tmd2772_read_ps_fx(client,tmp))
 		{
 			APS_ERR("tmd2772_read_data_for_cali fail: %d\n", i); 
 			break;
@@ -1927,7 +2018,7 @@ static int tmd2772_read_data_for_cali(struct i2c_client *client, struct PS_CALI_
 			
 	 for(i = 0;i<M;i++)
 	 {
-		if(err = tmd2772_read_ps(client,&buffer[i]))
+		if(err = tmd2772_read_ps_fx(client,&buffer[i]))
 		{
 				APS_ERR("tmd2772_read_data_for_cali fail: %d\n", i); 
 				break;
@@ -1974,7 +2065,7 @@ static int tmd2772_read_data_for_cali(struct i2c_client *client, struct PS_CALI_
 
 			 for(i = 0;i<M;i++)
 			 {
-				if(err = tmd2772_read_ps(client,&buffer[i]))
+				if(err = tmd2772_read_ps_fx(client,&buffer[i]))
 				{
 						APS_ERR("tmd2772_read_data_for_cali fail: %d\n", i); 
 						break;
@@ -2021,24 +2112,14 @@ static int tmd2772_read_data_for_cali(struct i2c_client *client, struct PS_CALI_
 	 	for(i = 0;i<cali_num;i++)
 		{
 			mdelay(10);//10
-			if(err = tmd2772_read_ps(client,&buffer[i]))
+			if(err = tmd2772_read_ps_fx(client,&buffer[i]))
 			{
-			    APS_ERR("tmd2772_read_data_for_cali fail: %d\n", i); 
-			    goto EXIT_ERR;
+					APS_ERR("tmd2772_read_data_for_cali fail: %d\n", i); 
+					break;
 			}
 			else
 			{			
-			    sum += buffer[i];
-
-				if(i == 0)
-					mini = max = buffer[i];
-				else
-				{
-					if(mini > buffer[i])
-						mini = buffer[i];
-					if(max < buffer[i])
-						max = buffer[i];
-				}
+					sum += buffer[i];
 			}
 		 }
 
@@ -2047,10 +2128,13 @@ static int tmd2772_read_data_for_cali(struct i2c_client *client, struct PS_CALI_
 			
 		if(i == cali_num)
 		{
-			sum = sum -mini - max;  // remove the mininum and maximum data
-			prox_mean = sum/(cali_num-2);
+			sum -= buffer[0]; // We do not use buffer[0] data
+			prox_mean = sum/num;
 			APS_LOG("wwl3****prox_mean=%d\r\n",prox_mean);
 
+
+                     prox_mean_ori = prox_mean;
+					 
 			if((prox_mean > 700)&&(prox_mean <= 800))
 			{
 				databuf[0] = TMD2772_CMM_OFFSET;
@@ -2080,7 +2164,7 @@ static int tmd2772_read_data_for_cali(struct i2c_client *client, struct PS_CALI_
 			else if(prox_mean < 100)
 			{
 				databuf[0] = TMD2772_CMM_OFFSET;
-				databuf[1] = 0xA0;//0xff;     //modify to abs(32)
+				databuf[1] = 0xff;
 				ps_data_cali->offset = databuf[1]; //need save
 				err= i2c_master_send(client, databuf, 0x2);
 				if(err<= 0)
@@ -2100,24 +2184,14 @@ RECALI:
 		 	for(i = 0;i<cali_num;i++)
 			{
 				mdelay(10);//10
-				if(err = tmd2772_read_ps(client,&buffer[i]))
+				if(err = tmd2772_read_ps_fx(client,&buffer[i]))
 				{
-				     APS_ERR("tmd2772_read_data_for_cali fail: %d\n", i); 
-				     goto EXIT_ERR;
+						APS_ERR("tmd2772_read_data_for_cali fail: %d\n", i); 
+						break;
 				}
 				else
 				{			
-				    sum += buffer[i];
-
-					if(i == 0)
-						mini = max = buffer[i];
-					else
-					{
-						if(mini > buffer[i])
-							mini = buffer[i];
-						if(max < buffer[i])
-							max = buffer[i];
-					}
+						sum += buffer[i];
 				}
 			 }
 
@@ -2126,10 +2200,9 @@ RECALI:
 
 			if(i == cali_num)
 			{
-				sum = sum -mini - max;  // remove the mininum and maximum data
-				prox_mean = sum/(cali_num-2);
+				sum -= buffer[0];  //We do not use buffer[0] data
+				prox_mean = sum/num;
 	   	              APS_LOG("opto-sensor****prox_mean=%d\r\n", prox_mean);
-
 				if(prox_mean<80 || prox_mean>800)goto EXIT_ERR;
 			}
 			else
@@ -2188,7 +2261,7 @@ EXIT_ERR:
 	 	
 }
 
-//Make sure call_num >= 5
+
 static int tmd2772_read_data_for_cali_for_call(struct i2c_client *client, struct PS_CALI_DATA_STRUCT *ps_data_cali, int cali_num)
 {
      	int i=0 ,err = 0,j = 0;
@@ -2203,12 +2276,7 @@ static int tmd2772_read_data_for_cali_for_call(struct i2c_client *client, struct
 	u8 myoffset = 0;
 	struct tmd2772_priv *obj = NULL;
 
-
-	//remove the maximum and minimum
-	u16 mini, max;
-
-	if((cali_num < 5)||(cali_num > M))
-	goto EXIT_ERR;
+        int num = cali_num-1;  //we only use 3
 
 		//Need to set 0 to offset register before calibration, because last calibration may modify its value
 		ps_data_cali->offset = 0;
@@ -2221,70 +2289,59 @@ static int tmd2772_read_data_for_cali_for_call(struct i2c_client *client, struct
 		}
 		
 		mdelay(10); //add for zoe suggest, let buffer[0] calibration data valid, if not delay, it will be 0
-	 	for(i = 0; i<cali_num; i++)
+	 	for(i = 0;i<cali_num;i++)
 		{
 			mdelay(10);//10
-			if(err = tmd2772_read_ps(client,&buffer[i]))
+			if(err = tmd2772_read_ps_fx(client,&buffer[i]))
 			{
-                            APS_ERR("tmd2772_read_data_for_cali fail: %d\n", i); 
-                            goto EXIT_ERR;
+					APS_ERR("tmd2772_read_data_for_cali fail: %d\n", i); 
+					break;
 			}
 			else
 			{			
-                            sum += buffer[i];
-							
-				if(i == 0)
-					mini = max = buffer[i];
-				else
-				{
-					if(mini > buffer[i])
-						mini = buffer[i];
-					if(max < buffer[i])
-						max = buffer[i];
-				}
+					sum += buffer[i];
 			}
 		 }
 
 	
-		for(j = 0; j<cali_num; j++)
+		for(j = 0;j<cali_num;j++)
 			APS_LOG("buffer[%d] = %d\t",j,buffer[j]);
 		
 		if(i == cali_num)
 		{
-			sum = sum -mini - max;  // remove the mininum and maximum data
-			prox_mean = sum/(cali_num-2);
-			APS_LOG("wwl3****prox_mean=%d\r\n", prox_mean);
-
+			sum -= buffer[0];   // We do not use the first data
+			prox_mean = sum/num;
+			APS_LOG("wwl3****prox_mean=%d\r\n",prox_mean);
 			if((prox_mean > 700)&&(prox_mean <= 800))
 			{
 				databuf[0] = TMD2772_CMM_OFFSET;
-				databuf[1] = 0x42;
+				databuf[1] = 0x25;
 				ps_data_cali->offset = databuf[1]; //need save
 				err= i2c_master_send(client, databuf, 0x2);
 				if(err<= 0)
 				{
 					goto EXIT_ERR;
 				}
-				//APS_LOG("offset111");
+				APS_LOG("offset is %x\n",databuf[1]);
 				goto RECALI;
 			}
 			else if(prox_mean > 800)
 			{
 				databuf[0] = TMD2772_CMM_OFFSET;
-				databuf[1] = 0x7f;
+				databuf[1] = 0x2b;
 				ps_data_cali->offset = databuf[1]; //need save
 				err= i2c_master_send(client, databuf, 0x2);
 				if(err<= 0)
 				{
 					goto EXIT_ERR;
 				}
-				//APS_LOG("offset222");
+				APS_LOG("offsetis %x\n",databuf[1]);
 				goto RECALI;
 			}
 			else if(prox_mean < 100)
 			{
 				databuf[0] = TMD2772_CMM_OFFSET;
-				databuf[1] = 0xA0;//0xff;
+				databuf[1] = 0x98;
 				ps_data_cali->offset = databuf[1]; //need save
 				err= i2c_master_send(client, databuf, 0x2);
 				if(err<= 0)
@@ -2304,25 +2361,14 @@ RECALI:
 		 	for(i = 0;i<cali_num;i++)
 			{
 				mdelay(10);//10
-				if(err = tmd2772_read_ps(client,&buffer[i]))
+				if(err = tmd2772_read_ps_fx(client,&buffer[i]))
 				{
-				    APS_ERR("tmd2772_read_data_for_cali fail: %d\n", i); 
-			            goto EXIT_ERR;
+						APS_ERR("tmd2772_read_data_for_cali fail: %d\n", i); 
+						break;
 				}
 				else
 				{
-				    sum += buffer[i];
-
-					if(i == 0)
-						mini = max = buffer[i];
-					else
-					{
-						if(mini > buffer[i])
-							mini = buffer[i];
-						if(max < buffer[i])
-							max = buffer[i];
-					}
-
+						sum += buffer[i];
 				}
 			 }
 
@@ -2332,20 +2378,19 @@ RECALI:
 
 			if(i == cali_num)
 			{
-			    sum = sum -mini - max;  // remove the mininum and maximum data
-			    prox_mean = sum/(cali_num-2);
-	   	            APS_LOG("opto-sensor****prox_mean=%d\r\n",prox_mean);
-
-			    if(prox_mean<80 || prox_mean>800)goto EXIT_ERR;
+				sum -= buffer[0];
+				prox_mean = sum/num;  // We do not use the first data
+	   	              APS_LOG("opto-sensor****prox_mean=%d\r\n",prox_mean);
+				if(prox_mean<80 || prox_mean>800)goto EXIT_ERR;
 			}
 			else
 			{
-			    goto EXIT_ERR;
+				goto EXIT_ERR;
 			}
 GET_THRE:
 		
-			ps_data_cali->close = prox_mean+60; //this can customize, adjust close and farway distance
-			ps_data_cali->far_away=prox_mean+20;
+			ps_data_cali->close = prox_mean+100; //this can customize, adjust close and farway distance
+			ps_data_cali->far_away=prox_mean+40;
 			ps_data_cali->valid = 1;
 			APS_LOG("tmd2772_read_data_for_cali close  = %d,far_away = %d,valid = %d, ofs = %d",ps_data_cali->close,ps_data_cali->far_away,ps_data_cali->valid, ps_data_cali->offset);
 			return err; //Do not go through to EXIT_ERR
@@ -2357,6 +2402,8 @@ GET_THRE:
 		 	err=  -1;
 		}
 	
+
+
 EXIT_ERR:
 
 
@@ -2370,6 +2417,7 @@ EXIT_ERR:
 
 		ps_data_cali->close = boot_ps_cali.close; //this can customize, adjust close and farway distance
 		ps_data_cali->far_away=boot_ps_cali.far_away;
+		ps_data_cali->offset = boot_ps_cali.offset;
 		ps_data_cali->valid = 1;
 		APS_LOG("boot ps ok, close=%d, far=%d, offset=%d\n", ps_data_cali->close, ps_data_cali->far_away, ps_data_cali->offset);
 		return 0;
@@ -2723,8 +2771,12 @@ int tmd2772_ps_operate(void* self, uint32_t command, void* buff_in, int size_in,
 #endif
 				//APS_LOG("111*\n");
 				tmd2772_init_client_for_cali(obj->client);
-				tmd2772_read_data_for_cali_for_call(obj->client,&ps_cali, 5);  //Note: We do not use first ps read data
+				tmd2772_read_data_for_cali_for_call(obj->client,&ps_cali, 4);  //Note: We do not use first ps read data
 				//APS_LOG("222*\n");
+				
+			       offset_value = ps_cali.offset;
+                   thd_hi = ps_cali.close;
+                   thd_low = ps_cali.far_away;
 #endif
 
 				
@@ -2903,11 +2955,95 @@ static ssize_t show_cali_value(struct device_driver *ddri, char *buf)
 	return len;
 }
 
+static ssize_t show_ps(struct device_driver *ddri, char *buf)
+{
+	int len = 0;
+	long err;
+
+
+	if(err = tmd2772_read_ps_fx(g_tmd2772_ptr->client,&g_tmd2772_ptr->ps))
+	{
+		APS_ERR("tmd2772_read_data_for_cali fail !!!\n"); 
+		
+	}	
+       else
+	{
+	    len = snprintf(buf, PAGE_SIZE, "%d\n", g_tmd2772_ptr->ps);
+	}
+	return len;
+}
+
+static ssize_t show_low_threshold(struct device_driver *ddri, char *buf)
+{
+	int len = 0;
+	long err;
+
+
+	    len = snprintf(buf, PAGE_SIZE, "%d\n", 
+		thd_low);
+	return len;
+}
+
+static ssize_t show_high_threshold(struct device_driver *ddri, char *buf)
+{
+	int len = 0;
+	long err;
+
+
+	    len = snprintf(buf, PAGE_SIZE, "%d\n", 
+		thd_hi);
+	return len;
+}
+
+static ssize_t show_offset(struct device_driver *ddri, char *buf)
+{
+	int len = 0;
+	long err;
+
+
+	    len = snprintf(buf, PAGE_SIZE, "%d\n", 
+		offset_value);
+	return len;
+}
+
+static ssize_t show_originalPS(struct device_driver *ddri, char *buf)
+{
+	int len = 0;
+	long err;
+
+
+	    len = snprintf(buf, PAGE_SIZE, "%d\n", 
+		prox_mean_ori);
+	return len;
+}
+
+static ssize_t show_style(struct device_driver *ddri, char *buf)
+{
+	int len = 0;
+	long err;
+
+
+	    len = snprintf(buf, PAGE_SIZE, "TMD\n");
+	return len;
+}
+
 /* cat /sys/bus/platform/drivers/als_ps/cali */
 static DRIVER_ATTR(cali,       S_IWUSR | S_IRUGO, show_cali_value,          NULL);
+static DRIVER_ATTR(ps,       S_IWUSR | S_IRUGO, show_ps,          NULL);
+static DRIVER_ATTR(low_threshold,       S_IWUSR | S_IRUGO, show_low_threshold,          NULL);
+static DRIVER_ATTR(high_threshold,       S_IWUSR | S_IRUGO, show_high_threshold,          NULL);
+static DRIVER_ATTR(offset,       S_IWUSR | S_IRUGO, show_offset,          NULL);
+static DRIVER_ATTR(originalPS,       S_IWUSR | S_IRUGO, show_originalPS,          NULL);
+static DRIVER_ATTR(style,       S_IWUSR | S_IRUGO, show_style,          NULL);
 
 static struct driver_attribute *tmd2772_attr_list[] = {
 	&driver_attr_cali,
+	&driver_attr_low_threshold,
+	&driver_attr_high_threshold,
+	&driver_attr_offset,
+	&driver_attr_originalPS,
+	&driver_attr_ps,
+	&driver_attr_style,
 };
 /*----------------------------------------------------------------------------*/
 static int tmd2772_create_attr(struct device_driver *driver) 
@@ -3013,6 +3149,11 @@ static int tmd2772_i2c_probe(struct i2c_client *client, const struct i2c_device_
 		{
 			boot_ps_ok=1;
 		}
+
+	offset_value = boot_ps_cali.offset;
+	thd_hi = boot_ps_cali.close;
+    thd_low = boot_ps_cali.far_away;
+	
 	if(err = tmd2772_init_client(client))
 	{
 		goto exit_init_failed;
@@ -3203,7 +3344,7 @@ static int __init tmd2772_init(void)
 	i2c_register_board_info(1, &i2c_tmd2772, 1); //i2c bus1;
 /*************wwl add psensor get calibration data when calling    start*****************/
 	#if defined(MTK_AUTO_DETECT_ALSPS)
-	hwmsen_alsps_add(&tmd2772_init_info);
+	hwmsen_alsps_sensor_add(&tmd2772_init_info);
 	#else
 	if(platform_driver_register(&tmd2772_alsps_driver))
 	{

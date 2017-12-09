@@ -1,4 +1,7 @@
 #!/proj/map/bin/python/bin/python
+
+
+
 import os,glob,re,sys,getopt
 #check the command line validity
 def Usage():

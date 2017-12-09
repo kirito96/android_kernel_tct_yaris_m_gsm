@@ -210,8 +210,9 @@ struct gpio_led_platform_data {
 struct platform_device *gpio_led_register_device(
 		int id, const struct gpio_led_platform_data *pdata);
 
-/*
- * The patch increases LED brightness level adjustment by adding 
+#endif		/* __LINUX_LEDS_H_INCLUDED */
+/*****************************************************************
+ * [MTK]The patch increases LED brightness level adjustment by adding 
  * 
  *
  *
@@ -221,5 +222,3 @@ struct platform_device *gpio_led_register_device(
 #define LED_RESERVEBIT_SHIFT 16
 #define LED_RESERVEBIT_PATTERN 1
 #endif
-
-#endif		/* __LINUX_LEDS_H_INCLUDED */

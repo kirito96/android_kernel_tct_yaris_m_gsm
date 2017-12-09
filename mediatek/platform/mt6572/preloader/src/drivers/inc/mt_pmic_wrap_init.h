@@ -5,7 +5,7 @@
 #include "mtk_pmic.h"
 #include <sync_write.h>
 
-#define PMIC_WRAP_DEBUG
+//#define PMIC_WRAP_DEBUG  jiangjingjing
 
 #define PWRAPTAG                "[PWRAP] "
 #ifdef PMIC_WRAP_DEBUG
@@ -13,7 +13,9 @@
   #define PWRAPFUC(fmt, arg...)   printf(PWRAPTAG "%s\n", __FUNCTION__)
 #endif
 #define PWRAPLOG(fmt, arg...)   printf(PWRAPTAG fmt,##arg)
-#define PWRAPERR(fmt, arg...)   printf(PWRAPTAG "ERROR,line=%d " fmt, __LINE__, ##arg)
+//#define PWRAPERR(fmt, arg...)   printf(PWRAPTAG "ERROR,line=%d " fmt, __LINE__, ##arg) //jiangjingjing
+#define PWRAPERR(fmt, arg...) printf(PWRAPTAG "ERROR,line=%d ", __LINE__)//jiangjingjing
+#define PWRAPFUC(fmt, arg...)   printf(PWRAPTAG "%s\n", __FUNCTION__)//jiangjingjing
 #define PWRAPREG(fmt, arg...)   printf(PWRAPTAG fmt,##arg)
 
 
@@ -38,14 +40,18 @@ pmic_wrap register define
 
 #define WDT_SWSYSRST            (TOPRGU_BASE + 0x18)
 
+#define PMIC_WRAP_REG_RANGE	86
+#define PMIC_SPISLV_REG_RANGE	15
+
 //-------macro for pmic register--------------------------------
 // #define PMIC_REG_BASE           (0x0000)
-
-#define PMIC_WRP_CKPDN          (PMIC_REG_BASE+0x0102) //0x0056
-#define PMIC_WRP_RST_CON        (PMIC_REG_BASE+0x0114) //0x005C
-#define PMIC_TOP_CKCON2         (PMIC_REG_BASE+0x0126)
-
 #define DEW_BASE                (DEW_DIO_EN)
+
+#ifdef SLV_6320
+#define PMIC_WRP_CKPDN          (PMIC_REG_BASE+0x011A) //0x0056
+#define PMIC_WRP_RST_CON        (PMIC_REG_BASE+0x0120) //0x005C
+#define PMIC_TOP_CKCON2         (PMIC_REG_BASE+0x012A)
+#endif
 
 #if 0 // defined in mtk_pmic.h
 #define TOP_CKCON1              (PMIC_REG_BASE + 0x126)
@@ -81,7 +87,7 @@ global variable and  sys interface
 #define TIMEOUT_WAIT_IDLE       0xFF //us
 
 
-
+//-------pmic_wrap register define--------------------------------
 #define PMIC_WRAP_MUX_SEL               (PMIC_WRAP_BASE+0x0)
 #define PMIC_WRAP_WRAP_EN               (PMIC_WRAP_BASE+0x4)
 #define PMIC_WRAP_DIO_EN                (PMIC_WRAP_BASE+0x8)

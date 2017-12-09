@@ -1,4 +1,3 @@
-
 #include <utils/Log.h>
 #include <fcntl.h>
 #include <math.h>
@@ -13,8 +12,25 @@
 //TODO:remove once build system ready
 //#include "camera_custom_cfg.h"
 
+/*
+#if (defined(DRV_ISP_6516_SERIES))
+
+#if !defined(ISP_SUPPORT)
+	// DO NOT delete this section!!!
+	// When ISP_SUPPORT is not defined, NVRAM still need the dummy structure
+	// and default value to initialize NVRAM_EF_CAMERA_PARA_LID.
+	//#include "camera_para.h"
+	const nvram_camera_para_struct NXSC301HS5K4EC_YUV_CAMERA_PARA_DEFAULT_VALUE={0};
+	const nvram_camera_3a_struct NXSC301HS5K4EC_YUV_CAMERA_3A_NVRAM_DEFAULT_VALUE={0};
+#else
+//#include "camera_para.h"
+//#include "camera_sensor_para_nxsc301hs5k4ec_YUV.h"
+//#include "camera_af_para.h"
+*/
 #define SENSOR_ID   S5K4ECGX_SENSOR_ID
-#if defined(MT6516)
+
+#if 0
+//defined(MT6516)
 
 const NVRAM_CAMERA_DEFECT_STRUCT S5K4ECGX_YUV_CAMERA_DEFECT_DEFAULT_VALUE =
       {{ NVRAM_CAMERA_DEFECT_FILE_VERSION,S5K4ECGX_SENSOR_ID,0,0,{0},{0},{0} }};
@@ -662,11 +678,11 @@ UINT32
 SensorInfoSingleton_T::
 impGetDefaultData(CAMERA_DATA_TYPE_ENUM const CameraDataType, VOID*const pDataBuf, UINT32 const size) const
 {
-#if defined(MT6516)
-    return  S5K4EC4GX_YUV_getDefaultData(CameraDataType, pDataBuf, size);
-#else
+//#if defined(MT6516)
+    //return  S5K4EC4GX_YUV_getDefaultData(CameraDataType, pDataBuf, size);
+//#else
     return  NULL;
-#endif  //  defined(MT6516)
+//#endif  //  defined(MT6516)
 }};  //  NSFeature
 
 
@@ -681,4 +697,9 @@ impGetDefaultData(CAMERA_DATA_TYPE_ENUM const CameraDataType, VOID*const pDataBu
 
 //PFUNC_GETCAMERADEFAULT pNXSC301HS5K4EC_YUV_getDefaultData = NXSC301HS5K4EC_YUV_getDefaultData;
 
+/*
+#endif //#if !defined(ISP_SUPPORT)
+
+#endif //#if (defined(DRV_ISP_6516_SERIES))
+*/
 

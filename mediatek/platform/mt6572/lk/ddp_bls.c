@@ -1,3 +1,4 @@
+#include <printf.h>
 #include <platform/ddp_reg.h>
 #include <platform/ddp_path.h>
 
@@ -118,17 +119,7 @@ int disp_bls_config()
 
 int disp_bls_set_backlight(unsigned int level)
 {
-
-    unsigned long regVal;
-    // modify gpio pwm2 to PWM_BL 
-    regVal = DISP_REG_GET(0x10005500);
-    DISP_REG_SET(0x10005500, regVal | 0x2);
-
-    DISP_REG_SET(0x10000080, 0x1);
-
-    DISP_REG_SET(0x14000108, 0x00008020);
-
-
+    unsigned int regVal; 
     printf("[DDP] disp_bls_set_backlight: %d\n", level);
     
 #ifdef USE_DISP_BLS_MUTEX
@@ -136,7 +127,30 @@ int disp_bls_set_backlight(unsigned int level)
 #else
     DISP_REG_SET(DISP_REG_BLS_DEBUG, 0x3);
 #endif
+/*add by xiaopu.zhu*/
 
+       regVal = DISP_REG_GET(0x10005500);
+
+       DISP_REG_SET(0x10005500, regVal | 0x2);
+
+       DISP_REG_SET(0x10000080, 0x1);
+
+       DISP_REG_SET(0x14000108, 0x00008020);
+
+
+	 if(level != 0)
+    {
+        regVal = DISP_REG_GET(DISP_REG_BLS_EN);
+        if (!(regVal & 0x10000))
+            DISP_REG_SET(DISP_REG_BLS_EN, regVal | 0x10000);
+    }
+    else
+    {
+        regVal = DISP_REG_GET(DISP_REG_BLS_EN);
+        if (regVal & 0x10000)
+            DISP_REG_SET(DISP_REG_BLS_EN, regVal & 0xFFFEFFFF);
+    }
+	/*add by xiaopu.zhu*/
     DISP_REG_SET(DISP_REG_BLS_PWM_DUTY, brightness_mapping(level));
     printf("[DDP] PWM_DUTY: %x\n", DISP_REG_GET(DISP_REG_BLS_PWM_DUTY));
 

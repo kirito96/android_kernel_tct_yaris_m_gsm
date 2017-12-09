@@ -1,27 +1,18 @@
-#ifndef __CCCI_PLATFORM_H
-#define __CCCI_PLATFORM_H
-
+#ifndef __CCCI_PLATFORM_H__
+#define __CCCI_PLATFORM_H__
+#include <linux/uaccess.h>
+#include <linux/sched.h>
+#include <linux/version.h>
+#include <linux/fs.h>
 #include <mach/irqs.h>
 #include <mach/mt_irq.h>
 #include <mach/mt_reg_base.h>
 #include <mach/mt_typedefs.h>
-//#include <mach/mt6577_pll.h>
 #include <mach/mt_boot.h>
 #include <mach/sync_write.h>
-//#include <mach/mt6577_sc.h>
-
-#include <linux/sched.h>
 #include <asm/memory.h>
-#include <ccci_rpc.h>
-#include <sec_ccci_export.h>
-#include <sec_boot_export.h>
-#include <sec_error_export.h>
-#include <linux/uaccess.h>
 #include <asm/string.h>
-#include <linux/version.h>
-#include <linux/fs.h>
-
-#include <mach/mtk_ccci_helper.h>
+#include <ccci_platform_cfg.h>
 
 
 
@@ -62,6 +53,8 @@
 
 #ifndef CONFIG_MODEM_FIRMWARE_PATH
 #define CONFIG_MODEM_FIRMWARE_PATH "/etc/firmware/"
+
+#define CONFIG_MODEM_FIRMWARE_CIP_PATH	"/custom/etc/firmware/"
 
 #define MOEDM_IMAGE_PATH "/etc/firmware/modem.img"
 #define DSP_IMAGE_PATH "/etc/firmware/DSP_ROM"
@@ -134,87 +127,6 @@
 #define WDT_MD_STA(base)		((base) + 0x0C)
 #define WDT_MD_SWRST(base)		((base) + 0x1C)
 
-
-/*******************AP CCIF register define**********************/
-#define AP_CCIF0_BASE			(AP_CCIF_BASE)
-#define CCIF_CON(addr)			((addr) + 0x0100)
-#define CCIF_BUSY(addr)			((addr) + 0x0104)
-#define CCIF_START(addr)		((addr) + 0x0108)
-#define CCIF_TCHNUM(addr)		((addr) + 0x010C)
-#define CCIF_RCHNUM(addr)		((addr) + 0x0110)
-#define CCIF_ACK(addr)			((addr) + 0x0134)
-
-/* for CHDATA, the first half space belongs to AP and the remaining space belongs to MD */
-#define CCIF_TXCHDATA(addr) 	((addr) + 0x0200)
-#define CCIF_RXCHDATA(addr) 	((addr) + 0x0200 + 128)
-
-/* Modem CCIF */
-#define MD_CCIF0_BASE			(AP_CCIF_BASE)
-#define MD_CCIF_CON(base)			((base) + 0x0120)
-#define MD_CCIF_BUSY(base)			((base) + 0x0124)
-#define MD_CCIF_START(base)		((base) + 0x0128)
-#define MD_CCIF_TCHNUM(base)		((base) + 0x012C)
-#define MD_CCIF_RCHNUM(base)		((base) + 0x0130)
-#define MD_CCIF_ACK(base)		((base) + 0x114)
-
-/* define constant */
-#define CCIF_CON_SEQ 0x00 /* sequencial */
-#define CCIF_CON_ARB 0x01 /* arbitration */
-//#define CCIF_IRQ_CODE MT_AP_CCIF_IRQ_ID
-
-// CCIF HW specific macro definition
-#define CCIF_STD_V1_MAX_CH_NUM				(8)
-#define CCIF_STD_V1_RUN_TIME_DATA_OFFSET	(0x240)
-#define CCIF_STD_V1_RUM_TIME_MEM_MAX_LEN	(256-64)
-
-
-/*******************other register define**********************/
-//modem debug register and bit
-#define MD_DEBUG_MODE				(0xF0001050)
-#define MD_DBG_JTAG_BIT				1<<8
-
-#define INFRACFG_BASE			INFRA_SYS_CFG_AO_BASE
-//#define MCUSYS_CFGREG_BASE			(0xF0200000)
-
-/************************* define funtion macro **************/
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36))
-#define CCIF_MASK(irq) \
-        do {    \
-            mt65xx_irq_mask(irq);  \
-        } while (0)
-#define CCIF_UNMASK(irq) \
-        do {    \
-            mt65xx_irq_unmask(irq);  \
-        } while (0)
-
-#else
-#define CCIF_MASK(irq) \
-        do {    \
-            disable_irq(irq); \
-        } while (0)
-#define CCIF_UNMASK(irq) \
-        do {    \
-            enable_irq(irq); \
-        } while (0)
-#endif
-
-#define CCIF_CLEAR_PHY(pc)   do {	\
-            *CCIF_ACK(pc) = 0xFFFFFFFF; \
-        } while (0)
-
-
-//#define CCCI_WRITEL(addr,val) mt65xx_reg_sync_writel((val), (addr))
-//#define CCCI_WRITEW(addr,val) mt65xx_reg_sync_writew((val), (addr))
-//#define CCCI_WRITEB(addr,val) mt65xx_reg_sync_writeb((val), (addr))
-
-#define ccci_write32(a, v)			mt65xx_reg_sync_writel(v, a)
-#define ccci_write16(a, v)			mt65xx_reg_sync_writew(v, a)
-#define ccci_write8(a, v)			mt65xx_reg_sync_writeb(v, a)
-
-
-#define ccci_read32(a)				(*((volatile unsigned int*)a))
-#define ccci_read16(a)				(*((volatile unsigned short*)a))
-#define ccci_read8(a)				(*((volatile unsigned char*)a))
 
 #define MD_INFRA_BASE  			(0xD10D0000) // Modem side: 0x810D0000
 #define MD_RGU_BASE  			(0xD10C0000) // Modem side: 0x810C0000
@@ -294,7 +206,8 @@ typedef struct{
 	U8 ext_attr;                /* no shrink: 0, shrink: 1*/
 	U8 reserved[2];             /* for reserved */
 	U32 mem_size;       		/* md ROM/RAM image size requested by md */
-	U32 reserved_info[2];       /* for reserved */
+	U32 md_img_size;            /* md image size, exclude head size*/
+	U32 reserved_info;          /* for reserved */
 	U32 size;	                /* the size of this structure */
 }MD_CHECK_HEADER;
 
@@ -319,6 +232,7 @@ struct IMG_CHECK_INFO{
 	char *build_time;	/* build time string */
 	char *build_ver;	/* project version, ex:11A_MD.W11.28 */
 	unsigned int mem_size; /*md rom+ram mem size*/
+	unsigned int md_img_size; /*modem image actual size, exclude head size*/
 };
 
 
@@ -349,27 +263,9 @@ typedef enum{
 
 
 //*******************external Function definition*****************//
-//extern void start_emi_mpu_protect(void);
-extern void enable_emi_mpu_protection(dma_addr_t, int);
-extern int  ccci_load_firmware(int md_id, unsigned int load_flag, char img_err_str[], int len);
 extern void dump_firmware_info(void);
-extern void ccci_md_wdt_notify_register(int, int (*funcp)(int));
 
-
-
-static inline void ccci_before_modem_start_boot(void)
-{
-}
-
-static inline void ccci_after_modem_finish_boot(void)
-{
-}
-
-
-
-void ungate_md(void);
-void gate_md(void);
-
-
-#endif
+extern unsigned int get_max_DRAM_size (void);
+extern unsigned int get_phys_offset (void);
+#endif //__CCCI_PLATFORM_H__
 

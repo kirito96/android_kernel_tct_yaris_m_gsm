@@ -1,4 +1,6 @@
 #ifdef BUILD_LK
+#include <string.h>
+#include <platform/mt_gpt.h>
 #include <platform/disp_drv_platform.h>
 #include <platform/ddp_path.h>
 
@@ -23,8 +25,6 @@
 static UINT32 dsiTmpBufBpp = 0;
 extern LCM_DRIVER *lcm_drv;
 extern LCM_PARAMS *lcm_params;
-
-#define ALIGN_TO(x, n)  	(((x) + ((n) - 1)) & ~((n) - 1))
 
 typedef struct
 {
@@ -151,10 +151,9 @@ static void init_intermediate_buffers(UINT32 fbPhysAddr)
     for (i = 0; i < lcm_params->dsi.intermediat_buffer_num; ++ i)
     {
         TempBuffer *b = &s_tmpBuffers[i];
-        #ifdef BUILD_LK
+
         // clean the intermediate buffers as black to prevent from noise display
-        memset(tmpFbStartPA, 0, tmpFbSizeInBytes);
-        #endif
+        memset((unsigned char*)tmpFbStartPA, 0, tmpFbSizeInBytes);
         b->pitchInBytes = tmpFbPitchInBytes;
         b->pa = tmpFbStartPA;
         ASSERT((tmpFbStartPA & 0x7) == 0);  // check if 8-byte-aligned
@@ -276,15 +275,15 @@ void init_dsi(BOOL isDsiPoweredOn)
     DSI_CHECK_RET(DSI_PS_Control(lcm_params->dsi.PS, lcm_params->height, lcm_params->width * dsiTmpBufBpp));
 
 
-	if(lcm_params->dsi.mode != CMD_MODE)
-	{
-		DSI_Set_VM_CMD(lcm_params);
-		DSI_Config_VDO_Timing(lcm_params);
+    if(lcm_params->dsi.mode != CMD_MODE)
+    {
+        DSI_Set_VM_CMD(lcm_params);
+        DSI_Config_VDO_Timing(lcm_params);
 #ifndef MT65XX_NEW_DISP
         DSI_CHECK_RET(DSI_PS_Control(lcm_params->dsi.PS, lcm_params->width * dsiTmpBufBpp,lcm_params->width * dsiTmpBufBpp));
 #endif
     }
-	
+
     DSI_CHECK_RET(DSI_enable_MIPI_txio(TRUE));
 }
 
@@ -375,15 +374,17 @@ static DISP_STATUS dsi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
 
     #ifdef MT65XX_NEW_DISP
     {
-        struct disp_path_config_struct config = {0};
-        
+        struct disp_path_config_struct config;
+
+        memset((void *)&config, 0, sizeof(struct disp_path_config_struct));
+
         config.srcModule = DISP_MODULE_OVL;
         
         if(config.srcModule == DISP_MODULE_RDMA0)
         {
             config.inFormat = RDMA_INPUT_FORMAT_RGB565;
             config.addr = fbPA; 
-            config.pitch = DISP_GetScreenWidth()*2;
+            config.pitch =  (ALIGN_TO(DISP_GetScreenWidth(),32))*2;
             config.srcROI.x = 0;config.srcROI.y = 0;
             config.srcROI.height= DISP_GetScreenHeight();config.srcROI.width= DISP_GetScreenWidth();
         }
@@ -394,13 +395,12 @@ static DISP_STATUS dsi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
             config.bgROI.width = DISP_GetScreenWidth();
             config.bgROI.height = DISP_GetScreenHeight();
             config.bgColor = 0x0;	// background color
-            
-            config.pitch = DISP_GetScreenWidth()*2;
+            config.pitch =  (ALIGN_TO(DISP_GetScreenWidth(),32))*2;
             config.srcROI.x = 0;config.srcROI.y = 0;
             config.srcROI.height= DISP_GetScreenHeight();config.srcROI.width= DISP_GetScreenWidth();
             config.ovl_config.source = OVL_LAYER_SOURCE_MEM; 
             
-            if(lcm_params->dsi.mode != CMD_MODE){
+            {
                 config.ovl_config.layer = 2;
                 config.ovl_config.layer_en = 1; 
                 config.ovl_config.fmt = OVL_INPUT_FORMAT_RGB565;
@@ -432,6 +432,7 @@ static DISP_STATUS dsi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
             disp_path_get_mutex();
 
         disp_path_config(&config);
+
         disp_bls_init(DISP_GetScreenWidth(), DISP_GetScreenHeight());
 
         if(lcm_params->dsi.mode != CMD_MODE)
@@ -715,21 +716,8 @@ BOOL dsi_esd_check(void)
     
     if(lcm_params->dsi.mode == CMD_MODE || !dsi_vdo_streaming)
         return FALSE;
-    else
-    {
-        #ifndef BUILD_LK
-            if(lcm_params->dsi.lcm_int_te_monitor)
-                result = DSI_esd_check();
-            
-            if(result)
-                return TRUE;
-            
-            if(lcm_params->dsi.lcm_ext_te_monitor)
-                result = LCD_esd_check();
-            
-            return result;
-        #endif	
-    }
+
+    return result;
 }
 
 

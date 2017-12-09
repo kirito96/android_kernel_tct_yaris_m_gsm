@@ -1,4 +1,3 @@
-
 #ifndef CUSTOM_VR_VIDEO_DROP_RATE_H
 #define CUSTOM_VR_VIDEO_DROP_RATE_H
 #include <media/MediaProfiles.h> 

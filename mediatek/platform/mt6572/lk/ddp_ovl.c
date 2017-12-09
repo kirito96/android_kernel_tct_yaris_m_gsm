@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <string.h>
 #include <platform/mt_typedefs.h>
 #include <platform/ddp_reg.h>
 #include <platform/ddp_ovl.h>
@@ -96,10 +97,8 @@ int OVLROI(unsigned int bgW,
     return 0;
 }
 
-int OVLLayerSwitch(unsigned layer, BOOL en) {
-    
-    ASSERT(layer<=3);
-    
+int OVLLayerSwitch(unsigned layer, BOOL en) 
+{
     switch(layer) {
         case 0:
             DISP_REG_SET_FIELD(SRC_CON_FLD_L0_EN, DISP_REG_OVL_SRC_CON, en);
@@ -126,8 +125,6 @@ int OVL3DConfig(unsigned int layer_id,
                 unsigned int landscape,
                 unsigned int r_first)
 {
-    ASSERT(layer_id<=3);
-    
     switch(layer_id) {
         case 0:
             DISP_REG_SET_FIELD(L0_CON_FLD_EN_3D,     DISP_REG_OVL_L0_CON, en_3d);
@@ -172,6 +169,7 @@ int OVLLayerConfig(unsigned int layer,
 
     ASSERT((w <= OVL_MAX_WIDTH) && (h <= OVL_MAX_HEIGHT));
     
+#if defined(DDP_ROTATION_SUPPORT)
     unsigned bpp;
     switch (fmt) {
         case OVL_INPUT_FORMAT_ARGB8888:
@@ -193,6 +191,7 @@ int OVLLayerConfig(unsigned int layer,
         default:
             ASSERT(0);      // invalid input format
     }
+#endif
 
     if((source == OVL_LAYER_SOURCE_SCL || source == OVL_LAYER_SOURCE_PQ) &&
        (fmt != OVL_INPUT_FORMAT_YUV444)) {
@@ -478,7 +477,10 @@ int OVLLayerConfig(unsigned int layer,
         default:
             ASSERT(0);       // invalid layer index
     }
-
+        DISP_REG_SET(DISP_REG_OVL_RDMA0_MEM_GMC_SETTING, 0x00f00040);
+        DISP_REG_SET(DISP_REG_OVL_RDMA1_MEM_GMC_SETTING, 0x00f00040);
+        DISP_REG_SET(DISP_REG_OVL_RDMA2_MEM_GMC_SETTING, 0x00f00040);
+        DISP_REG_SET(DISP_REG_OVL_RDMA3_MEM_GMC_SETTING, 0x00f00040);
     return 0;
 }
 

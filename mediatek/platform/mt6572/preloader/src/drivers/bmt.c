@@ -1,3 +1,39 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ * 
+ * MediaTek Inc. (C) 2012. All rights reserved.
+ * 
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #include "bmt.h"
 #include "platform.h"
@@ -48,6 +84,13 @@ static struct nand_chip *nand_chip_bmt;
 #define OFFSET(block)       ((block) * BLOCK_SIZE_BMT)           //((block) << (mtd->erasesize_shift) + (page) << (mtd->writesize_shift))
 #define PAGE_ADDR(block)    ((block) * BLOCK_SIZE_BMT / PAGE_SIZE_BMT)
 
+/*********************************************************************
+* Flash is splited into 2 parts, system part is for normal system    *
+* system usage, size is system_block_count, another is replace pool  *
+*    +-------------------------------------------------+             *
+*    |     system_block_count     |   bmt_block_count  |             *
+*    +-------------------------------------------------+             *
+*********************************************************************/
 static u32 total_block_count;       // block number in flash
 static u32 system_block_count;
 static int bmt_block_count;         // bmt table size
@@ -63,6 +106,13 @@ static u8 *oob_buf = (u8 *)(COMMON_BUFFER_ADDR+4096);		//(0x80000 + 4096);
 static bool pool_erased;
 
 
+/***************************************************************
+*                                                              
+* Interface adaptor for preloader/uboot/kernel                 
+*    These interfaces operate on physical address, read/write
+*       physical data.
+*                                                              
+***************************************************************/
 #if defined(__PRELOADER_NAND__)
 int nand_read_page_bmt(u32 page, u8 *dat, u8 *oob)
 {
@@ -133,6 +183,11 @@ bool nand_write_page_bmt(u32 page, u8 *dat, u8 *oob)
 
 
 
+/***************************************************************
+*                                                              *
+* static internal function                                     *
+*                                                              *
+***************************************************************/
 static void dump_bmt_info(bmt_struct *bmt)
 {
     int i;
@@ -323,6 +378,12 @@ MSG(INIT,  "[%s]: match_bmt_signature  out! \n", __FUNCTION__);
 }
 
 
+/*************************************************************************
+* Find an available block and erase.                                     *
+* start_from_end: if true, find available block from end of flash.       *
+*                 else, find from the beginning of the pool              *
+* need_erase: if true, all unmapped blocks in the pool will be erased    *
+*************************************************************************/
 static int find_available_block(bool start_from_end)
 {
     int i;      // , j;
@@ -533,6 +594,12 @@ static bool write_bmt_to_flash(u8 *dat, u8 *oob)
     return true;
 }
 
+/*******************************************************************
+* Reconstruct bmt, called when found bmt info doesn't match bad 
+* block info in flash.
+* 
+* Return NULL for failure
+*******************************************************************/
 bmt_struct *reconstruct_bmt(bmt_struct * bmt)
 {
     int i;
@@ -608,6 +675,18 @@ bmt_struct *reconstruct_bmt(bmt_struct * bmt)
     return bmt;
 }
 
+/*******************************************************************
+* [BMT Interface]
+*
+* Description:
+*   Init bmt from nand. Reconstruct if not found or data error
+*
+* Parameter:
+*   size: size of bmt and replace pool
+* 
+* Return: 
+*   NULL for failure, and a bmt struct for success
+*******************************************************************/
 bmt_struct *init_bmt(struct nand_chip *chip, int size)
 {
 
@@ -676,6 +755,20 @@ bmt_struct *init_bmt(struct nand_chip *chip, int size)
 }
 
 
+/*******************************************************************
+* [BMT Interface]
+*
+* Description:
+*   Update BMT.
+*
+* Parameter:
+*   offset: update block/page offset.
+*   reason: update reason, see update_reason_t for reason.
+*   dat/oob: data and oob buffer for write fail.
+* 
+* Return: 
+*   Return true for success, and false for failure.
+*******************************************************************/
 bool update_bmt(u32 offset, update_reason_t reason, u8 *dat, u8 *oob)
 {
     int map_index;
@@ -735,6 +828,19 @@ bool update_bmt(u32 offset, update_reason_t reason, u8 *dat, u8 *oob)
     return true;
 }
 
+/*******************************************************************
+* [BMT Interface]
+*
+* Description:
+*   Given an block index, return mapped index if it's mapped, else 
+*   return given index.
+*
+* Parameter:
+*   index: given an block index. This value cannot exceed 
+*   system_block_count.
+*
+* Return NULL for failure
+*******************************************************************/
 u16 get_mapping_block_index(int index)
 {
     int i;

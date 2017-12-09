@@ -19,7 +19,9 @@
 #include <linux/math64.h>
 #include <linux/writeback.h>
 #include <linux/compaction.h>
-
+/// M: LCA @{
+#include <linux/export.h>
+/// @}
 #ifdef CONFIG_VM_EVENT_COUNTERS
 DEFINE_PER_CPU(struct vm_event_state, vm_event_states) = {{0}};
 EXPORT_PER_CPU_SYMBOL(vm_event_states);
@@ -612,6 +614,9 @@ static char * const migratetype_names[MIGRATE_TYPES] = {
 	"Unmovable",
 	"Reclaimable",
 	"Movable",
+#ifdef CONFIG_MTKPASR
+	"Mtkpasr",
+#endif
 	"Reserve",
 	"Isolate",
 };
@@ -719,6 +724,9 @@ const char * const vmstat_text[] = {
 	"numa_other",
 #endif
 	"nr_anon_transparent_hugepages",
+#ifdef CONFIG_UKSM
+	"nr_uksm_zero_pages",
+#endif
 	"nr_dirty_threshold",
 	"nr_dirty_background_threshold",
 
@@ -1137,16 +1145,57 @@ static const struct file_operations proc_vmstat_file_operations = {
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };
+
+/// M: LCA @{
+void extra_log_vm_stat_lite(void)
+{
+#if defined(CONFIG_VM_EVENT_COUNTERS) && defined(CONFIG_ZRAM)
+	unsigned long v[NR_VM_EVENT_ITEMS];
+	sum_vm_events(v);
+	v[PGPGIN] = v[PGPGIN] >> 1;		/* sectors -> kbytes */
+	v[PGPGOUT] = v[PGPGOUT] >> 1;
+	printk(KERN_INFO "[MTK_MSR]vmstat"\
+		"(%lu"		// (pgin, pgout, swpin, swpout)
+		",%lu"
+		",%lu"
+		",%lu)"
+		"(%lu"		// (fault, maj, fm)
+		",%lu"
+		",%lu)"
+		"(%lu"		// (refill, steal_kswapd, steal_direct, scan_kswapd, scan_direct)
+		",%lu"
+		",%lu"
+		",%lu"
+		",%lu)\n"
+		,
+		v[PGPGIN],
+		v[PGPGOUT],
+		v[PSWPIN],
+		v[PSWPOUT],
+		v[PGFAULT],
+		v[PGMAJFAULT],
+		v[PGFMFAULT],
+		v[PGREFILL_NORMAL],
+		v[PGSTEAL_KSWAPD_NORMAL],
+		v[PGSTEAL_DIRECT_NORMAL],
+		v[PGSCAN_KSWAPD_NORMAL],
+		v[PGSCAN_DIRECT_NORMAL]
+		);
+#endif
+}
+EXPORT_SYMBOL(extra_log_vm_stat_lite);
+/// @}
 #endif /* CONFIG_PROC_FS */
 
 #ifdef CONFIG_SMP
+static struct workqueue_struct *vmstat_wq;
 static DEFINE_PER_CPU(struct delayed_work, vmstat_work);
 int sysctl_stat_interval __read_mostly = HZ;
 
 static void vmstat_update(struct work_struct *w)
 {
 	refresh_cpu_vm_stats(smp_processor_id());
-	schedule_delayed_work(&__get_cpu_var(vmstat_work),
+	queue_delayed_work(vmstat_wq, &__get_cpu_var(vmstat_work),
 		round_jiffies_relative(sysctl_stat_interval));
 }
 
@@ -1155,7 +1204,7 @@ static void __cpuinit start_cpu_timer(int cpu)
 	struct delayed_work *work = &per_cpu(vmstat_work, cpu);
 
 	INIT_DELAYED_WORK_DEFERRABLE(work, vmstat_update);
-	schedule_delayed_work_on(cpu, work, __round_jiffies_relative(HZ, cpu));
+	queue_delayed_work_on(cpu, vmstat_wq, work, __round_jiffies_relative(HZ, cpu));
 }
 
 /*
@@ -1205,6 +1254,7 @@ static int __init setup_vmstat(void)
 
 	register_cpu_notifier(&vmstat_notifier);
 
+	vmstat_wq = alloc_workqueue("vmstat", WQ_FREEZABLE|WQ_MEM_RECLAIM, 0);
 	for_each_online_cpu(cpu)
 		start_cpu_timer(cpu);
 #endif

@@ -14,26 +14,30 @@
 #include <mach/mt_spm_idle.h>
 #include <asm/fiq_glue.h>
 
+#ifdef CONFIG_MTK_SCHED_TRACERS
+#include <trace/events/mtk_events.h>
+#include "kernel/trace/trace.h"
+#endif
+
+#include <mach/wd_api.h>
 
 #define SLAVE1_MAGIC_REG 0xF000140C
 #define SLAVE1_MAGIC_NUM 0x534C4131
 #define SLAVE_JUMP_REG  0xF0001408
 
+#define CA7_CACHE_CONFIG        (MCUSYS_CFGREG_BASE + 0x0000)
 
+/* CA7_CACHE_CONFIG Bits */
+#define L1RSTDISABLE0     (0x1)
+#define L1RSTDISABLE1     (0x2)
+#define L2RSTDISABLE      (0x10)
+
+#define reg_read(addr)          (*(volatile u32 *)(addr))
+#define reg_write(addr, val)    mt65xx_reg_sync_writel(val, addr)
 
 extern void mt_secondary_startup(void);
 extern void irq_raise_softirq(const struct cpumask *mask, unsigned int irq);
 extern void mt_gic_secondary_init(void);
-#ifdef CONFIG_MTK_WD_KICKER
-enum wk_wdt_type {
-	WK_WDT_LOC_TYPE,
-	WK_WDT_EXT_TYPE,
-	WK_WDT_LOC_TYPE_NOLOCK,
-	WK_WDT_EXT_TYPE_NOLOCK,
-};
-extern void wk_start_kick_cpu_hotplug(int cpu);
-extern void mtk_wdt_restart(enum wk_wdt_type type);
-#endif
 
 extern unsigned int irq_total_secondary_cpus;
 static unsigned int is_secondary_cpu_first_boot;
@@ -44,6 +48,7 @@ static DEFINE_SPINLOCK(boot_lock);
  */
 volatile int pen_release = -1;
 
+unsigned int cache_cfg_stat = 0;
 
 int L2CTLR_get_core_count(void){
     unsigned int cores = 0;
@@ -65,6 +70,8 @@ int L2CTLR_get_core_count(void){
 
 void __cpuinit platform_secondary_init(unsigned int cpu)
 {
+    struct wd_api *wd_api = NULL;
+
     printk(KERN_INFO "Slave cpu init\n");
     HOTPLUG_INFO("platform_secondary_init, cpu: %d\n", cpu);
 
@@ -73,12 +80,9 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
     pen_release = -1;
     smp_wmb();
 
-#ifdef CONFIG_MTK_WD_KICKER
-    printk("[WDK] cpu %d plug on platform_secondary_init++++++\n", cpu);
-    wk_start_kick_cpu_hotplug(cpu);
-    mtk_wdt_restart(WK_WDT_EXT_TYPE_NOLOCK);
-    printk("[WDK] cpu %d plug on platform_secondary_init------\n", cpu);
-#endif
+    get_wd_api(&wd_api);
+    if (wd_api)
+        wd_api->wd_cpu_hot_plug_on_notify(cpu);
 
 #ifdef CONFIG_FIQ_GLUE
     fiq_glue_resume();
@@ -86,6 +90,11 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 
 #ifdef SPM_MCDI_FUNC
     spm_hot_plug_in_before(cpu);
+#endif
+
+#ifdef CONFIG_MTK_SCHED_TRACERS
+    trace_cpu_hotplug(cpu, 1, per_cpu(last_event_ts, cpu));
+    per_cpu(last_event_ts, cpu) = ns2usecs(ftrace_now(cpu));
 #endif
 
     /*
@@ -98,6 +107,7 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
     unsigned long timeout;
+    unsigned int stat = 0;
 
     printk(KERN_CRIT "Boot slave CPU\n");
     
@@ -131,9 +141,19 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 #ifdef CONFIG_HOTPLUG_WITH_POWER_CTRL
     else
     {
+        stat = reg_read(CA7_CACHE_CONFIG);
+        reg_write(CA7_CACHE_CONFIG, stat & ~L1RSTDISABLE1);
+        cache_cfg_stat &= ~L1RSTDISABLE1;
+        cache_cfg_stat |= (stat & L1RSTDISABLE1);
+
         mt65xx_reg_sync_writel((BOOT_SLV_CFG_KEY | 0x1), BOOT_SLV_CFG);   
         mt65xx_reg_sync_writel(virt_to_phys(mt_secondary_startup), BOOT_SLV_ADDR);   
-        spm_mtcmos_ctrl_cpu1(STA_POWER_ON); 
+        spm_mtcmos_ctrl_cpu1(STA_POWER_ON, 0); 
+
+        stat = reg_read(CA7_CACHE_CONFIG);
+        stat &= ~L1RSTDISABLE1;
+        stat |= (cache_cfg_stat & L1RSTDISABLE1);
+        reg_write(CA7_CACHE_CONFIG, stat);
     }
 #endif
 

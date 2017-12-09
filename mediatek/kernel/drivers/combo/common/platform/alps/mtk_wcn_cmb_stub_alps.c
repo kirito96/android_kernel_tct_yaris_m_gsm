@@ -33,13 +33,7 @@
 
 #include <mach/mt_dcm.h>
 
-#if 0
-#if defined(CONFIG_ARCH_MT6575)
-#include <mach/mt_dcm.h>
-#elif defined(CONFIG_ARCH_MT6577)
-#include <mach/mt_dcm.h>
-#endif
-#endif
+
 /*******************************************************************************
 *                              C O N S T A N T S
 ********************************************************************************

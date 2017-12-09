@@ -28,7 +28,6 @@
  * SUCH DAMAGE.
  */
 #include <mt_i2c.h>
-#include <mt_pmic_wrap_init.h>
 #include <gpio.h>
 
 /*-----------------------------------------------------------------------
@@ -141,7 +140,7 @@ static unsigned long mt_i2c_channel_init(unsigned char channel)
 * Initializa the HW I2C module
 *    Returns: ERROR_CODE
 */
-unsigned long mt_i2c_init ()
+unsigned long mt_i2c_init(void)
 {
 	/*if you are using I2C, first init it at here*/
     return I2C_OK;
@@ -163,6 +162,8 @@ unsigned long mt_i2c_deinit (unsigned char channel)
 
     return ret_code;
 }
+
+//I2C GPIO debug
 struct mt_i2c_gpio_t{
 	unsigned short scl;
 	unsigned short sda;
@@ -175,7 +176,7 @@ static struct mt_i2c_gpio_t mt_i2c_gpio_mode[I2C_NR]={
 static inline void mt_i2c_dump_info(struct mt_i2c_t *i2c)
 {
 	CHANNEL_BASE(i2c->id);
-	I2CERR("I2C register:\nSLAVE_ADDR %x\nINTR_MASK %x\nINTR_STAT %x\nCONTROL %x\nTRANSFER_LEN %x\nTRANSAC_LEN %x\nDELAY_LEN %x\nTIMING %x\nSTART %x\nFIFO_STAT %x\nIO_CONFIG %x\nHS %x\nDEBUGSTAT %x\nEXT_CONF %x\nPATH_DIR %x\n",
+	I2CERR("I2C register:\nSLAVE_ADDR %x\nINTR_MASK %x\nINTR_STAT %x\nCONTROL %x\nTRANSFER_LEN %x\nTRANSAC_LEN %x\nDELAY_LEN %x\nTIMING %x\nSTART %x\nFIFO_STAT %x\nIO_CONFIG %x\nHS %x\nDEBUGSTAT %x\nEXT_CONF %x\nTRANSFER_LEN_AUX %x\nTIMEOUT %x\n",
 			(i2c_read(  MT_I2C_SLAVE_ADDR)),
 			(i2c_read(  MT_I2C_INTR_MASK)),
 			(i2c_read(  MT_I2C_INTR_STAT)),
@@ -190,17 +191,17 @@ static inline void mt_i2c_dump_info(struct mt_i2c_t *i2c)
 			(i2c_read(  MT_I2C_HS)),
 			(i2c_read(  MT_I2C_DEBUGSTAT)),
 			(i2c_read(  MT_I2C_EXT_CONF)),
-			(i2c_read(  MT_I2C_PATH_DIR)));
+			(i2c_read(  MT_I2C_TRANSFER_LEN_AUX)),
+			(i2c_read(  MT_I2C_TIMEOUT)));
 	//I2CERR("DMA register:\nINT_FLAG %x\nCON %x\nTX_MEM_ADDR %x\nRX_MEM_ADDR %x\nTX_LEN %x\nRX_LEN %x\nINT_EN %x\nEN %x\n",(__raw_readl(i2c->pdmabase+OFFSET_INT_FLAG)),(__raw_readl(i2c->pdmabase+OFFSET_CON)),(__raw_readl(i2c->pdmabase+OFFSET_TX_MEM_ADDR)),(__raw_readl(i2c->pdmabase+OFFSET_RX_MEM_ADDR)),(__raw_readl(i2c->pdmabase+OFFSET_TX_LEN)),(__raw_readl(i2c->pdmabase+OFFSET_RX_LEN)),(__raw_readl(i2c->pdmabase+OFFSET_INT_EN)),(__raw_readl(i2c->pdmabase+OFFSET_EN)));
 
-	/*6589 side and PMIC side clock*/
-//	I2CERR("GPIO%d(SCL):%d,mode%d; GPIO%d(SDA):%d,mode%d\n",
-//			mt_i2c_gpio_mode[i2c->id].scl,
-//			mt_get_gpio_in(mt_i2c_gpio_mode[i2c->id].scl),
-//			mt_get_gpio_mode(mt_i2c_gpio_mode[i2c->id].scl),
-//			mt_i2c_gpio_mode[i2c->id].sda,
-//			mt_get_gpio_in(mt_i2c_gpio_mode[i2c->id].sda),
-//			mt_get_gpio_mode(mt_i2c_gpio_mode[i2c->id].sda));
+	I2CERR("GPIO%d(SCL):%d,mode%d; GPIO%d(SDA):%d,mode%d\n",
+			mt_i2c_gpio_mode[i2c->id].scl,
+			mt_get_gpio_in(mt_i2c_gpio_mode[i2c->id].scl),
+			mt_get_gpio_mode(mt_i2c_gpio_mode[i2c->id].scl),
+			mt_i2c_gpio_mode[i2c->id].sda,
+			mt_get_gpio_in(mt_i2c_gpio_mode[i2c->id].sda),
+			mt_get_gpio_mode(mt_i2c_gpio_mode[i2c->id].sda));
 
 	I2CERR("base address %x\n",i2c_base);
 	return;
@@ -246,7 +247,7 @@ unsigned long mt_i2c_read(unsigned char channel,unsigned char chip, unsigned cha
     I2C_SET_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
     I2C_FIFO_CLR_ADDR;
 
-    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT | STOP_FLAG);
+    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT);
 
     /* start trnasfer transaction */
     I2C_START_TRANSAC;
@@ -309,6 +310,7 @@ unsigned long mt_i2c_read(unsigned char channel,unsigned char chip, unsigned cha
 
     /* clear bit mask */
     I2C_CLR_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
+    I2C_SOFTRESET;
 
     I2CLOG("[i2c_read] Done\n");
 
@@ -340,13 +342,7 @@ unsigned long mt_i2c_write (unsigned char channel,unsigned char chip, unsigned c
 		I2CLOG("[i2c_write] I2C doesn't support len = 0.\n");
         return I2C_WRITE_FAIL_ZERO_LENGTH;
     }
-#if 0 // 6572 doesn't have I2C on PMIC
-	if(dir == 0){
-		I2C_PATH_NORMAL;
-	}else{
-		I2C_PATH_PMIC;
-	}
-#endif
+
     I2C_CLR_INTR_STATUS(I2C_TRANSAC_COMP | I2C_ACKERR | I2C_HS_NACKERR);
     /* bit 0 is to indicate read REQ or write REQ */
     chip = (chip & ~0x1);
@@ -358,7 +354,7 @@ unsigned long mt_i2c_write (unsigned char channel,unsigned char chip, unsigned c
     I2C_SET_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
     I2C_FIFO_CLR_ADDR;
 
-    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT | STOP_FLAG);
+    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT);
 
     /* start to write data */
     while (len--) {
@@ -462,7 +458,6 @@ unsigned long mt_i2c_read_new(struct mt_i2c_t *i2c,unsigned char *buffer, int le
     unsigned char *ptr = buffer;
     unsigned short status;
     int ret = len;
-    //long tmo;
 	unsigned int time_out_val=0;
 	CHANNEL_BASE(i2c->id);
 
@@ -471,18 +466,10 @@ unsigned long mt_i2c_read_new(struct mt_i2c_t *i2c,unsigned char *buffer, int le
         I2CLOG("[i2c_read] I2C doesn't support len = %d.\n",len);
         return I2C_READ_FAIL_ZERO_LENGTH;
     }
-#if 0 // 6572 doesn't have I2C on PMIC
-	/*setting path direction and clock first all*/
-	if(i2c->dir == 0){
-		I2C_PATH_NORMAL;
-		i2c_clk = I2C_CLK_RATE;
-	}else{
-		I2C_PATH_PMIC;
-		i2c_clk = I2C_CLK_RATE_PMIC;
-	}
-#else
-	i2c_clk = I2C_CLK_RATE;
-#endif
+
+    /* setting clock */
+    i2c_clk = I2C_CLK_RATE;
+
     I2C_CLR_INTR_STATUS(I2C_TRANSAC_COMP | I2C_ACKERR | I2C_HS_NACKERR);
 	//setting speed
 	mt_i2c_set_speed(i2c->id, i2c_clk, i2c->mode, i2c->speed);
@@ -496,8 +483,8 @@ unsigned long mt_i2c_read_new(struct mt_i2c_t *i2c,unsigned char *buffer, int le
     I2C_SET_TRANSAC_LEN(1);
     I2C_SET_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
     I2C_FIFO_CLR_ADDR;
-    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | (i2c->is_clk_ext_disable?0:CLK_EXT) |(i2c->is_rs_enable?REPEATED_START_FLAG:STOP_FLAG));
-    //I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT | STOP_FLAG);
+    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | (i2c->is_clk_ext_disable?0:CLK_EXT) |(i2c->is_rs_enable?REPEATED_START_FLAG:0));
+    //I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT);
 
     /* start trnasfer transaction */
     I2C_START_TRANSAC;
@@ -570,7 +557,6 @@ unsigned long mt_i2c_write_new(struct mt_i2c_t *i2c,unsigned char *buffer, int l
     unsigned long ret_code = I2C_OK;
 	unsigned long i2c_clk;
     unsigned char *ptr = buffer;
-    int ret = len;
     unsigned short status;
 	unsigned int time_out_val=0;
 
@@ -581,18 +567,10 @@ unsigned long mt_i2c_write_new(struct mt_i2c_t *i2c,unsigned char *buffer, int l
 		I2CLOG("[i2c_write] I2C doesn't support len = %d.\n",len);
         return I2C_WRITE_FAIL_ZERO_LENGTH;
     }
-#if 0 // 6572 doesn't have I2C on PMIC
-	/*setting path direction and clock first all*/
-	if(i2c->dir == 0){
-		I2C_PATH_NORMAL;
-		i2c_clk = I2C_CLK_RATE;
-	}else{
-		I2C_PATH_PMIC;
-		i2c_clk = I2C_CLK_RATE_PMIC;
-	}
-#else
-	i2c_clk = I2C_CLK_RATE;
-#endif
+
+    /* setting clock */
+    i2c_clk = I2C_CLK_RATE;
+
     I2C_CLR_INTR_STATUS(I2C_TRANSAC_COMP | I2C_ACKERR | I2C_HS_NACKERR);
 	//setting speed
 	mt_i2c_set_speed(i2c->id, i2c_clk, i2c->mode, i2c->speed);
@@ -605,8 +583,8 @@ unsigned long mt_i2c_write_new(struct mt_i2c_t *i2c,unsigned char *buffer, int l
     I2C_SET_TRANSAC_LEN(1);
     I2C_SET_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
     I2C_FIFO_CLR_ADDR;
-    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | (i2c->is_clk_ext_disable?0:CLK_EXT) |(i2c->is_rs_enable?REPEATED_START_FLAG:STOP_FLAG));
-    //I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT | STOP_FLAG);
+    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | (i2c->is_clk_ext_disable?0:CLK_EXT) |(i2c->is_rs_enable?REPEATED_START_FLAG:0));
+    //I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT);
 
     /* start to write data */
     while (len--) {
@@ -678,18 +656,10 @@ unsigned long mt_i2c_write_read_new(struct mt_i2c_t *i2c,unsigned char *buffer, 
 		I2CLOG("[i2c_write_read] I2C doesn't support w,r len = %d,%d.\n",write_len, read_len);
         return I2C_WRITE_FAIL_ZERO_LENGTH;
     }
-#if 0 // 6572 doesn't have I2C on PMIC
-	/*setting path direction and clock first all*/
-	if(i2c->dir == 0){
-		I2C_PATH_NORMAL;
-		i2c_clk = I2C_CLK_RATE;
-	}else{
-		I2C_PATH_PMIC;
-		i2c_clk = I2C_CLK_RATE_PMIC;
-	}
-#else
-	i2c_clk = I2C_CLK_RATE;
-#endif
+
+    /* setting clock */
+    i2c_clk = I2C_CLK_RATE;
+
     I2C_CLR_INTR_STATUS(I2C_TRANSAC_COMP | I2C_ACKERR | I2C_HS_NACKERR);
 	//setting speed
 	mt_i2c_set_speed(i2c->id, i2c_clk, i2c->mode, i2c->speed);
@@ -700,12 +670,12 @@ unsigned long mt_i2c_write_read_new(struct mt_i2c_t *i2c,unsigned char *buffer, 
     I2C_SET_SLAVE_ADDR(i2c->addr << 1);
     I2C_SET_TRANS_LEN(write_len);
     I2C_SET_TRANS_AUX_LEN(read_len);
-    I2C_SET_TRANSAC_LEN(2); // TODO
+    I2C_SET_TRANSAC_LEN(2);
     I2C_SET_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
     I2C_FIFO_CLR_ADDR;
 
-    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | DIR_CHG | (i2c->is_clk_ext_disable?0:CLK_EXT) 
-			| REPEATED_START_FLAG);
+    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | DIR_CHG | (i2c->is_clk_ext_disable?0:CLK_EXT)
+            | REPEATED_START_FLAG);
 
     /* start to write data */
     while (write_len--) {
@@ -744,12 +714,12 @@ unsigned long mt_i2c_write_read_new(struct mt_i2c_t *i2c,unsigned char *buffer, 
     }
 
 	if(ret_code == I2C_OK){
-	ptr = buffer;
+		ptr = buffer;
 		while (read_len--){
-		I2C_READ_BYTE(*ptr);
+			I2C_READ_BYTE(*ptr);
 			I2CLOG("[i2c_write_read] read byte = 0x%x\n", *ptr);
-		ptr++;
-	}
+			ptr++;
+		}
 	}
     I2C_CLR_INTR_STATUS(I2C_TRANSAC_COMP | I2C_ACKERR | I2C_HS_NACKERR);
 
@@ -769,7 +739,6 @@ int mt_i2c_test_eeprom(int id)
 	struct mt_i2c_t i2c;
 
 	i2c.id = id;
-	i2c.dir = id<=3?0:1;
 	i2c.addr = 0x50;
 	i2c.mode = ST_MODE;
 	i2c.speed = 100;
@@ -784,7 +753,7 @@ int mt_i2c_test_eeprom(int id)
 		ret = -1;
 		return ret;
 	}else{
-		I2CERR("Write 2 bytes are %x, %x.\n", byte[0], byte[1]);
+		I2CLOG("Write 2 bytes are %x, %x.\n", byte[0], byte[1]);
 	}
 	//delay not work if has no print
 	ret = 0xfffff;
@@ -800,7 +769,7 @@ int mt_i2c_test_eeprom(int id)
 		ret = -1;
 		return ret;
 	}else{
-		I2CERR("Read 1 byte is %x.\n", byte[0]);
+		I2CLOG("Read 1 byte is %x.\n", byte[0]);
 	}
 	return ret;
 }

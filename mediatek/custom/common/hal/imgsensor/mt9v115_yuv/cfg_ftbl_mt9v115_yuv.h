@@ -1,4 +1,3 @@
-
 #ifndef _CFG_FTBL_MT9V115_YUV_H_
 #define _CFG_FTBL_MT9V115_YUV_H_
 

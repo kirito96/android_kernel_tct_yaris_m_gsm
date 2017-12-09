@@ -67,6 +67,10 @@ void dummy_audioformat_cb(void* cb_param, kal_uint32 format)
 {
 }
 
+#if defined(NMI5625)
+	extern int matv_getchipid(void);
+#endif
+
 void META_MATV_OP(FT_MATV_REQ *p_req)
 {
     FT_MATV_CNF matv_cnf;
@@ -261,14 +265,23 @@ void META_MATV_OP(FT_MATV_REQ *p_req)
 		case FT_MATV_OP_GET_CHIPNAME:
 		{
 			///char chipname[20];			
-			int chipid = fm_getchipid();	
-			if(chipid == 0x91)
-				sprintf(matv_cnf.result.chipname,"%s", "mt5192");
-			else if(chipid == 0x92)
-				sprintf(matv_cnf.result.chipname,"%s", "mt5193");
-			else
-				sprintf(matv_cnf.result.chipname,"%s", "unkown");
-			
+#if defined(NMI5625)
+                        int chipid = matv_getchipid();
+                        if(chipid == 0x5625a0)
+                                sprintf(matv_cnf.result.chipname,"%s", "nmi5625");
+                        else if(chipid == 0x601b0)
+                                sprintf(matv_cnf.result.chipname,"%s", "nmi601b");
+                        else
+                                sprintf(matv_cnf.result.chipname,"%s", "unkown");
+#else
+                        int chipid = fm_getchipid();
+                        if(chipid == 0x91)
+                                sprintf(matv_cnf.result.chipname,"%s", "mt5192");
+                        else if(chipid == 0x92)
+                                sprintf(matv_cnf.result.chipname,"%s", "mt5193");
+                        else
+                                sprintf(matv_cnf.result.chipname,"%s", "unkown");
+#endif			
 			matv_cnf.status = META_SUCCESS;
 			META_LOG("[FTT_Drv:] FT_MATV_OP_GET_CHIPNAME id %c%c%c%c%c%c succeeded! ", matv_cnf.result.chipname[0], matv_cnf.result.chipname[1],
 			  matv_cnf.result.chipname[2], matv_cnf.result.chipname[3], matv_cnf.result.chipname[4], matv_cnf.result.chipname[5],matv_cnf.result.chipname[6]);

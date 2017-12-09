@@ -30,7 +30,6 @@
 #include <asm/bitops.h>
 #include <linux/sched.h>
 #include <linux/wakelock.h>
-
 #include <ccci_ch.h>
 #include <ccif.h>
 
@@ -310,5 +309,5 @@ extern int __init ccif_module_init(void);
 extern void __exit ccif_module_exit(void);
 
 
-#endif  /* !__CCCI_LAYER_H__ */
+#endif  // __CCCI_LAYER_H__
 

@@ -1,4 +1,5 @@
 #include <platform/mt_pwm.h>
+#include <platform/mt_gpt.h>
 //#include <platform/mt_utils.h>
 #include <debug.h>
 #include <platform/sync_write.h>
@@ -184,7 +185,7 @@ err:
 int mt_get_pwm_mode(U32 pwm_no)
 {
 	U32 reg_val, reg_con;
-	int mode;
+	int mode = -1;
 	u32 con_mode, con_src;
 
 	reg_con = PWM_register[pwm_no] + 4*PWM_CON;
@@ -1027,23 +1028,18 @@ S32 pwm_set_easy_config ( struct pwm_easy_config *conf)
 	U32 data0 = 0;
 	U32 data1 = 0;
 	
-	if ( conf->pwm_no >= PWM_MAX || conf->pwm_no < PWM_MIN ) {
+	if ( conf->pwm_no >= PWM_MAX ) {
 		PWMDBG("pwm number excess PWM_MAX\n");
 		return -EEXCESSPWMNO;
 	}
 
-	if ((conf->clk_div >= CLK_DIV_MAX) || (conf->clk_div < CLK_DIV_MIN )) {
+	if (conf->clk_div >= CLK_DIV_MAX) {
 		PWMDBG ( "PWM clock division invalid\n" );
 		return -EINVALID;
 	}
 	
-	if ( ( conf ->clk_src >= PWM_CLK_SRC_INVALID) || (conf->clk_src < PWM_CLK_SRC_MIN) ) {
+	if ( conf ->clk_src >= PWM_CLK_SRC_INVALID ) {
 		PWMDBG ("PWM clock source invalid\n");
-		return -EINVALID;
-	}
-
-	if  ( conf->duty < 0 ) {
-		PWMDBG("duty parameter is invalid\n");
 		return -EINVALID;
 	}
 
@@ -1065,7 +1061,7 @@ S32 pwm_set_easy_config ( struct pwm_easy_config *conf)
 	switch ( conf->clk_src ) {
 		case PWM_CLK_OLD_MODE_BLOCK:
 		case PWM_CLK_OLD_MODE_32K:
-			if ( duration > 8191 || duration < 0 ) {
+			if ( duration > 8191 ) {
 				PWMDBG ( "duration invalid parameter\n" );
 				return -EPARMNOSUPPORT;
 			}
@@ -1075,10 +1071,6 @@ S32 pwm_set_easy_config ( struct pwm_easy_config *conf)
 			
 		case PWM_CLK_NEW_MODE_BLOCK:
 		case PWM_CLK_NEW_MODE_BLOCK_DIV_BY_1625:
-			if ( duration > 65535 || duration < 0 ){
-				PWMDBG ("invalid paramters\n");
-				return -EPARMNOSUPPORT;
-			}
 			break;
 		default:
 			PWMDBG("invalid clock source\n");
@@ -1178,23 +1170,22 @@ S32 mt_clr_intr_ack ( U32 pwm_intr_ack_bit )
 
 S32 pwm_set_spec_config(struct pwm_spec_config *conf)
 {
-
 	if ( conf->pwm_no >= PWM_MAX ) {
 		PWMDBG("pwm number excess PWM_MAX\n");
 		return -EEXCESSPWMNO;
 	}
 
-	if ( ( conf->mode >= PWM_MODE_INVALID )||(conf->mode < PWM_MODE_MIN )) {
+	if (conf->mode >= PWM_MODE_INVALID) {
 		PWMDBG ( "PWM mode invalid \n" );
 		return -EINVALID;
 	}
 
-	if ( ( conf ->clk_src >= PWM_CLK_SRC_INVALID) || (conf->clk_src < PWM_CLK_SRC_MIN) ) {
+	if (conf ->clk_src >= PWM_CLK_SRC_INVALID) {
 		PWMDBG ("PWM clock source invalid\n");
 		return -EINVALID;
 	}
 
-	if ((conf->clk_div >= CLK_DIV_MAX) || (conf->clk_div < CLK_DIV_MIN )) {
+	if (conf->clk_div >= CLK_DIV_MAX) {
 		PWMDBG ( "PWM clock division invalid\n" );
 		return -EINVALID;
 	}
@@ -1287,12 +1278,6 @@ S32 pwm_set_spec_config(struct pwm_spec_config *conf)
 			mt_set_pwm_disable(PWM3);
 			mt_set_pwm_disable(PWM4);
 			mt_set_pwm_disable(PWM5);
-			if ( conf->pwm_mode.PWM_MODE_DELAY_REGS.PWM4_DELAY_DUR <0 ||conf->pwm_mode.PWM_MODE_DELAY_REGS.PWM4_DELAY_DUR >= (1<<17) ||
-					conf->pwm_mode.PWM_MODE_DELAY_REGS.PWM5_DELAY_DUR < 0|| conf->pwm_mode.PWM_MODE_DELAY_REGS.PWM5_DELAY_DUR >= (1<<17)
-					 ) {
-				PWMDBG("Delay value invalid\n");
-				return -EINVALID;
-			}
 			mt_set_pwm_delay_duration(PWM4_DELAY, conf->pwm_mode.PWM_MODE_DELAY_REGS.PWM4_DELAY_DUR );
 			mt_set_pwm_delay_clock(PWM4_DELAY, conf->pwm_mode.PWM_MODE_DELAY_REGS.PWM4_DELAY_CLK);
 			mt_set_pwm_delay_duration(PWM5_DELAY, conf->pwm_mode.PWM_MODE_DELAY_REGS.PWM5_DELAY_DUR);

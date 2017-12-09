@@ -3,6 +3,7 @@
 #include <linux/seq_file.h>
 #include <linux/kallsyms.h>
 #include <linux/utsname.h>
+#include <linux/slab.h>
 #include <asm/uaccess.h>
 #include "prof_ctl.h"
 #include <linux/module.h>
@@ -13,10 +14,6 @@
 
 #include <linux/mt_sched_mon.h>
 #include <linux/stacktrace.h>
-#ifdef CONFIG_MTK_SCHED_TRACERS
-#include <trace/events/sched.h>
-#include <linux/mt_trace.h>
-#endif
 
 #include <linux/aee.h>
 #include <linux/stacktrace.h>
@@ -117,69 +114,6 @@ static unsigned long nsec_low(unsigned long long nsec)
 }
 #define SPLIT_NS(x) nsec_high(x), nsec_low(x)
 
-#ifdef CONFIG_MTK_SCHED_TRACERS
-#include <trace/events/irq.h>
-
-#ifdef CONFIG_SMP
-static struct irqaction __read_mostly mt_trace_ipiaction[] = {
-#define S(x)	[x - IPI_CPU_START] = { .name = #x, }
-	S(IPI_CPU_START),
-	S(IPI_TIMER),
-	S(IPI_RESCHEDULE),
-	S(IPI_CALL_FUNC),
-	S(IPI_CALL_FUNC_SINGLE),
-	S(IPI_CPU_STOP),
-	S(IPI_CPU_BACKTRACE),
-};
-#endif
-static struct irqaction __read_mostly mt_trace_unknown_irqaction = {
-    .name = "unknown",
-};
-static inline void __mt_irq_enter(int irq){
-	struct irq_desc *desc ;
-	struct irqaction *action ;
-
-#ifdef CONFIG_SMP
-	if (irq >= IPI_CPU_START && irq < IPI_TIMER + NR_IPI){
-        action = &mt_trace_ipiaction[irq - IPI_CPU_START];
-    }else{
-#endif
-        desc = irq_to_desc(irq);
-
-        if(likely(desc && desc->action))
-            action = desc->action;
-        else
-            action = &mt_trace_unknown_irqaction;
-#ifdef CONFIG_SMP
-    }
-#endif
-    trace_irq_handler_entry(irq, action);
-}
-
-static inline void __mt_irq_exit(int irq){
-	struct irq_desc *desc ;
-	struct irqaction *action ;
-
-#ifdef CONFIG_SMP
-	if (irq >= IPI_CPU_START && irq < IPI_TIMER + NR_IPI){
-        action = &mt_trace_ipiaction[irq - IPI_CPU_START];
-    }else{
-#endif
-        desc = irq_to_desc(irq);
-        if(likely(desc && desc->action))
-            action = desc->action;
-        else
-            action = &mt_trace_unknown_irqaction;
-#ifdef CONFIG_SMP
-    }
-#endif
-
-    trace_irq_handler_exit(irq, action, 1);
-}
-#else
-#define __mt_irq_exit(irq)
-#define __mt_irq_enter(irq)
-#endif
 //
 //////////////////////////////////////////////////////////
 /* --------------------------------------------------- */
@@ -261,12 +195,6 @@ static void reset_event_count(struct sched_block_event *b)
 void mt_trace_ISR_start(int irq)
 {
     struct sched_block_event *b;
-#ifdef CONFIG_MTK_SCHED_TRACERS
-	struct task_struct *tsk= __raw_get_cpu_var(mtk_next_task);
-    if (unlikely(!sched_stopped))
-        trace_int_switch(tsk, irq, 1);
-    __mt_irq_enter(irq);
-#endif
     b = & __raw_get_cpu_var(ISR_mon);
 
     b->cur_ts = sched_clock();
@@ -277,12 +205,6 @@ void mt_trace_ISR_start(int irq)
 void mt_trace_ISR_end(int irq)
 {
     struct sched_block_event *b;
-#ifdef CONFIG_MTK_SCHED_TRACERS
-	struct task_struct *tsk= __raw_get_cpu_var(mtk_next_task);
-    if (unlikely(!sched_stopped))
-        trace_int_switch(tsk, irq, 0);
-    __mt_irq_exit(irq);
-#endif
     b = & __raw_get_cpu_var(ISR_mon);
 
     WARN_ON(b->cur_event != irq);
@@ -486,8 +408,8 @@ void mt_save_irq_counts(void)
     spin_unlock_irqrestore(&mt_irq_count_lock, flags);
 }
 #else
-void mt_trace_ISR_start(int id){ __mt_irq_enter(id); }
-void mt_trace_ISR_end(int id){ __mt_irq_exit(id); }
+void mt_trace_ISR_start(int id){}
+void mt_trace_ISR_end(int id){}
 void mt_trace_SoftIRQ_start(int id){}
 void mt_trace_SoftIRQ_end(int id){}
 void mt_trace_tasklet_start(void *func){}
@@ -649,11 +571,16 @@ static int __init init_mtsched_mon(void)
 #ifdef CONFIG_MT_SCHED_MONITOR
     int cpu;
     struct proc_dir_entry *pe;
-    struct sched_block_event *b;
     for_each_possible_cpu(cpu){
         per_cpu(MT_stack_trace, cpu).entries = kmalloc(MAX_STACK_TRACE_DEPTH * 4, GFP_KERNEL);
         per_cpu(MT_tracing_cpu, cpu) = 0;
         per_cpu(mtsched_mon_enabled, cpu)= 0; // 0x1 || 0x2, IRQ & Preempt
+
+        per_cpu(ISR_mon, cpu).type = evt_ISR;
+        per_cpu(SoftIRQ_mon, cpu).type = evt_SOFTIRQ;
+        per_cpu(tasklet_mon, cpu).type = evt_TASKLET;
+        per_cpu(hrt_mon, cpu).type = evt_HRTIMER ;
+        per_cpu(sft_mon, cpu).type = evt_STIMER ;
     }
 
     if (!proc_mkdir("mtmon", NULL)){
@@ -662,16 +589,6 @@ static int __init init_mtsched_mon(void)
     pe = proc_create("mtmon/sched_mon", 0664, NULL, &mt_sched_monitor_fops);
     if (!pe)
         return -ENOMEM;
-    b = & __raw_get_cpu_var(ISR_mon);
-    b->type = evt_ISR ;
-    b = & __raw_get_cpu_var(SoftIRQ_mon);
-    b->type = evt_SOFTIRQ ;
-    b = & __raw_get_cpu_var(tasklet_mon);
-    b->type = evt_TASKLET ;
-    b = & __raw_get_cpu_var(hrt_mon);
-    b->type = evt_HRTIMER ;
-    b = & __raw_get_cpu_var(sft_mon);
-    b->type = evt_STIMER ;
 #endif
     return 0;
 }

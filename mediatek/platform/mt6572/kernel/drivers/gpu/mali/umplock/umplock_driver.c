@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2012 ARM Limited. All rights reserved.
+ * Copyright (C) 2012-2013 ARM Limited. All rights reserved.
  * 
  * This program is free software and is provided to you under the terms of the GNU General Public License version 2
  * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
@@ -227,8 +227,8 @@ static int umplock_find_client_valid(u32 pid)
 
 	return -1;
 }
-/** IOCTLs **/
-static int do_umplock_create( _lock_cmd_priv *lock_cmd)
+
+static int do_umplock_create_locked( _lock_cmd_priv *lock_cmd)
 {
 	int i_index,ref_index;
 	int ret;
@@ -236,22 +236,18 @@ static int do_umplock_create( _lock_cmd_priv *lock_cmd)
 
 	i_index = ref_index = -1;
 
-	#if 0
+	#if 0 
 	if ( lock_item->usage == 1 ) printk( KERN_DEBUG "UMPLOCK: C 0x%x GPU SURFACE\n", lock_item->secure_id );
 	else if ( lock_item->usage == 2 ) printk( KERN_DEBUG "UMPLOCK: C 0x%x GPU TEXTURE\n", lock_item->secure_id );
 	else printk( KERN_DEBUG "UMPLOCK: C 0x%x CPU\n", lock_item->secure_id );
 	#endif
 
-	mutex_lock(&device.item_list_lock);
 	ret = umplock_find_client_valid( lock_cmd->pid );	
-	mutex_unlock(&device.item_list_lock);
 	if( ret < 0 )
 	{
 		/*lock request from an invalid client pid, do nothing*/
 		return 0;
 	}
-
-	mutex_lock(&device.item_list_lock);
 
 	ret = umplock_find_item_by_pid( lock_cmd, &i_index, &ref_index );
 	if ( ret >= 0 )
@@ -293,8 +289,17 @@ static int do_umplock_create( _lock_cmd_priv *lock_cmd)
 		}
 	}
 	
-	mutex_unlock(&device.item_list_lock);
 	return 0;
+}
+/** IOCTLs **/
+
+static int do_umplock_create(_lock_cmd_priv *lock_cmd)
+{
+	int ret = 0;
+	mutex_lock(&device.item_list_lock);
+	ret = do_umplock_create_locked(lock_cmd);
+	mutex_unlock(&device.item_list_lock);
+	return ret;
 }
 
 static int do_umplock_process( _lock_cmd_priv *lock_cmd )
@@ -303,39 +308,55 @@ static int do_umplock_process( _lock_cmd_priv *lock_cmd )
 	_lock_item_s *lock_item = (_lock_item_s *)&lock_cmd->msg;
 
 	mutex_lock(&device.item_list_lock);
+
+	do_umplock_create_locked(lock_cmd);
+	
 	ret = umplock_find_client_valid( lock_cmd->pid );	
-	mutex_unlock(&device.item_list_lock);
 	if( ret < 0 )
 	{
 		/*lock request from an invalid client pid, do nothing*/
+		mutex_unlock(&device.item_list_lock);
 		return 0;
 	}
 	
-	mutex_lock(&device.item_list_lock);
 	ret = umplock_find_item_by_pid( lock_cmd, &i_index, &ref_index );
 	ref_count = device.items[i_index].references[ref_index].ref_count;
-	mutex_unlock(&device.item_list_lock);
 	if ( ret >= 0 )
-	{
+	{	
 		if (ref_count == 1)
 		{
+			/*add ref before down to wait for the umplock*/
+			device.items[i_index].references[ref_index].ref_count++;
+			mutex_unlock(&device.item_list_lock);
 			if ( down_interruptible(&device.items[i_index].item_lock) )
 			{
+				/*wait up without hold the umplock. restore previous state and return*/
+				mutex_lock(&device.item_list_lock);
+				device.items[i_index].references[ref_index].ref_count--;
+				mutex_unlock(&device.item_list_lock);
 				return -ERESTARTSYS;
 			}
+			mutex_lock(&device.item_list_lock);
 		}
-
-		mutex_lock(&device.item_list_lock);
-		device.items[i_index].references[ref_index].ref_count++;
-		mutex_unlock(&device.item_list_lock);
-
+		else
+		{
+			/*already got the umplock, add ref*/
+			device.items[i_index].references[ref_index].ref_count++;
+		}
 		#if 0
 		if ( lock_item->usage == 1 ) printk( KERN_DEBUG "UMPLOCK:  P 0x%x GPU SURFACE\n", lock_item->secure_id );
 		else if ( lock_item->usage == 2 ) printk( KERN_DEBUG "UMPLOCK:  P 0x%x GPU TEXTURE\n", lock_item->secure_id );
 		else printk( KERN_DEBUG "UMPLOCK:  P 0x%x CPU\n", lock_item->secure_id );
 		#endif
 	}
-
+	else
+	{
+		/*fail to find a item*/
+		printk(KERN_ERR "UMPLOCK: IOCTL_UMPLOCK_PROCESS called with invalid parameter\n");
+		mutex_unlock(&device.item_list_lock);
+		return -EINVAL;
+	}
+	mutex_unlock(&device.item_list_lock);
 	return 0;
 }
 
@@ -347,45 +368,45 @@ static int do_umplock_release( _lock_cmd_priv *lock_cmd )
 
 	mutex_lock(&device.item_list_lock);
 	ret = umplock_find_client_valid( lock_cmd->pid );	
-	mutex_unlock(&device.item_list_lock);
 	if( ret < 0 )
 	{
 		/*lock request from an invalid client pid, do nothing*/
+		mutex_unlock(&device.item_list_lock);
 		return 0;
 	}
 	
 	i_index = ref_index = -1;
 
-	mutex_lock(&device.item_list_lock);
 	ret = umplock_find_item_by_pid( lock_cmd, &i_index, &ref_index );
-	mutex_unlock(&device.item_list_lock);
 
 	if ( ret >= 0 )
 	{
-		mutex_lock(&device.item_list_lock);
 		device.items[i_index].references[ref_index].ref_count--;
 		ref_count = device.items[i_index].references[ref_index].ref_count;
-		mutex_unlock(&device.item_list_lock);
 
 		#if 0
 		if ( lock_item->usage == 1 ) printk( KERN_DEBUG "UMPLOCK:   R 0x%x GPU SURFACE\n", lock_item->secure_id );
 		else if ( lock_item->usage == 2 ) printk( KERN_DEBUG "UMPLOCK:   R 0x%x GPU TEXTURE\n", lock_item->secure_id );
 		else printk( KERN_DEBUG "UMPLOCK:   R 0x%x CPU\n", lock_item->secure_id );
 		#endif
-        if ( ref_count == 1 )
+		/*reached the last reference to the umplock*/
+		if ( ref_count == 1 )
 		{
-			if ( 0 == down_trylock(&device.items[i_index].item_lock) )
-			{
-				//printk( KERN_ERR "UMPLOCK: semaphore for secure id 0x%x was not taken\n", lock_item->secure_id );
-			}
+			/*release the umplock*/
 			up( &device.items[i_index].item_lock );
-
-			mutex_lock(&device.item_list_lock);
+		
 			device.items[i_index].references[ref_index].ref_count = 0;
 			device.items[i_index].references[ref_index].pid = 0;
-			mutex_unlock(&device.item_list_lock);
 		}
 	}
+	else
+	{
+		/*fail to find item*/
+		printk(KERN_ERR "UMPLOCK: IOCTL_UMPLOCK_RELEASE called with invalid parameter\n");
+		mutex_unlock(&device.item_list_lock);
+		return -EINVAL;
+	}
+	mutex_unlock(&device.item_list_lock);
 	return 0;
 }
 
@@ -442,7 +463,7 @@ static int do_umplock_dump( void )
 int do_umplock_client_add (_lock_cmd_priv *lock_cmd )
 {
 	int i;
-
+	mutex_lock(&device.item_list_lock);
 	for ( i= 0; i<MAX_PIDS; i++)
 	{
 		if(device.pids[i] == lock_cmd->pid)
@@ -454,12 +475,11 @@ int do_umplock_client_add (_lock_cmd_priv *lock_cmd )
 	{
 		if(device.pids[i]==0)
 		{
-			mutex_lock(&device.item_list_lock);
 			device.pids[i] = lock_cmd->pid;
-			mutex_unlock(&device.item_list_lock);
 			break;
 		}
 	}
+	mutex_unlock(&device.item_list_lock);
 	if( i==MAX_PIDS)
 	{
 		printk(KERN_ERR "Oops, Run out of cient slots\n ");
@@ -476,20 +496,19 @@ int do_umplock_client_delete (_lock_cmd_priv *lock_cmd )
 	
 	mutex_lock(&device.item_list_lock);
 	p_index = umplock_find_client_valid( lock_cmd->pid );
-	mutex_unlock(&device.item_list_lock);
 	/*lock item pid is not valid.*/
 	if ( p_index<0 )
+	{
+		mutex_unlock(&device.item_list_lock);
 		return 0;
-
+	}
 
 	/*walk through umplock item list and release reference attached to this client*/
 	for(i_index = 0; i_index< MAX_ITEMS; i_index++ )
 	{
 		lock_item->secure_id = device.items[i_index].secure_id;
-		mutex_lock(&device.item_list_lock);
 		/*find the item index and reference slot for the lock_item*/
 		ret = umplock_find_item_by_pid(lock_cmd, &i_index, &ref_index);
-		mutex_unlock(&device.item_list_lock);
 		
 		if(ret < 0)
 		{
@@ -499,11 +518,12 @@ int do_umplock_client_delete (_lock_cmd_priv *lock_cmd )
 		while(device.items[i_index].references[ref_index].ref_count)
 		{
 			/*release references on this client*/
+			mutex_unlock(&device.item_list_lock);
 			do_umplock_release(lock_cmd);
+			mutex_lock(&device.item_list_lock);
 		}
 	}
 	
-	mutex_lock(&device.item_list_lock);
 	/*remove the pid from umplock valid pid list*/
 	device.pids[p_index] = 0;
 	mutex_unlock(&device.item_list_lock);

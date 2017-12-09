@@ -8,7 +8,8 @@
 #include "AudioMTKVolumeInterface.h"
 #include "AudioDigitalControlInterface.h"
 #include "AudioAnalogControlInterface.h"
-//#include "SpeechControlInterface.h"
+#include "AudioSpeechEnhanceInfo.h"
+
 #include <utils/threads.h>
 #include <utils/SortedVector.h>
 #include <utils/KeyedVector.h>
@@ -16,10 +17,12 @@
 #include <utils/Vector.h>
 #include <hardware_legacy/AudioSystemLegacy.h>
 
+
+#define AUDIOLOCK_DEBUG_ENABLE
+
 namespace android
 {
-
-class AudioMTKHardware;
+class   AudioSpeechEnhanceInfo;
 
 class AudioResourceManager : public AudioResourceManagerInterface
 {
@@ -116,7 +119,7 @@ class AudioResourceManager : public AudioResourceManagerInterface
         /**
         * a function for tell AudioResourceManager to request  or release clock
         */
-        virtual status_t EnableAudioClock(int AudioLockType , bool bEnable);
+        virtual status_t EnableAudioClock(int AudioClockType , bool bEnable);
 
         /**
         * a  function fo setParameters , provide wide usage of analog control
@@ -175,12 +178,6 @@ class AudioResourceManager : public AudioResourceManagerInterface
         virtual bool IsWiredHeadsetOn(void);
 
         /**
-        * a function to set audiohardawre pointer , audioresource manager will save this hardware pointer.
-        * @param paudioHardware
-        */
-        virtual void SetHardwarePointer(void *paudioHardware);
-
-        /**
         * a function to return Mode Incall
         */
         virtual bool IsModeIncall(void) ;
@@ -204,63 +201,76 @@ class AudioResourceManager : public AudioResourceManagerInterface
         */
         uint32_t GetIncallMicDevice(uint32 device);
 
-		/**
+        /**
         * a function for to get MIC digital gain for HD Record
         */
         virtual long GetSwMICDigitalGain();
 
-       /**
-        * a function for doing setMode()
+        /**
+        * a function for to get UL total gain for BesRecord
         */
-        virtual status_t doSetMode();
+        virtual uint8_t GetULTotalGainValue(void);
 
-       /**
-        * a function for set mic inverse
-        */
+        /**
+         * a function for set mic inverse
+         */
         virtual status_t SetMicInvserse(bool bEnable);
 
-    private:
+        /**
+         * a function for set AFE_ON
+         */
+        virtual status_t SetAfeEnable(const bool bEnable);
+
+        /**
+         * a function for get mic inverse
+         */
+        virtual bool GetMicInvserse(void);
+
+        /**
+         * a function for set Analog Frequence
+         */
+        virtual status_t SetFrequency(int DeviceType, unsigned int frequency);
+
+        /*
+         * a function for lock debug
+         */
+        virtual void SetDebugLine(int line);
+
+        virtual status_t AddSubSPKToOutputDevice();
+    protected:
         AudioResourceManager();
-        // use to open deivce file descriptor
-        static AudioResourceManager *UniqueAudioResourceInstance;
-        AudioResourceManager(const AudioResourceManager &);             // intentionally undefined
-        AudioResourceManager &operator=(const AudioResourceManager &);  // intentionally undefined
 
         // lock for hardware , mopde, streamout , streamin .
         // lock require sequence , always hardware ==> mode ==> streamout ==> streamin
-        AudioLock mAudioLock[AudioResourceManagerInterface::NUM_OF_AUDIO_LOCK];
+        static AudioLock mAudioLock[AudioResourceManagerInterface::NUM_OF_AUDIO_LOCK];
 
-        // user for clock control to kernel space
-        int ClockCounter[AudioResourceManagerInterface::CLOCK_TYPE_MAX];
-        int mFd;
+        // use to open deivce file descriptor
+        static int mFd;
 
         // when change device and output , need to change in Audio resource manager
-        unsigned int mDlOutputDevice;
-        unsigned int mUlInputDevice;
-        unsigned int mUlInputSource;
-        unsigned int mUlI2SInputDevice;
-        unsigned int mUlI2SInputSource;
-        audio_mode_t mAudioMode;
-        int mBgsStatus;
-        int mPlaybackstatus;
-        int mRecordingstatus;
-        int m2waystatus;
-        int m4waystatus;
-        bool mMicDefaultsetting;
-        bool mMicInverseSetting;
+        static unsigned int mDlOutputDevice;
+        static unsigned int mUlInputDevice;
+        static unsigned int mUlInputSource;
 
-        AudioMTKVolumeInterface *mAudioVolumeInstance;
-        AudioAnalogControlInterface *mAudioAnalogInstance;
-        AudioDigitalControlInterface *mAudioDigitalInstance;
-        //SpeechControlInterface *mSpeechControlInstance1;
-        //SpeechControlInterface *mSpeechControlInstance2;
-        AudioMTKHardware *mAudioHardware;
+        static audio_mode_t mAudioMode;
 
-	//modify for dual mic cust by yi.zheng.hz begin
-#if defined(JRD_HDVOICE_CUST)
-	bool mbMtkDualMicSupport;
+        static bool mMicDefaultsetting;
+        static bool mMicInverseSetting;
+
+        static AudioMTKVolumeInterface *mAudioVolumeInstance;
+        static AudioAnalogControlInterface *mAudioAnalogInstance;
+        static AudioDigitalControlInterface *mAudioDigitalInstance;
+        static AudioSpeechEnhanceInfo *mAudioSpeechEnhanceInfoInstance;
+
+#ifdef AUDIOLOCK_DEBUG_ENABLE
+        unsigned int mAudioLockRecord[AudioResourceManagerInterface::NUM_OF_AUDIO_LOCK + 1][5];           //[Tid][BackAddr][LockType][order in tid][state] state: 1:lock 0:unlock 0xffffffff:fail
+        mutable Mutex   mAudioLockRecordLock;
+        int mStreamOutLine;
 #endif
-	//modify for dual mic cust by yi.zheng.hz end
+    private:
+        static AudioResourceManager *UniqueAudioResourceInstance;
+        AudioResourceManager(const AudioResourceManager &);             // intentionally undefined
+        AudioResourceManager &operator=(const AudioResourceManager &);  // intentionally undefined
 };
 
 }

@@ -1,17 +1,66 @@
+/*
+** $Id: @(#) gl_cfg80211.c@@
+*/
+
+/*! \file   gl_cfg80211.c
+    \brief  Main routines for supporintg MT6620 cfg80211 control interface
+
+    This file contains the support routines of Linux driver for MediaTek Inc. 802.11
+    Wireless LAN Adapters.
+*/
 
 
 
+/*
+** $Log: gl_cfg80211.c $
+**
+** 09 12 2012 wcpadmin
+** [ALPS00276400] Remove MTK copyright and legal header on GPL/LGPL related packages
+** .
+** 
+** 11 23 2012 yuche.tsai
+** [ALPS00398671] [Acer-Tablet] Remove Wi-Fi Direct completely
+** Fix bug of WiFi may reboot under user load, when WiFi Direct is removed..
+** 
+** 08 29 2012 chinglan.wang
+** [ALPS00349655] [Need Patch] [Volunteer Patch] [ALPS.JB] Daily build warning on [mt6575_phone_mhl-eng]
+** .
+ *
+**
+*/
 
+/*******************************************************************************
+*                         C O M P I L E R   F L A G S
+********************************************************************************
+*/
 
-
+/*******************************************************************************
+*                    E X T E R N A L   R E F E R E N C E S
+********************************************************************************
+*/
 #include "gl_os.h"
 #include "debug.h"
 #include "wlan_lib.h"
 #include "gl_wext.h"
 #include "precomp.h"
+#include <net/netlink.h>
+#include "net/cfg80211.h"
+#include "gl_cfg80211.h"
 
+/*******************************************************************************
+*                              C O N S T A N T S
+********************************************************************************
+*/
 
+/*******************************************************************************
+*                             D A T A   T Y P E S
+********************************************************************************
+*/
 
+/*******************************************************************************
+*                            P U B L I C   D A T A
+********************************************************************************
+*/
 
 #if CFG_SUPPORT_WAPI
     extern UINT_8 keyStructBuf[1024];   /* add/remove key shared buffer */
@@ -19,11 +68,37 @@
     extern UINT_8 keyStructBuf[100];   /* add/remove key shared buffer */
 #endif
 
+/*******************************************************************************
+*                           P R I V A T E   D A T A
+********************************************************************************
+*/
 
+/*******************************************************************************
+*                                 M A C R O S
+********************************************************************************
+*/
 
+/*******************************************************************************
+*                   F U N C T I O N   D E C L A R A T I O N S
+********************************************************************************
+*/
 
+/*******************************************************************************
+*                              F U N C T I O N S
+********************************************************************************
+*/
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for change STA type between
+ *        1. Infrastructure Client (Non-AP STA)
+ *        2. Ad-Hoc IBSS
+ *
+ * @param
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int 
 mtk_cfg80211_change_iface (
@@ -81,6 +156,14 @@ mtk_cfg80211_change_iface (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for adding key 
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int
 mtk_cfg80211_add_key (
@@ -167,6 +250,14 @@ mtk_cfg80211_add_key (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for getting key for specified STA
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int 
 mtk_cfg80211_get_key (
@@ -195,6 +286,14 @@ mtk_cfg80211_get_key (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for removing key for specified STA
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int
 mtk_cfg80211_del_key (
@@ -243,6 +342,14 @@ mtk_cfg80211_del_key (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for setting default key on an interface
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int 
 mtk_cfg80211_set_default_key (
@@ -258,17 +365,22 @@ mtk_cfg80211_set_default_key (
     prGlueInfo = (P_GLUE_INFO_T) wiphy_priv(wiphy);
     ASSERT(prGlueInfo);
 
-#if 1
     printk("--> %s()\n", __func__);
-#endif
+    /*work around aosp defualt supplicant fail*/
+    return WLAN_STATUS_SUCCESS;
 
-    /* not implemented */
-
-    return -EINVAL;
 }
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for getting station information such as RSSI
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 
 int
@@ -392,11 +504,21 @@ mtk_cfg80211_get_station (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for requesting to do a scan
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int 
 mtk_cfg80211_scan (
     struct wiphy *wiphy,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 6, 0)
     struct net_device *ndev,
+#endif
     struct cfg80211_scan_request *request
     )
 {
@@ -456,6 +578,15 @@ mtk_cfg80211_scan (
 static UINT_8 wepBuf[48];
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for requesting to connect to 
+ *        the ESS with the specified parameters
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int
 mtk_cfg80211_connect (
@@ -627,19 +758,22 @@ mtk_cfg80211_connect (
         PUINT_8 prDesiredIE = NULL;
 
 #if CFG_SUPPORT_WAPI
-        rStatus = kalIoctl(prGlueInfo,
-                wlanoidSetWapiAssocInfo,
-                sme->ie,
-                sme->ie_len,
-                FALSE,
-                FALSE,
-                FALSE,
-                FALSE,
-                &u4BufLen);
-        
-        if (rStatus != WLAN_STATUS_SUCCESS) {
-            DBGLOG(SEC, WARN, ("[wapi] set wapi assoc info error:%lx\n", rStatus));
-        }
+		if (wextSrchDesiredWAPIIE(sme->ie,
+								sme->ie_len, (PUINT_8 *)&prDesiredIE)){
+	        rStatus = kalIoctl(prGlueInfo,
+	                wlanoidSetWapiAssocInfo,
+	                prDesiredIE,
+		            IE_SIZE(prDesiredIE),
+	                FALSE,
+	                FALSE,
+	                FALSE,
+	                FALSE,
+	                &u4BufLen);
+	        
+	        if (rStatus != WLAN_STATUS_SUCCESS) {
+	            DBGLOG(SEC, WARN, ("[wapi] set wapi assoc info error:%lx\n", rStatus));
+	        }
+		}
 #endif
 #if CFG_SUPPORT_WPS2
         if (wextSrchDesiredWPSIE(sme->ie,
@@ -795,6 +929,15 @@ mtk_cfg80211_connect (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for requesting to disconnect from
+ *        currently connected ESS
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int 
 mtk_cfg80211_disconnect (
@@ -830,6 +973,14 @@ mtk_cfg80211_disconnect (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for requesting to join an IBSS group
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int
 mtk_cfg80211_join_ibss (
@@ -848,9 +999,13 @@ mtk_cfg80211_join_ibss (
     ASSERT(prGlueInfo);
 
     /* set channel */
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(3, 7, 0)
     if(params->channel) {
         u4ChnlFreq = nicChannelNum2Freq(params->channel->hw_value);
-
+#else
+    if(params->chandef.chan) {
+        u4ChnlFreq = nicChannelNum2Freq(params->chandef.chan->hw_value);
+#endif
         rStatus = kalIoctl(prGlueInfo,
                            wlanoidSetFrequency,
                            &u4ChnlFreq,
@@ -890,6 +1045,14 @@ mtk_cfg80211_join_ibss (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for requesting to leave from IBSS group
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int
 mtk_cfg80211_leave_ibss (
@@ -924,6 +1087,15 @@ mtk_cfg80211_leave_ibss (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for requesting to configure 
+ *        WLAN power managemenet
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int
 mtk_cfg80211_set_power_mgmt (
@@ -973,6 +1145,15 @@ mtk_cfg80211_set_power_mgmt (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for requesting to cache
+ *        a PMKID for a BSSID
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int
 mtk_cfg80211_set_pmksa (
@@ -1020,6 +1201,15 @@ mtk_cfg80211_set_pmksa (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for requesting to remove
+ *        a cached PMKID for a BSSID
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int
 mtk_cfg80211_del_pmksa (
@@ -1034,6 +1224,15 @@ mtk_cfg80211_del_pmksa (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for requesting to flush
+ *        all cached PMKID
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int
 mtk_cfg80211_flush_pmksa (
@@ -1078,11 +1277,24 @@ mtk_cfg80211_flush_pmksa (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for requesting to stay on a 
+ *        specified channel
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int 
 mtk_cfg80211_remain_on_channel (
     struct wiphy *wiphy,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 6, 0)
     struct net_device *ndev,
+#else
+    struct wireless_dev *wdev,
+#endif
     struct ieee80211_channel *chan,
     enum nl80211_channel_type channel_type,
     unsigned int duration,
@@ -1105,11 +1317,24 @@ mtk_cfg80211_remain_on_channel (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for requesting to cancel staying 
+ *        on a specified channel
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int
 mtk_cfg80211_cancel_remain_on_channel (
     struct wiphy *wiphy,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 6, 0)
     struct net_device *ndev,
+#else
+    struct wireless_dev *wdev,
+#endif
     u64 cookie
     )
 {
@@ -1129,15 +1354,29 @@ mtk_cfg80211_cancel_remain_on_channel (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for requesting to send a management frame
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int
 mtk_cfg80211_mgmt_tx (
     struct wiphy *wiphy,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 6, 0)
     struct net_device *ndev,
+#else
+    struct wireless_dev *wdev,
+#endif
     struct ieee80211_channel *channel,
     bool offscan,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 8, 0)
     enum nl80211_channel_type channel_type,
     bool channel_type_valid,
+#endif
     unsigned int wait,
     const u8 *buf,
     size_t len,
@@ -1162,11 +1401,24 @@ mtk_cfg80211_mgmt_tx (
 
 
 /*----------------------------------------------------------------------------*/
+/*!
+ * @brief This routine is responsible for requesting to cancel the wait time
+ *        from transmitting a management frame on another channel
+ *
+ * @param 
+ *
+ * @retval 0:       successful
+ *         others:  failure
+ */
 /*----------------------------------------------------------------------------*/
 int
 mtk_cfg80211_mgmt_tx_cancel_wait (
     struct wiphy *wiphy,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 6, 0)
     struct net_device *ndev,
+#else
+    struct wireless_dev *wdev,
+#endif
     u64 cookie
     )
 {
@@ -1327,6 +1579,82 @@ mtk_cfg80211_testmode_sw_cmd(
     return fgIsValid;
 }
 
+int
+mtk_cfg80211_testmode_get_link_detection(
+    IN struct wiphy *wiphy,
+    IN void *data,
+    IN int len,
+    IN P_GLUE_INFO_T prGlueInfo)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)   
+#define NLA_PUT(skb, attrtype, attrlen, data) \
+         do { \
+                 if (unlikely(nla_put(skb, attrtype, attrlen, data) < 0)) \
+                         goto nla_put_failure; \
+         } while(0)
+ 
+#define NLA_PUT_TYPE(skb, type, attrtype, value) \
+         do { \
+                 type __tmp = value; \
+                 NLA_PUT(skb, attrtype, sizeof(type), &__tmp); \
+         } while(0)
+ 
+#define NLA_PUT_U8(skb, attrtype, value) \
+         NLA_PUT_TYPE(skb, u8, attrtype, value)
+
+#define NLA_PUT_U16(skb, attrtype, value) \
+         NLA_PUT_TYPE(skb, u16, attrtype, value)
+
+#define NLA_PUT_U32(skb, attrtype, value) \
+         NLA_PUT_TYPE(skb, u32, attrtype, value)
+
+#define NLA_PUT_U64(skb, attrtype, value) \
+         NLA_PUT_TYPE(skb, u64, attrtype, value)
+
+#endif
+
+    WLAN_STATUS rStatus = WLAN_STATUS_SUCCESS;
+    INT_32 i4Status = -EINVAL;
+	UINT_32 u4BufLen;
+	
+	PARAM_802_11_STATISTICS_STRUCT_T rStatistics;
+    struct sk_buff *skb;
+    
+	ASSERT(wiphy);
+    ASSERT(prGlueInfo);
+   	
+	skb = cfg80211_testmode_alloc_reply_skb(wiphy, sizeof(PARAM_GET_STA_STA_STATISTICS) + 1);
+
+	if(!skb) {
+        DBGLOG(QM, TRACE, ("%s allocate skb failed:%lx\n", __FUNCTION__, rStatus));
+		return -ENOMEM;
+	}
+
+	kalMemZero(&rStatistics, sizeof(rStatistics));
+
+	rStatus = kalIoctl(prGlueInfo,
+			wlanoidQueryStatistics,
+			&rStatistics,
+			sizeof(rStatistics),
+			TRUE,
+			TRUE,
+			TRUE,
+			FALSE,
+			&u4BufLen);
+   
+    NLA_PUT_U8(skb, NL80211_TESTMODE_STA_STATISTICS_INVALID, 0);
+    NLA_PUT_U64(skb, NL80211_TESTMODE_LINK_TX_FAIL_CNT, rStatistics.rFailedCount.QuadPart); 
+    NLA_PUT_U64(skb, NL80211_TESTMODE_LINK_TX_RETRY_CNT, rStatistics.rRetryCount.QuadPart);
+    NLA_PUT_U64(skb, NL80211_TESTMODE_LINK_TX_MULTI_RETRY_CNT, rStatistics.rMultipleRetryCount.QuadPart);
+    NLA_PUT_U64(skb, NL80211_TESTMODE_LINK_ACK_FAIL_CNT, rStatistics.rACKFailureCount.QuadPart);
+    NLA_PUT_U64(skb, NL80211_TESTMODE_LINK_FCS_ERR_CNT, rStatistics.rFCSErrorCount.QuadPart);
+    
+	i4Status = cfg80211_testmode_reply(skb);
+
+    nla_put_failure:    
+    return i4Status;
+}
+
 int mtk_cfg80211_testmode_cmd(
     IN struct wiphy *wiphy,
     IN void *data,
@@ -1363,9 +1691,12 @@ int mtk_cfg80211_testmode_cmd(
                     fgIsValid = TRUE;
 #endif
                 break;
-            default:
-                fgIsValid = TRUE;
-                break;
+			case 0x20:
+				if (mtk_cfg80211_testmode_get_link_detection(wiphy, data, len, prGlueInfo))
+					fgIsValid = TRUE;
+				break;
+            default:/* for not supported command(like get sta statistics), return -EOPNOTSUPP.*/
+                return -EOPNOTSUPP;
         }
     }
 

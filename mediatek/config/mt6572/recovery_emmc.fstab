@@ -1,9 +1,8 @@
-# mount point	fstype		device			[device2]
+boot       				  /boot       emmc      defaults        defaults
+/dev/block/mmcblk0p2      /cache      ext4      defaults        defaults
+/dev/block/mmcblk0p3      /data       ext4      defaults        defaults
+misc      				  /misc       emmc      defaults        defaults
+recovery  				  /recovery   emmc      defaults        defaults
+/dev/block/mmcblk0p4      /sdcard     vfat      defaults        defaults
+/dev/block/mmcblk0p6      /system     ext4      defaults        defaults
 
-/boot		emmc		boot
-/cache		ext4		/dev/block/mmcblk0p2
-/data		ext4		/dev/block/mmcblk0p3
-/misc		emmc		misc
-/recovery	emmc		recovery
-/sdcard		vfat		/dev/block/mmcblk0p4
-/system		ext4		/dev/block/mmcblk0p6

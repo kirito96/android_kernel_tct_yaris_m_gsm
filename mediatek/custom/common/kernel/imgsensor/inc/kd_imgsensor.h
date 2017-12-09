@@ -19,7 +19,26 @@
 /*******************************************************************************
 *
 ********************************************************************************/
-
+#define YUV_INFO(_id, name, getCalData)\
+    { \
+    _id, name, \
+    NSFeature::YUVSensorInfo<_id>::createInstance(name, #name), \
+    (NSFeature::SensorInfoBase*(*)()) \
+    NSFeature::YUVSensorInfo<_id>::getInstance, \
+    NSFeature::YUVSensorInfo<_id>::getDefaultData, \
+    getCalData, \
+	NSFeature::YUVSensorInfo<_id>::getNullFlickerPara \
+    }
+#define RAW_INFO(_id, name, getCalData)\
+    { \
+    _id, name, \
+    NSFeature::RAWSensorInfo<_id>::createInstance(name, #name), \
+    (NSFeature::SensorInfoBase*(*)()) \
+    NSFeature::RAWSensorInfo<_id>::getInstance, \
+    NSFeature::RAWSensorInfo<_id>::getDefaultData, \
+    getCalData, \
+	NSFeature::RAWSensorInfo<_id>::getFlickerPara \
+    }
 /*******************************************************************************
 *
 ********************************************************************************/
@@ -52,13 +71,18 @@
 #define KDIMGSENSORIOC_X_SET_I2CBUS     _IOWR(IMGSENSORMAGIC,45,u32)
 //set I2C bus 
 #define KDIMGSENSORIOC_X_RELEASE_I2C_TRIGGER_LOCK     _IO(IMGSENSORMAGIC,50)
-
-
+//Set Shutter Gain Wait Done
+#define KDIMGSENSORIOC_X_SET_SHUTTER_GAIN_WAIT_DONE   _IOWR(IMGSENSORMAGIC,55,u32)//HDR
+//set mclk
+#define KDIMGSENSORIOC_X_SET_MCLK_PLL         _IOWR(IMGSENSORMAGIC,60,ACDK_SENSOR_MCLK_STRUCT)
+#define KDIMGSENSORIOC_X_GETINFO2            _IOWR(IMGSENSORMAGIC,65,IMAGESENSOR_GETINFO_STRUCT)
+//set open/close sensor index
+#define KDIMGSENSORIOC_X_SET_CURRENT_SENSOR   _IOWR(IMGSENSORMAGIC,70,u32)
 /*******************************************************************************
 *
 ********************************************************************************/
 /* SENSOR CHIP VERSION */
-#define OV5645MIPI_SENSOR_ID                    0x5645
+#define OV2722MIPI_SENSOR_ID                    0x2722
 #define MC501CB_SENSOR_ID                       0x0062
 #define MC501CC_SENSOR_ID                       0x0074
 #define MC501CA_SENSOR_ID                       0x0011
@@ -121,6 +145,7 @@
 #define OV8825_SENSOR_ID            			0x8825
 #define OV12830_SENSOR_ID			  0xC830
 #define OV5648MIPI_SENSOR_ID                    0x5648
+#define OV5693_SENSOR_ID                        0x5690
 
 #define PO6030K_SENSOR_ID                       0x0060
 #define PO4010K_SENSOR_ID                       0x0040
@@ -152,6 +177,7 @@
 #define S5K8AAYX_SENSOR_ID			0x08aa
 
 #define S5K3H7Y_SENSOR_ID               	0x3087
+#define S5K3H2YX_SENSOR_ID                      0x382b
 
 #define PAS105_SENSOR_ID                        0x0065
 #define PAS302_SENSOR_ID                        0x0064
@@ -169,6 +195,7 @@
 
 #define HI251_SENSOR_ID                         0x0084
 #define HIVICF_SENSOR_ID                        0x0081
+#define HI253_SENSOR_ID                         0x0092
 #define HI704_SENSOR_ID                         0x0096
 
 #define IMX058_SENSOR_ID                        0x0058
@@ -186,20 +213,25 @@
 #define IMX105_SENSOR_ID                        0x0105
 #define OV8830_SENSOR_ID			  0x8830
 #define OV9726_SENSOR_ID                          0x9726
+#define OV9726MIPI_SENSOR_ID                          0x9726
+#define OV9760MIPI_SENSOR_ID                          0x9760
 #define A5141MIPI_SENSOR_ID                     0x4800
+#define SP0A19_YUV_SENSOR_ID				0xA6
 #define A5142MIPI_SENSOR_ID                     0x4800
-//zhao.li@tcl add for Bug 495381
+#define GC0313MIPI_YUV_SENSOR_ID                0xD0
+#define IMX135_SENSOR_ID                        0x0135  
+#define OV16825MIPI_SENSOR_ID                       0x0168
+#define IMX220_SENSOR_ID                        0x0220
+#define GC2035_SENSOR_ID			0x2035
+#define GC0329_SENSOR_ID			0xC0
+#define GC0330_SENSOR_ID			0xC1
+#define S5K4H5YX_2LANE_SENSOR_ID                0x485B
 #define HI351_SENSOR_ID                         0x00A4
-#define GC0329_SENSOR_ID                         0x00C0
-#define HI253_SENSOR_ID                         0x0092
-#define HI257_SENSOR_ID                         0x00C4
-#define SP2519_SENSOR_ID                         0x0025
-//zhao.li@tcl add for Bug 495381 end
 /* CAMERA DRIVER NAME */
 #define CAMERA_HW_DEVNAME            "kd_camera_hw"
 
 /* SENSOR DEVICE DRIVER NAME */
-#define SENSOR_DRVNAME_OV5645_MIPI_YUV "ov5645_mipi_yuv"
+#define SENSOR_DRVNAME_OV2722_MIPI_RAW  "ov2722mipiraw"
 #define SENSOR_DRVNAME_MT9P012_RAW  "mt9p012"
 #define SENSOR_DRVNAME_MT9P015_RAW  "mt9p015"
 #define SENSOR_DRVNAME_MT9P017_RAW  "mt9p017"
@@ -221,6 +253,7 @@
 
 #define SENSOR_DRVNAME_OV5647_RAW   	"ov5647"
 #define SENSOR_DRVNAME_OV5648_MIPI_RAW   	"ov5648mipi"
+#define SENSOR_DRVNAME_OV5693_MIPI_RAW     "ov5693mipi"
 #define SENSOR_DRVNAME_OV5642_MIPI_YUV    "ov5642mipiyuv"
 #define SENSOR_DRVNAME_OV5642_MIPI_RGB    "ov5642mipirgb"
 #define SENSOR_DRVNAME_OV5642_MIPI_JPG     "ov5642mipijpg"
@@ -232,6 +265,7 @@
 #define SENSOR_DRVNAME_S5K5CAGX_YUV     "s5k5cagxyuv"
 #define SENSOR_DRVNAME_SIV120B_YUV    "siv120byuv"
 #define SENSOR_DRVNAME_MT9V113_YUV    "mt9v113yuv"
+#define SENSOR_DRVNAME_HI253_YUV    	"hi253yuv"
 #define SENSOR_DRVNAME_SIV121D_YUV    	"siv121dyuv"
 #define SENSOR_DRVNAME_HI704_YUV    	"hi704yuv"
 #define SENSOR_DRVNAME_MT9V114_YUV    "mt9v114"
@@ -243,6 +277,8 @@
 #define SENSOR_DRVNAME_IMX105_MIPI_RAW   "imx105mipiraw"
 #define SENSOR_DRVNAME_OV8830_RAW   	       "ov8830"
 #define SENSOR_DRVNAME_0V9726_RAW		"ov9726raw"
+#define SENSOR_DRVNAME_OV9726_MIPI_RAW		"ov9726mipiraw"
+#define SENSOR_DRVNAME_OV9760_MIPI_RAW		"ov9760mipiraw"
 #define SENSOR_DRVNAME_S5K4E1GA_MIPI_RAW   "s5k4e1gamipiraw"
 #define SENSOR_DRVNAME_S5K4ECGX_MIPI_YUV   "s5k4ecgxmipiyuv"
 #define SENSOR_DRVNAME_A5141_MIPI_RAW   "a5141mipiraw"
@@ -253,15 +289,19 @@
 #define SENSOR_DRVNAME_S5K3H7Y_MIPI_RAW   "s5k3h7ymipiraw"
 #define SENSOR_DRVNAME_OV8825_MIPI_RAW   "ov8825mipiraw"
 #define SENSOR_DRVNAME_OV12830_MIPI_RAW   "ov12830mipiraw"
+#define SENSOR_DRVNAME_GC2035_YUV   "gc2035_yuv"
+#define SENSOR_DRVNAME_GC0329_YUV   "gc0329_yuv"
+#define SENSOR_DRVNAME_GC0330_YUV   "gc0330_yuv"
 
 #define SENSOR_DRVNAME_OV9740_MIPI_YUV     "ov9740mipiyuv"
-//zhao.li@tcl add for Bug 495381
+#define SENSOR_DRVNAME_S5K3H2YX_MIPI_RAW   "s5k3h2yxmipiraw"
+#define SENSOR_DRVNAME_SP0A19_YUV   "sp0a19yuv"
+#define SENSOR_DRVNAME_IMX135_MIPI_RAW   "imx135mipiraw"
+#define SENSOR_DRVNAME_IMX220_MIPI_RAW   "imx220mipiraw"
+#define SENSOR_DRVNAME_GC0313MIPI_YUV      "gc0313mipiyuv"
+#define SENSOR_DRVNAME_OV16825_MIPI_RAW   "ov16825mipiraw"
+#define SENSOR_DRVNAME_S5K4H5YX_2LANE_MIPI_RAW  "s5k4h5yx2lanemipiraw"
 #define SENSOR_DRVNAME_HI351_YUV    	"hi351yuv"
-#define SENSOR_DRVNAME_GC0329_YUV    	"gc0329yuv"
-#define SENSOR_DRVNAME_HI253_YUV    	"hi253yuv"
-#define SENSOR_DRVNAME_HI257_YUV    	"hi257yuv"
-#define SENSOR_DRVNAME_SP2519_YUV    	"sp2519yuv"
-//zhao.li@tcl add for Bug 495381 end
 
 /*******************************************************************************
 *

@@ -1,3 +1,12 @@
+/******************************************************************************
+ * mt_gpio.c - MTKLinux GPIO Device Driver
+ *
+ * Copyright 2008-2009 MediaTek Co.,Ltd.
+ *
+ * DESCRIPTION:
+ *     This file provid the other drivers GPIO relative functions
+ *
+ ******************************************************************************/
 
 //#include <common.h>
 //#include <asm/arch/mt65xx_typedefs.h>
@@ -9,7 +18,10 @@
 //autogen
 #include <platform/gpio_cfg.h>
 #include <debug.h>
-//#define  GIO_SLFTEST            
+/******************************************************************************
+ MACRO Definition
+******************************************************************************/
+//#define  GIO_SLFTEST
 #define GPIO_DEVICE "mt-gpio"
 #define VERSION     GPIO_DEVICE
 /*---------------------------------------------------------------------------*/
@@ -24,7 +36,7 @@
 /*---------------------------------------------------------------------------*/
 //#define MAX_GPIO_REG_BITS      16
 //#define MAX_GPIO_MODE_PER_REG  5
-//#define GPIO_MODE_BITS         3 
+//#define GPIO_MODE_BITS         3
 /*---------------------------------------------------------------------------*/
 #define GPIOTAG                "[GPIO] "
 #define GPIOLOG(fmt, arg...)   dprintf(INFO,GPIOTAG fmt, ##arg)
@@ -32,9 +44,12 @@
 #define GPIOERR(fmt, arg...)   dprintf(INFO,GPIOTAG "%5d: "fmt, __LINE__, ##arg)
 #define GPIOFUC(fmt, arg...)   //dprintk(INFO,GPIOTAG "%s\n", __FUNCTION__)
 #define GIO_INVALID_OBJ(ptr)   ((ptr) != gpio_obj)
+/******************************************************************************
+Enumeration/Structure
+******************************************************************************/
 #if defined(MACH_FPGA)
 		s32 mt_set_gpio_dir(u32 pin, u32 dir)			{return RSUCCESS;}
-		s32 mt_get_gpio_dir(u32 pin)				{return GPIO_DIR_UNSUPPORTED;}	
+		s32 mt_get_gpio_dir(u32 pin)				{return GPIO_DIR_UNSUPPORTED;}
 		s32 mt_set_gpio_pull_enable(u32 pin, u32 enable)	{return RSUCCESS;}
 		s32 mt_get_gpio_pull_enable(u32 pin)			{return GPIO_PULL_EN_UNSUPPORTED;}
 		s32 mt_set_gpio_pull_select(u32 pin, u32 select)	{return RSUCCESS;}
@@ -47,18 +62,18 @@
 		s32 mt_set_gpio_mode(u32 pin, u32 mode) 		{return RSUCCESS;}
 		s32 mt_get_gpio_mode(u32 pin)				{return GPIO_MODE_UNSUPPORTED;}
 		s32 mt_set_clock_output(u32 num, u32 src, u32 div)	{return RSUCCESS;}
-		s32 mt_get_clock_output(u32 num, u32 *src, u32 *div)	{return CLK_SRC_UNSUPPORTED;}	
+		s32 mt_get_clock_output(u32 num, u32 *src, u32 *div)	{return CLK_SRC_UNSUPPORTED;}
 #else
 
 #define CLK_NUM 6
-static u32 clkout_reg_addr[CLK_NUM] = {
+/*static u32 clkout_reg_addr[CLK_NUM] = {
     (0xF0001A00),
     (0xF0001A04),
     (0xF0001A08),
     (0xF0001A0C),
     (0xF0001A10),
     (0xF0001A14)
-};
+};*/
 struct mt_gpio_obj {
     GPIO_REGS       *reg;
 };
@@ -81,20 +96,20 @@ s32 mt_set_gpio_dir_chip(u32 pin, u32 dir)
 
     if (dir >= GPIO_DIR_MAX)
         return -ERINVAL;
-    
+
     pos = pin / MAX_GPIO_REG_BITS;
     bit = pin % MAX_GPIO_REG_BITS;
-    
+
     if (dir == GPIO_DIR_IN)
         GPIO_SET_BITS((1L << bit), &obj->reg->dir[pos].rst);
     else
         GPIO_SET_BITS((1L << bit), &obj->reg->dir[pos].set);
     return RSUCCESS;
-    
+
 }
 /*---------------------------------------------------------------------------*/
 s32 mt_get_gpio_dir_chip(u32 pin)
-{    
+{
     u32 pos;
     u32 bit;
     u32 reg;
@@ -102,19 +117,21 @@ s32 mt_get_gpio_dir_chip(u32 pin)
 
     if (!obj)
         return -ERACCESS;
-    
+
     if (pin >= MAX_GPIO_PIN)
         return -ERINVAL;
-    
+
     pos = pin / MAX_GPIO_REG_BITS;
     bit = pin % MAX_GPIO_REG_BITS;
-    
+
     reg = GPIO_RD32(&obj->reg->dir[pos].val);
-    return (((reg & (1L << bit)) != 0)? 1: 0);        
+    return (((reg & (1L << bit)) != 0)? 1: 0);
 }
 /*---------------------------------------------------------------------------*/
 s32 mt_set_gpio_pull_enable_chip(u32 pin, u32 enable)
 {
+    if (pin >= MAX_GPIO_PIN)
+        return -ERINVAL;
 
     if((pin >= 67) && (pin < 87)){
 	  return GPIO_PULL_EN_UNSUPPORTED;
@@ -133,18 +150,23 @@ s32 mt_get_gpio_pull_enable_chip(u32 pin)
 {
     unsigned long data;
 
+    if (pin >= MAX_GPIO_PIN)
+        return -ERINVAL;
+
     if((pin >= 67) && (pin < 87)){
 	  return GPIO_PULL_EN_UNSUPPORTED;
     }
-    else{   
+    else{
 	  data = GPIO_RD32(PULLEN_addr[pin].addr);
 
           return (((data & (1L << (PULLEN_offset[pin].offset))) != 0)? 1: 0);
-    }        
+    }
 }
 /*---------------------------------------------------------------------------*/
 s32 mt_set_gpio_pull_select_chip(u32 pin, u32 select)
 {
+    if (pin >= MAX_GPIO_PIN)
+        return -ERINVAL;
 
     if((pin >= 67) && (pin < 73)){
 	  if (select == GPIO_PULL_DOWN)
@@ -169,6 +191,9 @@ s32 mt_get_gpio_pull_select_chip(u32 pin)
 {
     unsigned long data;
 
+    if (pin >= MAX_GPIO_PIN)
+        return -ERINVAL;
+
     if((pin >= 67) && (pin < 73)){
 	  data = GPIO_RD32(PU_addr[pin].addr);
 
@@ -181,17 +206,19 @@ s32 mt_get_gpio_pull_select_chip(u32 pin)
 	  data = GPIO_RD32(PULL_addr[pin].addr);
 
     	  return (((data & (1L << (PULL_offset[pin].offset))) != 0)? 1: 0);
-    }        
+    }
 }
 /*---------------------------------------------------------------------------*/
 s32 mt_set_gpio_inversion_chip(u32 pin, u32 enable)
 {
-		
+    if (pin >= MAX_GPIO_PIN)
+        return -ERINVAL;
+
 	if (enable == GPIO_DATA_UNINV)
 		GPIO_SET_BITS((1L << (DATAINV_offset[pin].offset)), DATAINV_addr[pin].addr + 8);
 	else
 		GPIO_SET_BITS ((1L << (DATAINV_offset[pin].offset)), DATAINV_addr[pin].addr + 4);
-	
+
     return RSUCCESS;
 }
 /*---------------------------------------------------------------------------*/
@@ -200,11 +227,13 @@ s32 mt_get_gpio_inversion_chip(u32 pin)
 
     unsigned long data;
 
+    if (pin >= MAX_GPIO_PIN)
+        return -ERINVAL;
+
 	data = GPIO_RD32(DATAINV_addr[pin].addr);
 
-    return (((data & (1L << (DATAINV_offset[pin].offset))) != 0)? 1: 0);        
+    return (((data & (1L << (DATAINV_offset[pin].offset))) != 0)? 1: 0);
 
-        
 }
 /*---------------------------------------------------------------------------*/
 s32 mt_set_gpio_out_chip(u32 pin, u32 output)
@@ -221,10 +250,10 @@ s32 mt_set_gpio_out_chip(u32 pin, u32 output)
 
     if (output >= GPIO_OUT_MAX)
         return -ERINVAL;
-    
+
     pos = pin / MAX_GPIO_REG_BITS;
     bit = pin % MAX_GPIO_REG_BITS;
-    
+
     if (output == GPIO_OUT_ZERO)
         GPIO_SET_BITS((1L << bit), &obj->reg->dout[pos].rst);
     else
@@ -244,12 +273,12 @@ s32 mt_get_gpio_out_chip(u32 pin)
 
     if (pin >= MAX_GPIO_PIN)
         return -ERINVAL;
-    
+
     pos = pin / MAX_GPIO_REG_BITS;
     bit = pin % MAX_GPIO_REG_BITS;
 
     reg = GPIO_RD32(&obj->reg->dout[pos].val);
-    return (((reg & (1L << bit)) != 0)? 1: 0);        
+    return (((reg & (1L << bit)) != 0)? 1: 0);
 }
 /*---------------------------------------------------------------------------*/
 s32 mt_get_gpio_in_chip(u32 pin)
@@ -264,12 +293,12 @@ s32 mt_get_gpio_in_chip(u32 pin)
 
     if (pin >= MAX_GPIO_PIN)
         return -ERINVAL;
-    
+
     pos = pin / MAX_GPIO_REG_BITS;
     bit = pin % MAX_GPIO_REG_BITS;
 
     reg = GPIO_RD32(&obj->reg->din[pos].val);
-    return (((reg & (1L << bit)) != 0)? 1: 0);        
+    return (((reg & (1L << bit)) != 0)? 1: 0);
 }
 /*---------------------------------------------------------------------------*/
 s32 mt_set_gpio_mode_chip(u32 pin, u32 mode)
@@ -277,7 +306,7 @@ s32 mt_set_gpio_mode_chip(u32 pin, u32 mode)
     u32 pos;
     u32 bit;
     u32 reg;
-    u32 mask = (1L << GPIO_MODE_BITS) - 1;    
+    //u32 mask = (1L << GPIO_MODE_BITS) - 1;
     struct mt_gpio_obj *obj = gpio_obj;
 
     if (!obj)
@@ -292,12 +321,12 @@ s32 mt_set_gpio_mode_chip(u32 pin, u32 mode)
 	pos = pin / MAX_GPIO_MODE_PER_REG;
 	bit = pin % MAX_GPIO_MODE_PER_REG;
 
-#if 0   
+#if 0
 	reg = GPIO_RD32(&obj->reg->mode[pos].val);
 
 	reg &= ~(mask << (GPIO_MODE_BITS*bit));
 	reg |= (mode << (GPIO_MODE_BITS*bit));
-	
+
 	GPIO_WR32(&obj->reg->mode[pos].val, reg);
 #endif
 
@@ -313,7 +342,7 @@ s32 mt_get_gpio_mode_chip(u32 pin)
     u32 pos;
     u32 bit;
     u32 reg;
-    u32 mask = (1L << GPIO_MODE_BITS) - 1;    
+    u32 mask = (1L << GPIO_MODE_BITS) - 1;
     struct mt_gpio_obj *obj = gpio_obj;
 
     if (!obj)
@@ -326,13 +355,14 @@ s32 mt_get_gpio_mode_chip(u32 pin)
 	bit = pin % MAX_GPIO_MODE_PER_REG;
 
 	reg = GPIO_RD32(&obj->reg->mode[pos].val);
-	
+
 	return ((reg >> (GPIO_MODE_BITS*bit)) & mask);
 }
 /*---------------------------------------------------------------------------*/
 
 s32 mt_set_clock_output(u32 num, u32 src, u32 div)
-{/*
+{
+/*
     u32 pin_reg;
     u32 reg_value = 0;
     if (num >= CLK_MAX )
@@ -343,18 +373,20 @@ s32 mt_set_clock_output(u32 num, u32 src, u32 div)
         return -ERINVAL;
 
     pin_reg = clkout_reg_addr[num];
-   
+
     reg_value = div - 1;
-    reg_value |= (src << 4); 
-	GPIO_WR32(pin_reg,reg_value);*/
+    reg_value |= (src << 4);
+	GPIO_WR32(pin_reg,reg_value);
+*/
     return RSUCCESS;
 }
 /*---------------------------------------------------------------------------*/
 s32 mt_get_clock_output(u32 num, u32 * src, u32 *div)
-{/*
+{
+/*
     u32 reg_value;
     u32 pin_reg;
-  
+
     if (num >= CLK_MAX)
         return -ERINVAL;
 
@@ -362,8 +394,9 @@ s32 mt_get_clock_output(u32 num, u32 * src, u32 *div)
 	reg_value = GPIO_RD32(pin_reg);
 	*src = reg_value >> 4;
         printk("src==%d\n", *src);
-	*div = (reg_value & 0x0f) + 1;    
-	printk("div==%d\n", *div);*/
+	*div = (reg_value & 0x0f) + 1;
+	printk("div==%d\n", *div);
+*/
 	return RSUCCESS;
 }
 

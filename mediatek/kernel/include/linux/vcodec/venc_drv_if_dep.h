@@ -5,7 +5,7 @@
  *                              Include Files
  *===========================================================================*/
 
-#include "val_types.h" 
+#include "val_types_private.h" 
 #include "vcodec_if.h"
 
 #ifdef __cplusplus

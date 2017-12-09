@@ -1,3 +1,39 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ *
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #include <typedefs.h>
 #include <platform.h>
@@ -8,7 +44,13 @@
 //#include <dramc.h>
 //#include <platform.h>
 #include <mtk_pmic.h> 
+#include "mtk_pll.h"
 
+/****************************************************************************
+*
+* Macro.
+*
+****************************************************************************/
 #define IMPROVE_DQS_STROBE
 #define DQSI_MAX_DELAY_TAP_BY_DLL
 //#define SAMPLE_BACK_USE
@@ -24,7 +66,7 @@
 
 //#define EMI_DEBUG_LOG
 //#define DUAL_RANK_LP1_LOG
-
+		
 #define REGION_0_KEY 0x12345678
 #define REGION_1_KEY 0x23456788
 #define REGION_2_KEY 0x34567898
@@ -34,6 +76,11 @@
 #define REGION_6_KEY 0x78901238
 #define REGION_7_KEY 0x89012348
 
+/****************************************************************************
+*
+* Struct
+*
+****************************************************************************/
 
 typedef struct
 {
@@ -66,10 +113,352 @@ typedef struct
 
 extern int num_of_emi_records;
 extern EMI_SETTINGS emi_settings[];
+extern int mtk_pll_init_emi(unsigned int);
+DRAM_INFO board_dram_info = {0x0, 0x0, 0x0, 0x0};
 
+static void gpt_wait_us_dsb(U32 time)
+{
+	__asm__ __volatile__ ("dsb" : : : "memory");
+	gpt_busy_wait_us(time);
+}
+
+#if 0
+static void set_emi_clk_26M(U32 enable)
+{
+	U32 EMI_reg;
+
+	EMI_reg = DRV_Reg32(CLK_SEL_0); // CLK_SEL_0
+	if (enable == 1)
+	{	
+	    DRV_WriteReg32(CLK_SEL_0, EMI_reg & 0xFFFFFFEF);
+	}
+	else if (enable == 0)
+	{
+	    DRV_WriteReg32(CLK_SEL_0, EMI_reg | 0x10);
+	}
+	gpt_wait_us_dsb(10);	
+}
+#endif
+
+
+// swap order 7654 3210 <--> 2673 0541
+
+kal_uint32 MRR_Swap(U32 mode_reg)
+{
+	U32 temp=0;
+	if(mode_reg & 0x80) temp += 0x4;
+	if(mode_reg & 0x40) temp += 0x40;
+	if(mode_reg & 0x20) temp += 0x80;
+	if(mode_reg & 0x10) temp += 0x8;	
+	if(mode_reg & 0x8) temp += 0x1;
+	if(mode_reg & 0x4) temp += 0x20;
+	if(mode_reg & 0x2) temp += 0x10;
+	if(mode_reg & 0x1) temp += 0x2;	
+	dbg_print("[EMI] before swap: 0x%X, After swap: 0x%X\n", mode_reg, temp);
+	return temp;
+}
+
+kal_uint32 get_mode_reg(U32 rank_num, U32 MR_num)
+{
+	U32 MR_value;
+	
+	*EMI_DDRV |= 1<< (4 + rank_num);	
+	*EMI_CONI = (MR_num << 16) | (1 <<15);	
+	gpt_wait_us_dsb(1);	 	
+				
+	*EMI_CONN |= 0x40000000;			
+	gpt_wait_us_dsb(10);	 	
+	*EMI_CONN &= (~0x40000000);		
+		
+	gpt_wait_us_dsb(20);	 	
+	MR_value = *EMI_DDRV;
+	print("[EMI] bank%d, Mode Reg%d=0x%X\n", rank_num, MR_num, MR_value);	 	
+	 	
+	*EMI_DDRV &= ~(1<< (4 + rank_num));			
+	return ((MR_value & 0x00FF0000) >>16);
+}
+
+int get_board_dram_info(void)
+{
+	U32 EMI_reg, MR_tmp, i;
+	U32 MR32_r0, MR32_r1, MR40_r0, MR40_r1, MR8_r0, MR8_r1, MR5_r0, MR5_r1;
+	U32 retry_cnt;
+
+	
+		
+	if ((*EMI_CONM & 0x80000000) == 0x80000000) // if DRAMC detect PCDDR3
+	{
+		board_dram_info.dram_type = PCDDR3;
+		return 0;		
+	}	
+	else if ((*EMI_CONM & 0x10000000) == 0x10000000) // if DRAMC detect LPDDR1
+	{
+		board_dram_info.dram_type = DDR1;
+		return 0;			
+	}
+	else if ((*EMI_CONM & 0x20000000) == 0x20000000) // if DRAMC detect LPDDR2/LPDDR3
+       {
+       
+       	//set_emi_clk_26M(1);
+       
+               /**
+       	* Disable Dummy Read.
+       	*/
+       	*EMI_DRCT = 0x0;
+       
+               /* Add for MT6571 EMI DCM */
+               //*EMI_CONM |= 0x00000100;  
+       
+       	/**
+       	* Set DRAM rank.
+       	*/
+       	*EMI_GEND = 0x00030000; // enable rank0 and rank1
+       
+       	/**
+              * EMI Driving, it needs to be set before LPDDR being initialized.
+       	*/
+       	*EMI_DRVA = 0xCCCCCCCC;
+       	*EMI_DRVB = 0x00CC0000;
+       
+       	*EMI_IOCL = 0x00030000;  //MT6280 remove "Pad swap function mode"
+       
+       	/**
+              * Set AC Timing Parameters for according memory device.
+       	*/
+       	*EMI_CONJ = 0x00021011;
+       	*EMI_CONK = 0x02050120;
+       	
+       	*EMI_CONL = 0x004230B7;	//RL = 6, WL = 3, rd_del_sel = 8T
+       	
+       	// set dram type to lpddr3_32, also can set to lpddr2-32, since we just need to read mode register 	
+       	*EMI_CONN = 0x00410800;	
+       	
+       	*EMI_ODLJ = 0x08080808;
+       	*EMI_ODLN = 0x08080808;	
+       
+       	/**
+       	   * LPDDR Initial Flow.
+       	   */
+       	/**
+       	   * [Initial Flow 1]:Power Ramp
+       	   */
+       
+       	/**
+       	   * [Initial Flow 2]: clock -> 5x tCK -> CKE
+        	   * Enable Clock ( DRAM clk out / delay-line HCLKX2_CK/ SRAM clk center-align /CKE_EN )
+       	   */
+       	   *EMI_GENA = 0x00000202; //enable  DCLK_EN
+       
+       	  /* Delay 5 tCK */
+       	   
+       	   gpt_wait_us_dsb(5);
+       
+       	   *EMI_GENA |= 0x00000010; //enable CKE
+       
+       	   /* Delay 200us */
+       	   
+       	   gpt_wait_us_dsb(300);
+
+	         /* precharge all */
+	#if 1  
+	    EMI_reg = *EMI_CONN; 	  
+	   *EMI_CONN = EMI_reg | 0x1 | 0x10000000;
+	    gpt_wait_us_dsb(10);
+	   *EMI_CONN = EMI_reg | 0x1;	   
+	   gpt_wait_us_dsb(10);
+	#endif
+	
+       	/**
+       	   * [Initial Flow 3]:Reset Command
+       	   */
+       	EMI_reg = *EMI_CONN;	   
+       	*EMI_CONI = 0x003F0000;
+       	*EMI_CONN = EMI_reg | 0x1 | 0x20000000;
+       	 
+       	 gpt_wait_us_dsb(10);
+       	*EMI_CONN = EMI_reg | 0x1;
+       
+       	/**
+       	   * [Initial Flow 4]:Mode Registers Reads and Device Auto-Initialization (DAI) polling or wait 10us
+       	   */
+       
+       	gpt_wait_us_dsb(20);
+       
+       #if 1
+       	/**
+       	   * [Initial Flow 5]:ZQ Calibration
+       	   */
+       	*EMI_DDRV &= (~0x32);
+       	EMI_reg = *EMI_CONN;
+       	//Rank 0 ZQ calibration
+       	*EMI_DDRV |= 0x12;			
+       	*EMI_CONI = 0xFF0A0000;
+       	*EMI_CONN = EMI_reg | 0x1 | 0x20000000;
+       
+       	gpt_wait_us_dsb(10);
+       	*EMI_CONN = EMI_reg | 0x1;
+       	/* Wait 1us */
+       
+       	gpt_wait_us_dsb(10);
+       	
+       	*EMI_DDRV &= (~0x32);
+       	
+       	// Rank 1 ZQ calibration
+       	*EMI_DDRV |= 0x22;			 
+          	*EMI_CONI = 0xFF0A0000;
+          	*EMI_CONN = EMI_reg | 0x1 | 0x20000000;
+              
+           gpt_wait_us_dsb(10);
+       	*EMI_CONN = EMI_reg | 0x1;
+       	/* Wait 1us */
+              
+        	gpt_wait_us_dsb(10);
+       
+       	*EMI_DDRV &= (~0x32);
+       #endif
+       
+       	/**
+       	  * Set Device Feature
+       	  */
+       	// Set Device Feature1 - nWR=3, WC=Wrap, BT=sequential, BL=8
+       	*EMI_CONI = 0x23010000;
+       	*EMI_CONN = EMI_reg | 0x1 | 0x20000000; //MRW to mode register 1
+       
+       	gpt_wait_us_dsb(10);
+       	*EMI_CONN = EMI_reg | 0x1;
+       
+       	gpt_wait_us_dsb(10);
+       
+           /* RL = 6, WL = 3 */
+           *EMI_CONI = 0x04020000;    
+           
+       	*EMI_CONN = EMI_reg | 0x1 | 0x20000000; //MRW to mode register 2
+       
+       	gpt_wait_us_dsb(10);
+       	*EMI_CONN = EMI_reg | 0x1;
+       
+       	gpt_wait_us_dsb(10);
+       
+       	*EMI_PPCT = 0x00000008;		
+       	*EMI_GENA = 0x0000821A;
+       	*EMI_CALE = 0x1F1F1F1F;
+       
+       	// Clear Initial Bits and disable auto refresh, since any EMI command may influence MRR reading
+       	*EMI_CONN &= ~0xFF000002; 
+       
+       	*EMI_DQSA = *EMI_DQSB = *EMI_DQSC = *EMI_DQSD = 0x00200020;
+       	/**
+              * Enable 1/5 PLL.
+              */
+              //*EMI_CONN |= 0x00000100;
+       
+             // disabe dummy read , since any EMI command to device will  influence MRR reading
+            *EMI_DRCT &= (~0x1);    
+       
+            gpt_wait_us_dsb(1000);
+                
+       #if 0
+       	for(i=0; i<=1; i++)
+       	{
+       	 print("[EMI] Dump bank 0x%d Mode Register \n", i);	
+       	get_mode_reg(i, 0);	
+       	get_mode_reg(i, 4);	
+       	get_mode_reg(i, 5);
+       	get_mode_reg(i, 6);
+       	get_mode_reg(i, 7);	
+       	get_mode_reg(i, 8);
+       	get_mode_reg(i, 32);
+       	get_mode_reg(i, 40);
+       	print("\n");
+       	}
+       #endif	
+	       for (retry_cnt = 0; retry_cnt < 3; retry_cnt++)
+	       {
+              	MR8_r0 = 	get_mode_reg(0, 8);  //type¡BDensity¡BIO width
+              	MR32_r0 = 	get_mode_reg(0, 32);  //DQ calibration pattern A, should be 0x1
+              	MR40_r0 = 	get_mode_reg(0, 40);  //DQ calibration pattern B, should be 0x0
+              	MR5_r0 = 	get_mode_reg(0, 5); //vendor ID
+              	MR32_r1 = 	get_mode_reg(1, 32);
+              	MR40_r1 = 	get_mode_reg(1, 40);
+              	MR_tmp = 	get_mode_reg(0, 8);	
+              	MR8_r1 = 	get_mode_reg(1, 8);	
+              	MR5_r1 = 	get_mode_reg(1, 5);	
+              
+
+  			/**
+	  		* LPDDR3 EVB BYTE 0 has been swapped, while LPDDR3 EVB BYTE 0 does not. So, we need to judge whether it is LP2 or LP3
+	  		* And then, we will swap back BYTE 0 of LPDDR3 for MRR command
+	  		* LPDDR3 Byte 0 swap order 7654 3210 <--> 2673 0541
+	  		* For LPDDR3 MR8 bit[1:0] are 0b'11, LPDDR2 MR8 bit[1:0] are 0b'00, so we use bit 1 to judge LPDDR3 and LPDDR2
+	  		*/	  
+				if((MR8_r0 & 0x1) == 0x1) // swapped bit 0 == 1, means it is LP3, we need to swap MRR back
+				{	
+				MR8_r0 = 	MRR_Swap(MR8_r0);
+				MR32_r0 = 	MRR_Swap(MR32_r0);
+				MR40_r0 = 	MRR_Swap(MR40_r0);
+				MR5_r0 = 	MRR_Swap(MR5_r0);
+				MR32_r1 = 	MRR_Swap(MR32_r1);
+				MR40_r1 = 	MRR_Swap(MR40_r1);
+				MR_tmp = 	MRR_Swap(MR_tmp);	
+				MR8_r1 = 	MRR_Swap(MR8_r1);	
+				MR5_r1 = 	MRR_Swap(MR5_r1);	
+				}
+            
+              	if (((MR32_r0 & 0x1) == 0x1) && ((MR40_r0 & 0x1) == 0x0) && (MR8_r0 == MR_tmp)) // MR32 bit 0 should be 1, MR40 bit 0 should be 0
+              	{
+                            // board_dram_info.vendor_id = get_mode_reg(0, 5);
+              		board_dram_info.vendor_id = MR5_r0;
+              		board_dram_info.rank0_size = 1 << ( ((MR8_r0 & 0x3C) >> 2) + 23);
+              		board_dram_info.rank1_size = 0x0;
+              		if ((MR8_r0 & 0x3) == 0x3) // 0x3 of MR8 is for S8 SDRAM
+              		{
+              			board_dram_info.dram_type = LPDDR3;
+              		}
+              		else
+              		{
+              			board_dram_info.dram_type = DDR2;
+              		}
+              		
+              		if((MR32_r0 == MR32_r1) && (MR40_r0 == MR40_r1) && (MR5_r0 == MR5_r1))
+              		{
+              			board_dram_info.rank1_size = 1 << ( ((MR8_r1 & 0x3C) >> 2) + 23);		
+              		}
+                            break;
+			}
+              	else
+              	{
+              		print("[EMI] get DRAM Info fail, retry=%d \n", retry_cnt);
+				*((volatile unsigned int *)(0x80000000)) = 0x5a5aa5a5 + retry_cnt;
+				*((volatile unsigned int *)(0x80000010)) = 0xa5a55a5a + retry_cnt;
+                            //#ifdef CM_COMBO_TEST
+				//print("[EMI] 0x80000000=0x%X, 0x80000010=0x%X\n", *((volatile unsigned int *)(0x80000000)) ,*((volatile unsigned int *)(0x80000010)));
+                            //#endif
+				gpt_wait_us_dsb(1000);					
+              	}
+	       }
+           	//set_emi_clk_26M(0);
+           	*EMI_GENA &= ~(0x00000210); //disable  CLK and CKE
+           	gpt_wait_us_dsb(50);
+
+		if (retry_cnt >= 3)
+		{
+			return -1;
+		}
+           	return 0;
+       }
+	else
+	{
+		return -1;	
+	}
+}
+
+
+/*
+ * init_dram: Do initialization for LPDDR.
+ */
 static void init_lpddr1(EMI_SETTINGS *emi_setting)
 {
-       *EMI_GENA |= (0x0080);	//DCMDQ depth = 3
+       *EMI_GENA |= (0x0080);	//DCMDQ depth = 4
 
 	/**
 	   * Set LPDDR device configuration.
@@ -91,37 +480,39 @@ static void init_lpddr1(EMI_SETTINGS *emi_setting)
 	  /**
 	   * Delay for 200us.
 	   */
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(300);
+	gpt_wait_us_dsb(300);
 
 	/**
 	   * LPDDR Initial Flow.
 	   */
 	*(volatile kal_uint32*)EMI_CONN = emi_setting->EMI_CONN_value | 0x1;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 	*(volatile kal_uint32*)EMI_CONN = emi_setting->EMI_CONN_value | 0x1 |0x10000000;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 	*(volatile kal_uint32*)EMI_CONN = emi_setting->EMI_CONN_value | 0x1 |0x08000000;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 	*(volatile kal_uint32*)EMI_CONN = emi_setting->EMI_CONN_value | 0x1 |0x04000000;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 	*(volatile kal_uint32*)EMI_CONN = emi_setting->EMI_CONN_value | 0x1 |0x02000000;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 	*(volatile kal_uint32*)EMI_CONN = emi_setting->EMI_CONN_value | 0x1 |0x01000000;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 	*(volatile kal_uint32*)EMI_CONN = emi_setting->EMI_CONN_value | 0x1 |0x00000000;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 
 	return;
 }
 
+/*
+ * init_dram: Do initialization for LPDDR2.
+ */
 static void init_lpddr2(EMI_SETTINGS *emi_setting)
 {
 	/**
@@ -134,8 +525,8 @@ static void init_lpddr2(EMI_SETTINGS *emi_setting)
 	/**
 	   * Delay for a while.
 	   */
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 
 	/**
 	   * LPDDR Initial Flow.
@@ -151,29 +542,29 @@ static void init_lpddr2(EMI_SETTINGS *emi_setting)
 	   *EMI_GENA |= 0x00000200; //enable  DCLK_EN
 
 	  /* Delay 5 tCK */
-	   __asm__ __volatile__ ("dsb" : : : "memory");
-	   gpt_busy_wait_us(5);
+	   
+	   gpt_wait_us_dsb(5);
 
 	   *EMI_GENA |= 0x00000010; //enable CKE
 
 	   /* Delay 200us */
-	   __asm__ __volatile__ ("dsb" : : : "memory");
-	   gpt_busy_wait_us(300);
+	   
+	   gpt_wait_us_dsb(300);
 
 	/**
 	   * [Initial Flow 3]:Reset Command
 	   */
 	*EMI_CONI = 0x003F0000;
 	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1 | 0x20000000;
-	 __asm__ __volatile__ ("dsb" : : : "memory");
-	 gpt_busy_wait_us(10);
+	 
+	 gpt_wait_us_dsb(10);
 	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1;
 
 	/**
 	   * [Initial Flow 4]:Mode Registers Reads and Device Auto-Initialization (DAI) polling or wait 10us
 	   */
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(20);
+
+	gpt_wait_us_dsb(20);
 
 	/**
 	   * [Initial Flow 5]:ZQ Calibration
@@ -183,12 +574,12 @@ static void init_lpddr2(EMI_SETTINGS *emi_setting)
 	*EMI_DDRV |= 0x12;			//Rank 0 ZQ calibration
 	*EMI_CONI = 0xFF0A0000;
 	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1 | 0x20000000;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1;
 	/* Wait 1us */
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 
 	*EMI_DDRV &= (~0x32);
 
@@ -197,12 +588,12 @@ static void init_lpddr2(EMI_SETTINGS *emi_setting)
        	*EMI_DDRV |= 0x22;			 // Rank 1 ZQ calibration
        	*EMI_CONI = 0xFF0A0000;
        	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1 | 0x20000000;
-       	__asm__ __volatile__ ("dsb" : : : "memory");
-       	gpt_busy_wait_us(10);
+       
+       	gpt_wait_us_dsb(10);
        	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1;
        	/* Wait 1us */
-       	__asm__ __volatile__ ("dsb" : : : "memory");
-       	gpt_busy_wait_us(10);
+       
+       	gpt_wait_us_dsb(10);
 
 	*EMI_DDRV &= (~0x32);
 	}
@@ -213,11 +604,11 @@ static void init_lpddr2(EMI_SETTINGS *emi_setting)
 	// Set Device Feature1 - nWR=3, WC=Wrap, BT=sequential, BL=8
 	*EMI_CONI = 0x23010000;
 	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1 | 0x20000000;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 
        if (emi_setting->EMI_Freq == 200)
        {
@@ -251,20 +642,20 @@ static void init_lpddr2(EMI_SETTINGS *emi_setting)
 	}
 
 	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1 | 0x20000000;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 
 	// add for LPDDR2 DRAM driving setting
 	*EMI_CONI = emi_setting->EMI_CONI_value;
 	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1 | 0x20000000;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+
+	gpt_wait_us_dsb(10);
 
 	// Clear Initial Bits
 	*EMI_CONN &= ~0xFF000000;
@@ -282,6 +673,9 @@ static void init_lpddr2(EMI_SETTINGS *emi_setting)
 }
 
 
+/*
+ * init_dram: Do initialization for LPDDR3.
+ */
 #define DDR3_MODE_0 0x00000000
 #define DDR3_MODE_1 0x00400000
 #define DDR3_MODE_2 0x00800000
@@ -289,15 +683,155 @@ static void init_lpddr2(EMI_SETTINGS *emi_setting)
 unsigned int ddr_type=0;
 static void init_lpddr3(EMI_SETTINGS *emi_setting) //LPDDR3 // CM [20121115] wait for implement
 {
+	/**
+	   * Remap if necessary.
+	   */
 
+	*EMI_GENA &= (~0xB);
+	*EMI_GENA |= 0x0A;
+
+	/**
+	   * Delay for a while.
+	   */
+
+	gpt_wait_us_dsb(10);
+
+	/**
+	   * LPDDR Initial Flow.
+	   */
+	/**
+	   * [Initial Flow 1]:Power Ramp
+	   */
+
+	/**
+	   * [Initial Flow 2]: clock -> 5x tCK -> CKE
+ 	   * Enable Clock ( DRAM clk out / delay-line HCLKX2_CK/ SRAM clk center-align /CKE_EN )
+	   */
+	   *EMI_GENA |= 0x00000200; //enable  DCLK_EN
+
+	  /* Delay 5 tCK */
+	   
+	   gpt_wait_us_dsb(5);
+
+	   *EMI_GENA |= 0x00000010; //enable CKE
+
+	   /* Delay 200us */
+	   
+	   gpt_wait_us_dsb(300);
+
+	/**
+	   * [Initial Flow 3]:Reset Command
+	   */
+	*EMI_CONI = 0x003F0000;
+	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1 | 0x20000000;
+	 
+	 gpt_wait_us_dsb(10);
+	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1;
+
+	/**
+	   * [Initial Flow 4]:Mode Registers Reads and Device Auto-Initialization (DAI) polling or wait 10us
+	   */
+
+	gpt_wait_us_dsb(20);
+
+	/**
+	   * [Initial Flow 5]:ZQ Calibration
+	   */
+	*EMI_DDRV &= (~0x32);
+
+	*EMI_DDRV |= 0x12;			//Rank 0 ZQ calibration
+	*EMI_CONI = 0xFF0A0000;
+	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1 | 0x20000000;
+
+	gpt_wait_us_dsb(10);
+	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1;
+	/* Wait 1us */
+
+	gpt_wait_us_dsb(10);
+
+	*EMI_DDRV &= (~0x32);
+
+	if (2 == get_dram_rank_nr())
+	{
+       	*EMI_DDRV |= 0x22;			 // Rank 1 ZQ calibration
+       	*EMI_CONI = 0xFF0A0000;
+       	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1 | 0x20000000;
+       
+       	gpt_wait_us_dsb(10);
+       	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1;
+       	/* Wait 1us */
+       
+       	gpt_wait_us_dsb(10);
+
+	*EMI_DDRV &= (~0x32);
+	}
+
+	/**
+	  * Set Device Feature
+	  */
+	// Set Device Feature1 - nWR=3, WC=Wrap, BT=sequential, BL=8
+	*EMI_CONI = 0x23010000;
+	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1 | 0x20000000;
+
+	gpt_wait_us_dsb(10);
+	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1;
+
+	gpt_wait_us_dsb(10);
+
+       /* RL = 6, WL = 3 */
+	*EMI_CONI = 0x04020000;
+
+	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1 | 0x20000000;
+
+	gpt_wait_us_dsb(10);
+	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1;
+
+	gpt_wait_us_dsb(10);
+
+	// add for LPDDR2 DRAM driving setting
+	*EMI_CONI = emi_setting->EMI_CONI_value;
+	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1 | 0x20000000;
+
+	gpt_wait_us_dsb(10);
+	*EMI_CONN = emi_setting->EMI_CONN_value | 0x1;
+
+	gpt_wait_us_dsb(10);
+
+	// Clear Initial Bits
+	*EMI_CONN &= ~0xFF000000;
+
+#ifdef SW_WORKAROUND_FOR_DUALRANKS
+       if (2 == get_dram_rank_nr())
+       {
+	    *EMI_ODLA = *EMI_ODLB = *EMI_ODLC = *EMI_ODLD = *EMI_ODLE = *EMI_ODLF = *EMI_ODLG = *EMI_ODLH = 0x0F0F0F0F;
+	    *EMI_ODLI = *EMI_ODLJ = *EMI_ODLK = *EMI_ODLL = *EMI_ODLM = *EMI_ODLN = 0x0F0F0F0F;
+	}
+#endif
+
+	if ((*EMI_CONN & 0x00000800) != 0)
+	{
+	    //Enable perback auto-refresh for LPDDR2 8 banks
+	    *EMI_CONN &=  ~0x00000200;
+	}
+	else
+	{
        //Disable perback auto-refresh
 	*EMI_CONN &=  ~0x00000200;
-
-       return;
+	}
 }
 
 static void init_pcdram3(EMI_SETTINGS *emi_setting)
 {
+      if (0x00070000 == (emi_setting->EMI_CONN_value & 0x00070000))	//PCDDR3x32
+      {
+	   *EMI_GENA &= ~(0x00C0);	 //DCMDQ depth = 6
+	}
+	else  //PCDDR3x16
+	{
+		*EMI_GENA &= ~(0x00C0);
+		*EMI_GENA |= (0x00C0);	  //DCMDQ depth = 3
+	}
+
 	/**
 	   * Enable external clock (DRAM clk out & HCLKX2_CK).
 	   */
@@ -311,97 +845,110 @@ static void init_pcdram3(EMI_SETTINGS *emi_setting)
 	*EMI_GENA |= 0x0A;
 
 	/**
-	   * LPDDR Initial Flow.
+	   * PCDDR3 Initial Flow.
 	   */
 	 /* Delay 200us */
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(200);
+
+	gpt_wait_us_dsb(300);
 
 	 /* disable RESET */
 	 *EMI_GENA |= 0x00002000;
 	  /* Delay 500us */
-	  __asm__ __volatile__ ("dsb" : : : "memory");
-	  gpt_busy_wait_us(600);
+	  
+	  gpt_wait_us_dsb(750);
 
 	 /* Enable CKE */
 	  *EMI_GENA |= 0x00000010;
 	  /* Delay TRFC + 10ns */
-	  __asm__ __volatile__ ("dsb" : : : "memory");
-	  gpt_busy_wait_us(10);
+	  
+	  gpt_wait_us_dsb(10);
 
 	 /* Load MR2 */
-	 *EMI_CONI = 0x40080000;
-	 *EMI_CONN = emi_setting->EMI_CONN_value | 0x00000801 | 0x02000000;
-	 __asm__ __volatile__ ("dsb" : : : "memory");
-	 gpt_busy_wait_us(10);
-	 *EMI_CONN = emi_setting->EMI_CONN_value | 0x00000801;
+	 *EMI_CONI = 0x40000000;
+	 *EMI_CONN = emi_setting->EMI_CONN_value | 0x02000000;
+	 
+	 gpt_wait_us_dsb(10);
+	 *EMI_CONN = emi_setting->EMI_CONN_value;
 	  /* Delay 5us */
-	  __asm__ __volatile__ ("dsb" : : : "memory");
-	  gpt_busy_wait_us(10);
+	  
+	  gpt_wait_us_dsb(10);
 
 	 /* Load MR3 */
 	 *EMI_CONI = 0x60000000;
-	 *EMI_CONN = emi_setting->EMI_CONN_value | 0x00000801 | 0x02000000;
-	 __asm__ __volatile__ ("dsb" : : : "memory");
-	 gpt_busy_wait_us(10);
-	 *EMI_CONN = emi_setting->EMI_CONN_value | 0x00000801;
+	 *EMI_CONN = emi_setting->EMI_CONN_value | 0x02000000;
+	 
+	 gpt_wait_us_dsb(10);
+	 *EMI_CONN = emi_setting->EMI_CONN_value;
 	  /* Delay 5us */
-	  __asm__ __volatile__ ("dsb" : : : "memory");
-	  gpt_busy_wait_us(10);
+	  
+	  gpt_wait_us_dsb(10);
 
 	 /* Load MR1 , Enable DLL */
 	 *EMI_CONI = emi_setting->EMI_CONI_value;
-	 *EMI_CONN = emi_setting->EMI_CONN_value | 0x00000801 | 0x02000000;
-	 __asm__ __volatile__ ("dsb" : : : "memory");
-	 gpt_busy_wait_us(10);
-	 *EMI_CONN = emi_setting->EMI_CONN_value | 0x00000801;
+	 *EMI_CONN = emi_setting->EMI_CONN_value |0x02000000;
+	 
+	 gpt_wait_us_dsb(10);
+	 *EMI_CONN = emi_setting->EMI_CONN_value;
 	  /* Delay 5us */
-	  __asm__ __volatile__ ("dsb" : : : "memory");
-	  gpt_busy_wait_us(10);
+	  
+	  gpt_wait_us_dsb(10);
 
 	 /* Load MR0, Reset DLL */
-	 *EMI_CONI = 0x03280000;
-	 *EMI_CONN = emi_setting->EMI_CONN_value | 0x00000801 | 0x02000000;
-	 __asm__ __volatile__ ("dsb" : : : "memory");
-	 gpt_busy_wait_us(10);
-	 *EMI_CONN = emi_setting->EMI_CONN_value | 0x00000801;
+	 *EMI_CONI = 0x13280000;
+	 *EMI_CONN = emi_setting->EMI_CONN_value | 0x02000000;
+	 
+	 gpt_wait_us_dsb(10);
+	 *EMI_CONN = emi_setting->EMI_CONN_value;
 	  /* Delay 5us */
-	  __asm__ __volatile__ ("dsb" : : : "memory");
-	  gpt_busy_wait_us(10);
 
-	 /* Load MR1 , Disable DLL */
-	 *EMI_CONI = emi_setting->EMI_CONI_value | 0x00010000;
-	 *EMI_CONN = emi_setting->EMI_CONN_value | 0x00000801 | 0x02000000;
-	 __asm__ __volatile__ ("dsb" : : : "memory");
-	 gpt_busy_wait_us(10);
-	 *EMI_CONN = emi_setting->EMI_CONN_value | 0x00000801;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+         gpt_wait_us_dsb(10);
 
 	  /**
 	  * Enable ZQ Calibration
 	  */
-	*EMI_DDRV = 0x13;			//Rank 0 ZQ calibration
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(200);
-	/* Disable ZQ Calibration */
-	*EMI_DDRV = 0x00;
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+	 *EMI_DDRV &= (~0x32);
+	 *EMI_DDRV |= 0x12; 		 //Rank 0 ZQ calibration
+	 *EMI_DDRV |= 0x01; 
+
+	gpt_wait_us_dsb(100);
+	 *EMI_DDRV &= (~0x01); 
+	 /* Wait 1us */ 
+
+	 gpt_wait_us_dsb(1);
+	 *EMI_DDRV &= (~0x32);		
 
 	if (2 == get_dram_rank_nr())
 	{
-		*EMI_DDRV = 0x23;			//Rank 1 ZQ calibration
-		__asm__ __volatile__ ("dsb" : : : "memory");
-		gpt_busy_wait_us(200);
-		/* Disable ZQ Calibration */
-		*EMI_DDRV = 0x00;
-		__asm__ __volatile__ ("dsb" : : : "memory");
-		gpt_busy_wait_us(10);
+	 *EMI_DDRV |= 0x22; 		  // Rank 1 ZQ calibration
+	 *EMI_DDRV |= 0x01; 
+	
+		gpt_wait_us_dsb(100);
+	 *EMI_DDRV &= (~0x01); 
+	 /* Wait 1us */ 
+	
+	 gpt_wait_us_dsb(1); 	
+	 *EMI_DDRV &= (~0x32);   
 	}
-
 }
 
+/*************************************************************************
+* FUNCTION
+*  mt_get_mdl_number()
+*
+* DESCRIPTION
+*   Get combo memory index
+*
+* PARAMETERS
+*   NONE
+*
+* RETURNS
+*  0 : index 0
+*  1 : index 1
+*  2 : index 2
+*
+* GLOBALS AFFECTED
+*
+*************************************************************************/
 static char id[22];
 static int emmc_nand_id_len=16;
 static int fw_id_len;
@@ -409,9 +956,8 @@ static int mt_get_mdl_number (void)
 {
     static int found = 0;
     static int mdl_number = -1;
+    volatile int match_count = 0;
     int i;
-    int j;
-
 
     if (!found)
     {
@@ -422,65 +968,154 @@ static int mt_get_mdl_number (void)
 
 #if 0 //defined(SAMPLE_BACK_USE)
          mdl_number = 0;  
+/*
+	 if ((*EMI_CONM & 0x10000000) == 0x10000000)
+	 {
+	     mdl_number = 1;  //NAND + LPDDR1
+	 }
+        else
+        {
+	     mdl_number = 0;  //eMMC + LPDDR2
+        }
+*/        
         found = 1;
 #else
         result = platform_get_mcp_id (id, emmc_nand_id_len,&fw_id_len);
+	if (result != 0)
+	{
+	    print("[EMI] get flash ID fail\n");
+        }
 
         for (i = 0; i < num_of_emi_records; i++)
         {
-            if (emi_settings[i].type != 0)
+            if (emi_settings[i].type != 0) // if valid dram type
             {
-                if ((emi_settings[i].type & 0xF00) != 0x000)
+                if ((emi_settings[i].type & 0xF00) != 0x000) // if MCP DRAM               
                 {
-                    if (result == 0)
-                    {   /* valid ID */
-
                         if ((emi_settings[i].type & 0xF00) == 0x100)
                         {
                             /* NAND */
-                            if (memcmp(id, emi_settings[i].ID, emi_settings[i].id_length) == 0){
-                                memset(id + emi_settings[i].id_length, 0, sizeof(id) - emi_settings[i].id_length);
+                            if (memcmp(id, emi_settings[i].Flash_ID, emi_settings[i].flash_id_length) == 0){
+                                memset(id + emi_settings[i].flash_id_length, 0, sizeof(id) - emi_settings[i].flash_id_length);
 				    mdl_number = i;
-				    found = 1;
-                                break; /* found */
+				    //found = 1;
+                                //break; /* found */
+				    emi_settings[i].match_flag = 1;
+				    match_count++;                                
                             }
                         }
                         else
                         {
                             /* eMMC */
-                            if (memcmp(id, emi_settings[i].ID, emi_settings[i].id_length) == 0)
+                            if (memcmp(id, emi_settings[i].Flash_ID, emi_settings[i].flash_id_length) == 0)
                             {
                                 mdl_number = i;
-				    found = 1;
-                                break; /* found */
+				    //found = 1;
+                                //break; /* found */
+				    emi_settings[i].match_flag = 1;
+				    match_count++;                                
                             }
+                        }                    
+                }
+            }
+        }
+
+		if(match_count == 1)
+		{
+		    found = 1;
+                }
+		else if(match_count >= 1) // more than 1 flash match,
+		{
+		      //print("[EMI] more than 1 flash ID match!\n");  
+		      result = get_board_dram_info();			
+       	       for (i = 0; i < num_of_emi_records; i++)
+               	{
+               		if ((emi_settings[i].match_flag == 1) && ((emi_settings[i].type & 0xF) == board_dram_info.dram_type))    
+               		{
+               			if(((emi_settings[i].type & 0xF) == 0x001) ||((emi_settings[i].type & 0xF) == 0x003) )
+               			{
+               				mdl_number = i;
+               				found = 1;
+               				break;
+                                    }
+               			// check lpddr2 and lpddr3
+               			else if((emi_settings[i].DRAM_ID == board_dram_info.vendor_id) &&
+               			  	(emi_settings[i].DRAM_RANK_SIZE[0] == board_dram_info.rank0_size) &&
+               			  	(emi_settings[i].DRAM_RANK_SIZE[1] == board_dram_info.rank1_size))
+                       	        {
+       		      			mdl_number = i;
+       		      			found = 1;
+                           	              break;
                         }
                     }
-		      else
+                      }
+               	
+           		 if (found == 0)
 		      {
-		              print("[EMI] Fail to get flash ID !!\n");
+          		 	print("[EMI] %d flash ID match, no DRAM info match !\r\n", match_count);
+          		 	ASSERT(0);
 		      	}
                 }
-                else
+		
+		else if(match_count == 0) // no flash match, check discrete DRAM
+		{
+			result = get_board_dram_info();
+	              for (i = 0; i < num_of_emi_records; i++)
+        		{
+              		if (((emi_settings[i].type & 0xF00) == 0x000) && ((emi_settings[i].type & 0xF) == board_dram_info.dram_type))
+              		{
+              			if(((emi_settings[i].type & 0xF) == 0x001) ||((emi_settings[i].type & 0xF) == 0x003) )
+                                  {
+              				mdl_number = i;
+              				found = 1;
+              				break;
+              			}				  		      		
+              			else if((emi_settings[i].DRAM_ID == board_dram_info.vendor_id) &&
+              			  	(emi_settings[i].DRAM_RANK_SIZE[0] == board_dram_info.rank0_size) &&
+              			  	(emi_settings[i].DRAM_RANK_SIZE[1] == board_dram_info.rank1_size))
                 {
-                    /* Discrete DDR */
 		      mdl_number = i;
 		      found = 1;
                     break;
                 }
             }
         }
+            	
+         		if (found == 0)
+         		{
+        			 	print("[EMI] no flash ID match, no DRAM info match !\r\n");
+        			 	ASSERT(0);
+         		}            	
+               }
 #endif
     }
 
     if (found == 0)
     {
-       print("[EMI] flash ID not match !!\r\n");
+       print("[EMI] no MDL match !\r\n");
     }
 
     return mdl_number;
 }
 
+/*************************************************************************
+* FUNCTION
+*  mt_get_dram_type()
+*
+* DESCRIPTION
+*   Get DRAM type
+*
+* PARAMETERS
+*   NONE
+*
+* RETURNS
+*  1 : LPDDR1
+*  2 : LPDDR2
+*  3 : PCDDR3/LPDDR3
+*
+* GLOBALS AFFECTED
+*
+*************************************************************************/
 int mt_get_dram_type (void)
 {
     int n;
@@ -495,6 +1130,24 @@ int mt_get_dram_type (void)
     return (emi_settings[n].type & 0xF);
 }
 
+/*************************************************************************
+* FUNCTION
+*  get_dram_rank_nr()
+*
+* DESCRIPTION
+*   Get DRAM rank numbers
+*
+* PARAMETERS
+*   NONE
+*
+* RETURNS
+*  1 : 1 rank
+*  2 : 2 ranks
+* -1 : error
+*
+* GLOBALS AFFECTED
+*
+*************************************************************************/
 int get_dram_rank_nr (void)
 {
     int index;
@@ -515,7 +1168,7 @@ int get_dram_rank_nr (void)
     }
     else if ((0 == emi_gend) ||(0x20000 == emi_gend))
     {
-	  print("[EMI] rank setting is wrong !!");
+	  print("[EMI] rank set wrong !");
 	  while(1);
          return -1;
     }
@@ -580,11 +1233,11 @@ void __EMI_InitializeLPDDR( EMI_SETTINGS *emi_setting )
 
        /* reset EMI HW register */
        *EMI_RBSELA = 0x20;
-        __asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+        
+	gpt_wait_us_dsb(10);
 	*EMI_RBSELA = 0x00;
-        __asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(10);
+        
+	gpt_wait_us_dsb(10);
 
 	/**
 	* Initial EMI MPU
@@ -761,18 +1414,15 @@ void __EMI_InitializeLPDDR( EMI_SETTINGS *emi_setting )
     }
     else if ((emi_setting->type & 0xF) == 3)
     {
-         if ((emi_setting->type & 0xF00) == 0)
-         {
              init_pcdram3(emi_setting);  //PCDDR3
-         }
-	  else
+    }
+    else if ((emi_setting->type & 0xF) == 4)
 	  {
 	      init_lpddr3(emi_setting);	 //LPDDR3
 	  }
-    }
     else
     {
-        print("[EMI] Abnormal DRAM type setting");
+        print("[EMI] Abnormal DRAM type");
 	 while(1);
     }
 
@@ -781,13 +1431,13 @@ void __EMI_InitializeLPDDR( EMI_SETTINGS *emi_setting )
    */
    *EMI_CONN |=  0x00000017;
 
-    __asm__ __volatile__ ("dsb" : : : "memory");
-    gpt_busy_wait_us(5);
+    
+    gpt_wait_us_dsb(5);
 
 #ifdef DQSI_MAX_DELAY_TAP_BY_DLL 
 	 *EMI_CONN |= 0x100;    //Enable 1/5T DLL
-	 __asm__ __volatile__ ("dsb" : : : "memory");
-	 gpt_busy_wait_us(10);
+	 
+	 gpt_wait_us_dsb(10);
 	 while((*EMI_DLLV & 0x80)== 0);  
 	 i = *EMI_DLLV & 0x1F;    //Get 1/5T DLL value 
 				
@@ -887,8 +1537,8 @@ kal_int32 __EMI_DataTrackingMbistTestCore(kal_int32 algo_sel, kal_int32 addr_scr
        * MBIST reset.
        */
     *EMI_MBISTA = 0x0;
-    __asm__ __volatile__ ("dsb" : : : "memory");
-    gpt_busy_wait_us(10);
+    
+    gpt_wait_us_dsb(10);
 
     /**
        * MBIST data-pattern setting.
@@ -909,19 +1559,19 @@ kal_int32 __EMI_DataTrackingMbistTestCore(kal_int32 algo_sel, kal_int32 addr_scr
        * ClearBIST address/data scramble and algorithm.
        */
     *EMI_MBISTA &= 0xFFFF000F;
-     __asm__ __volatile__ ("dsb" : : : "memory");
-     gpt_busy_wait_us(1);
+     
+     gpt_wait_us_dsb(1);
 
     *EMI_MBISTA |= (0x00220000 | algo_sel<<4 | addr_scramble_sel<<12 | data_scramble_sel<<8 | 1);
-    __asm__ __volatile__ ("dsb" : : : "memory");
-    gpt_busy_wait_us(50);
+    
+    gpt_wait_us_dsb(50);
 
     /**
        * Start MBIST test.
        */
     *EMI_MBISTA = *EMI_MBISTA | 2;
-     __asm__ __volatile__ ("dsb" : : : "memory");
-     gpt_busy_wait_us(50);
+     
+     gpt_wait_us_dsb(50);
 
     /**
        * Polling the MBIST test finish status.
@@ -1017,8 +1667,8 @@ kal_int32 __EMI_DataTrackingMbistTestCore(kal_int32 algo_sel, kal_int32 addr_scr
            * MBIST reset.
            */
         *EMI_MBISTA = 0x0;
-	  __asm__ __volatile__ ("dsb" : : : "memory");
-	  gpt_busy_wait_us(10);
+	  
+	  gpt_wait_us_dsb(10);
 
         return -1;
     }
@@ -1028,8 +1678,8 @@ kal_int32 __EMI_DataTrackingMbistTestCore(kal_int32 algo_sel, kal_int32 addr_scr
            * MBIST reset.
            */
         *EMI_MBISTA = 0x0;
-	   __asm__ __volatile__ ("dsb" : : : "memory");
-	  gpt_busy_wait_us(10);
+	   
+	  gpt_wait_us_dsb(10);
 
         return 0;
     }
@@ -1123,8 +1773,7 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
      *EMI_CALP &= ~0xFFFF0003;
      *EMI_DQSI &= ~0x000000FF;
 
-     __asm__ __volatile__ ("dsb" : : : "memory");
-     gpt_busy_wait_us(1);
+     gpt_wait_us_dsb(1);
 
     for(dqsix_dlysel=0x0; dqsix_dlysel<=DQSI_TUNING_BOUND; dqsix_dlysel+=DQSI_TUNING_STEP/* 8 */)
     {
@@ -1156,8 +1805,8 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
         *EMI_CALA = *EMI_CALB = 0;
         *EMI_CALI = *EMI_CALJ = 0;
 
-	 __asm__ __volatile__ ("dsb" : : : "memory");
-	 gpt_busy_wait_us(1);
+	 
+	 gpt_wait_us_dsb(1);
 
         /*Iterate dq_in delay 0x1F ~ 0*/
         for(dqy_in_del=DQ_IN_DLY_TAPS; dqy_in_del>=0; dqy_in_del-=DATA_TUNING_STEP)
@@ -1167,8 +1816,8 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
 
             // Clear DDRFIFO
             *EMI_CALP |= 0x00000100;
-	     __asm__ __volatile__ ("dsb" : : : "memory");
-	     gpt_busy_wait_us(1);
+	     
+	     gpt_wait_us_dsb(1);
             *EMI_CALP &= 0xFFFFFEFF;
 
             /* do DQS calibration */
@@ -1219,8 +1868,7 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
         dqy_in_del = 0; /*This value should be already be 0*/
         *EMI_IDLA = *EMI_IDLB = *EMI_IDLC = *EMI_IDLD = *EMI_IDLE = *EMI_IDLF = *EMI_IDLG = *EMI_IDLH = 0;
 
-	 __asm__ __volatile__ ("dsb" : : : "memory");
-	 gpt_busy_wait_us(1);
+	 gpt_wait_us_dsb(1);
 
         for(bytex_setup_mod=0; bytex_setup_mod<=DATA_SETUP_TAPS; bytex_setup_mod+=DATA_TUNING_STEP)
         {
@@ -1230,8 +1878,8 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
 
             // Clear DDRFIFO
             *EMI_CALP |= 0x00000100;
-	     __asm__ __volatile__ ("dsb" : : : "memory");
-	     gpt_busy_wait_us(1);
+	     
+	     gpt_wait_us_dsb(1);
             *EMI_CALP &= 0xFFFFFEFF;
 
             /* do DQS calibration */
@@ -1280,8 +1928,7 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
         /*Under disable data tracking, data setup of rank 1 also use EMI_CALE */
         *EMI_CALE  = bytex_setup_mod<<24 | bytex_setup_mod<<16 | bytex_setup_mod<<8 | bytex_setup_mod;
 
-        __asm__ __volatile__ ("dsb" : : : "memory");
- 	 gpt_busy_wait_us(1);
+ 	 gpt_wait_us_dsb(1);
 
         for(bytex_dly_mod=0; bytex_dly_mod<=DQS_IN_DLY_TAPS; bytex_dly_mod+=DATA_TUNING_STEP)
         {
@@ -1296,8 +1943,8 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
 
             // Clear DDRFIFO
             *EMI_CALP |= 0x00000100;
-	     __asm__ __volatile__ ("dsb" : : : "memory");
-	     gpt_busy_wait_us(1);
+	     
+	     gpt_wait_us_dsb(1);
             *EMI_CALP &= 0xFFFFFEFF;
 
             /* do DQS calibration */
@@ -1383,8 +2030,7 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
 	     }
             *EMI_IDLA = *EMI_IDLB = *EMI_IDLC = *EMI_IDLD = *EMI_IDLE = *EMI_IDLF = *EMI_IDLG = *EMI_IDLH = prev_emi_idl;
 
-	      __asm__ __volatile__ ("dsb" : : : "memory");
-	      gpt_busy_wait_us(1);
+	      gpt_wait_us_dsb(1);
 
             #if DEBUG_MODE
                 dbg_print("(N/A) Window size = %d, DQSI=0x%x\n\r", dwnd_size, dqsix_dlysel);
@@ -1445,8 +2091,8 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
 
         if (DQSI_start==0xffffffff) DQSI_start = dqsix_dlysel; //Record the 1st DQSI value
 
-	print("[EMI] [Training] DQSI = 0x%x, Window = %d \n", dqsix_dlysel, dwnd_size);
-	print("[EMI] [Training] dq_in_dly_strart = 0x%x, byte_setup_start = 0x%x,, byte_dly_start = 0x%x \n", dqy_in_del_start, bytex_setup_mod_start, bytex_dly_mod_start);
+	print("[EMI] [Train] DQSI=0x%x,Window=%d \n", dqsix_dlysel, dwnd_size);
+	print("[EMI] [Train] dq_in_dly_strart=0x%x, byte_setup_start=0x%x, byte_dly_start=0x%x \n", dqy_in_del_start, bytex_setup_mod_start, bytex_dly_mod_start);
 
         /* Stop tuning when the prev_dwnd_size is greater than current window size */
         if(prev_dwnd_size && (prev_dwnd_size > (dwnd_size+WINDOW_SIZE_THRESHOLD)))
@@ -1469,8 +2115,7 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
       	      }
             *EMI_IDLA = *EMI_IDLB = *EMI_IDLC = *EMI_IDLD = *EMI_IDLE = *EMI_IDLF = *EMI_IDLG = *EMI_IDLH = prev_emi_idl;
 
-	     __asm__ __volatile__ ("dsb" : : : "memory");
-	     gpt_busy_wait_us(1);
+	     gpt_wait_us_dsb(1);
 
             /*------------------------------------------------------------------------------
                 Once find a windows less or equal previous one, use:
@@ -1537,8 +2182,8 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
 		 *EMI_CALJ = prev_emi_cali;
 	}
 
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	gpt_busy_wait_us(1);
+
+	gpt_wait_us_dsb(1);
 
         /*Go next mask setting*/
     }
@@ -1565,8 +2210,7 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
 	  *EMI_DQSC = *EMI_DQSD = DQSI_center<<16 | DQSI_center;
     }
 
-    __asm__ __volatile__ ("dsb" : : : "memory");
-    gpt_busy_wait_us(1);
+    gpt_wait_us_dsb(1);
 
     /*------------------------------------------------------------------------------
         Set up MAX "Data Setup" & " Data Hold"
@@ -1580,7 +2224,7 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
 	  value = prev_bytex_setup_mod_start + (prev_dwnd_size >> 1) - temp ;
 	  if (value >= DQS_IN_DLY_TAPS)
 	  {	  
-	       print("[EMI] EMI_IDLI over 0x1F !!  EMI_IDLI = 0x%x  \n", value);
+	       print("[EMI] EMI_IDLI=0x%x > 0x1F !\n", value);
 	       value = DQS_IN_DLY_TAPS;
 	  }	
 	  *EMI_IDLI = value<<24 | value <<16 | value <<8 | value;
@@ -1596,7 +2240,7 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
 	  value = prev_bytex_setup_mod_start + (prev_dwnd_size >> 1)  - temp ;
 	  if (value >= DQS_IN_DLY_TAPS)
     {
-	       print("[EMI] EMI_IDLJ over 0x1F !!  EMI_IDLJ = 0x%x  \n", value);
+	       print("[EMI] EMI_IDLJ=0x%x > 0x1F !\n", value);
 	       value = DQS_IN_DLY_TAPS;
 	  }	
 	  *EMI_IDLJ= value<<24 | value <<16 | value <<8 | value;
@@ -1610,7 +2254,7 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
 		   value = value + (pResult->EMI_IDLI_regval & DQS_IN_DLY_TAPS);
 		   if (value >= DQS_IN_DLY_TAPS)
 	          {	          
-		      print("[EMI] EMI_IDLI over 0x1F !!  EMI_IDLI = 0x%x  \n", value);
+		      print("[EMI] EMI_IDLI=0x%x > 0x1F !\n", value);
 	              value = DQS_IN_DLY_TAPS;
 	          }		 
 		   pResult->EMI_IDLI_regval = value<<24 | value <<16 | value <<8 | value;
@@ -1627,7 +2271,7 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
 		   value = value + (*EMI_IDLJ & DQS_IN_DLY_TAPS);
 		   if (value >= DQS_IN_DLY_TAPS)
 	          {	          
-		      print("[EMI] EMI_IDLJ over 0x1F !!  EMI_IDLJ = 0x%x  \n", value);
+		      print("[EMI] EMI_IDLJ=0x%x > 0x1F !\n", value);
 	              value = DQS_IN_DLY_TAPS;
 	          }	
            #endif  // ifdef IMPROVE_DQS_STROBE   
@@ -1646,8 +2290,8 @@ int __EMI_DataAutoTrackingTraining( EMI_DATA_TRAIN_REG_t* pResult, int rank_idx 
     /* Enable auto data tracking*/
     value = ((prev_dwnd_size/2) > DATA_SETUP_TAPS) ? DATA_SETUP_TAPS : (prev_dwnd_size/2);
     *EMI_CALP &= 0x0000FFFF;
-    __asm__ __volatile__ ("dsb" : : : "memory");
-    gpt_busy_wait_us(1);
+    
+    gpt_wait_us_dsb(1);
     *EMI_CALP |= ( 1 << 31 ) | ( value << 24) | ( 1 << 23 ) | ( value << 16 );
 
     /* Make sure the CAL_EN is ENABLED */
@@ -1768,33 +2412,32 @@ int __EMI_EnableDataAutoTracking( EMI_DATA_TRAIN_REG_t* DATA_TRAIN_RESULT_REG, E
     /**
        * Add new timing delay to meet new EMI timing constrain that after enabling 1/5 DLL.
        */
-    __asm__ __volatile__ ("dsb" : : : "memory");
-     gpt_busy_wait_us(100);
+
+     gpt_wait_us_dsb(100);
 
 #endif // __EMI_DATA_AUTO_TRACKING_ENABLE
-
 
 #ifdef SW_WORKAROUND_FOR_DUALRANKS
 		 if (((emi_setting->type & 0xF) == 1) && (2 == get_dram_rank_nr()))  // LPDDR1 with dual ranks
 		 {
 		        /* Tune rank 0 */
 			*EMI_GEND =  ((*EMI_GEND) & (~0x00030000)) | 0x10000;
-			__asm__ __volatile__ ("dsb" : : : "memory");
-			gpt_busy_wait_us(10);
+		
+			gpt_wait_us_dsb(10);
                
 			*EMI_DQSI |= 0x300000FF;  //Enable DQSI_DCM_SW_TUNE to update DQS pulse counters for exit sefl-refresh
-			__asm__ __volatile__ ("dsb" : : : "memory");
-			gpt_busy_wait_us(10);
+		
+			gpt_wait_us_dsb(10);
 			  
 			while((*EMI_DQSI & 0x10000) == 0);	  //wait auto-tuning done
 			*EMI_DQSI &= (~0x20000000);  //Disable DQSI_DCM_SW_TUNE, Must mask DQSI_AUTO_TUNE_DONE	
-			__asm__ __volatile__ ("dsb" : : : "memory");
-			gpt_busy_wait_us(10);
+		
+			gpt_wait_us_dsb(10);
 				
 		        /* 2nd time enable DQSI_DCM_SW_TUNE to get final DQSA ~ D*/	 
 			*EMI_DQSI |= 0x20000000;  //Enable DQSI_DCM_SW_TUNE to update DQS pulse counters for exit sefl-refresh
-			__asm__ __volatile__ ("dsb" : : : "memory");
-			gpt_busy_wait_us(10);
+		
+			gpt_wait_us_dsb(10);
 				
 			while((*EMI_DQSI & 0x10000) == 0);	//wait auto-tuning done
 
@@ -1806,29 +2449,29 @@ int __EMI_EnableDataAutoTracking( EMI_DATA_TRAIN_REG_t* DATA_TRAIN_RESULT_REG, E
 			Rank0_DQS2 = (Rank0_DQS2 & 0x0000ffff);	  
  
 	              *EMI_DQSI &= (~0x300000FF);  //Disable DQSI_DCM_SW_TUNE, Must mask DQSI_AUTO_TUNE_DONE  
-			 __asm__ __volatile__ ("dsb" : : : "memory");
-	              gpt_busy_wait_us(10);
+			 
+	              gpt_wait_us_dsb(10);
 				  
 			 /* Tune rank 1 */ 
 			  /* switch to read rank1 DQS */		 
 			 *EMI_CONN = (*EMI_CONN & (~0x00004000)) | 0x4000;
 			 *EMI_GEND =  ((*EMI_GEND) & (~0x00030000)) | 0x20000;
-			 __asm__ __volatile__ ("dsb" : : : "memory");
-			 gpt_busy_wait_us(10);
+			 
+			 gpt_wait_us_dsb(10);
 				
 			 *EMI_DQSI |= 0x300000FF;  //Enable DQSI_DCM_SW_TUNE to update DQS pulse counters for exit sefl-refresh
-			 __asm__ __volatile__ ("dsb" : : : "memory");
-			 gpt_busy_wait_us(10);
+			 
+			 gpt_wait_us_dsb(10);
 			   
 			 while((*EMI_DQSI & 0x10000) == 0);    //wait auto-tuning done
 			 *EMI_DQSI &= (~0x20000000);  //Disable DQSI_DCM_SW_TUNE, Must mask DQSI_AUTO_TUNE_DONE  
-			 __asm__ __volatile__ ("dsb" : : : "memory");
-			 gpt_busy_wait_us(10);
+			 
+			 gpt_wait_us_dsb(10);
 				 
 		        /* 2nd time enable DQSI_DCM_SW_TUNE to get final DQSA ~ D*/  
 			 *EMI_DQSI |= 0x20000000;  //Enable DQSI_DCM_SW_TUNE to update DQS pulse counters for exit sefl-refresh
-			 __asm__ __volatile__ ("dsb" : : : "memory");
-			 gpt_busy_wait_us(10);
+			 
+			 gpt_wait_us_dsb(10);
 				 
 			 while((*EMI_DQSI & 0x10000) == 0);  //wait auto-tuning done
 			 
@@ -1847,9 +2490,9 @@ int __EMI_EnableDataAutoTracking( EMI_DATA_TRAIN_REG_t* DATA_TRAIN_RESULT_REG, E
      			 /* switch back to default read rank0 DQS */
 		        *EMI_GEND =  ((*EMI_GEND) & (~0x00030000)) | 0x30000;
 	
-	               __asm__ __volatile__ ("dsb" : : : "memory");
-	               gpt_busy_wait_us(10);
-
+	               
+	               gpt_wait_us_dsb(10);
+	
 	         #ifdef DUAL_RANK_LP1_LOG
 	               print("[EMI] 1st DQSI \n");
 			 print("[EMI] R0 DQS0 = 0x%X\n", Rank0_DQS0);
@@ -1881,28 +2524,28 @@ int __EMI_EnableDataAutoTracking( EMI_DATA_TRAIN_REG_t* DATA_TRAIN_RESULT_REG, E
                        	  *EMI_DQSB = Rank0_DQS2 + (Rank0_DQS3 << 16);
                        	  *EMI_DQSC = Rank1_DQS0 + (Rank1_DQS1 << 16);
                        	  *EMI_DQSD = Rank1_DQS2 + (Rank1_DQS3 << 16);
-				   __asm__ __volatile__ ("dsb" : : : "memory");
-				   gpt_busy_wait_us(10);	
+				   
+				   gpt_wait_us_dsb(10);	
 
        		       /* Tune 2nd round */	   
        		       /* Tune rank 0 */
        			*EMI_GEND =  ((*EMI_GEND) & (~0x00030000)) | 0x10000;
-       			__asm__ __volatile__ ("dsb" : : : "memory");
-       			gpt_busy_wait_us(10);
+       		
+       			gpt_wait_us_dsb(10);
                       
        			*EMI_DQSI |= 0x300000FF;  //Enable DQSI_DCM_SW_TUNE to update DQS pulse counters for exit sefl-refresh
-       			__asm__ __volatile__ ("dsb" : : : "memory");
-       			gpt_busy_wait_us(10);
+       		
+       			gpt_wait_us_dsb(10);
        			  
        			while((*EMI_DQSI & 0x10000) == 0);	  //wait auto-tuning done
        			*EMI_DQSI &= (~0x20000000);  //Disable DQSI_DCM_SW_TUNE, Must mask DQSI_AUTO_TUNE_DONE	
-       			__asm__ __volatile__ ("dsb" : : : "memory");
-       			gpt_busy_wait_us(10);
+       		
+       			gpt_wait_us_dsb(10);
        				
        		        /* 2nd time enable DQSI_DCM_SW_TUNE to get final DQSA ~ D*/	 
        			*EMI_DQSI |= 0x20000000;  //Enable DQSI_DCM_SW_TUNE to update DQS pulse counters for exit sefl-refresh
-       			__asm__ __volatile__ ("dsb" : : : "memory");
-       			gpt_busy_wait_us(10);
+       		
+       			gpt_wait_us_dsb(10);
        				
        			while((*EMI_DQSI & 0x10000) == 0);	//wait auto-tuning done
        
@@ -1914,29 +2557,29 @@ int __EMI_EnableDataAutoTracking( EMI_DATA_TRAIN_REG_t* DATA_TRAIN_RESULT_REG, E
        			Rank0_DQS2 = (Rank0_DQS2 & 0x0000ffff);	  
         
        	              *EMI_DQSI &= (~0x300000FF);  //Disable DQSI_DCM_SW_TUNE, Must mask DQSI_AUTO_TUNE_DONE  
-       			 __asm__ __volatile__ ("dsb" : : : "memory");
-       	              gpt_busy_wait_us(10);
+       			 
+       	              gpt_wait_us_dsb(10);
        				  
        			 /* Tune rank 1 */ 
        			  /* switch to read rank1 DQS */		 
        			 *EMI_CONN = (*EMI_CONN & (~0x00004000)) | 0x4000;
        			 *EMI_GEND =  ((*EMI_GEND) & (~0x00030000)) | 0x20000;
-       			 __asm__ __volatile__ ("dsb" : : : "memory");
-       			 gpt_busy_wait_us(10);
+       			 
+       			 gpt_wait_us_dsb(10);
        				
        			 *EMI_DQSI |= 0x300000FF;  //Enable DQSI_DCM_SW_TUNE to update DQS pulse counters for exit sefl-refresh
-       			 __asm__ __volatile__ ("dsb" : : : "memory");
-       			 gpt_busy_wait_us(10);
+       			 
+       			 gpt_wait_us_dsb(10);
        			   
        			 while((*EMI_DQSI & 0x10000) == 0);    //wait auto-tuning done
        			 *EMI_DQSI &= (~0x20000000);  //Disable DQSI_DCM_SW_TUNE, Must mask DQSI_AUTO_TUNE_DONE  
-       			 __asm__ __volatile__ ("dsb" : : : "memory");
-       			 gpt_busy_wait_us(10);
+       			 
+       			 gpt_wait_us_dsb(10);
        				 
        		        /* 2nd time enable DQSI_DCM_SW_TUNE to get final DQSA ~ D*/  
        			 *EMI_DQSI |= 0x20000000;  //Enable DQSI_DCM_SW_TUNE to update DQS pulse counters for exit sefl-refresh
-       			 __asm__ __volatile__ ("dsb" : : : "memory");
-       			 gpt_busy_wait_us(10);
+       			 
+       			 gpt_wait_us_dsb(10);
        				 
        			 while((*EMI_DQSI & 0x10000) == 0);  //wait auto-tuning done
        			 
@@ -1955,8 +2598,8 @@ int __EMI_EnableDataAutoTracking( EMI_DATA_TRAIN_REG_t* DATA_TRAIN_RESULT_REG, E
             			 /* switch back to default read rank0 DQS */
        		        *EMI_GEND =  ((*EMI_GEND) & (~0x00030000)) | 0x30000;
        	
-       	               __asm__ __volatile__ ("dsb" : : : "memory");
-       	               gpt_busy_wait_us(10);
+       	               
+       	               gpt_wait_us_dsb(10);
 	
                       #ifdef DUAL_RANK_LP1_LOG
 	                          print("[EMI] 2nd DQSI \n");
@@ -2009,7 +2652,7 @@ int __EMI_EnableDataAutoTracking( EMI_DATA_TRAIN_REG_t* DATA_TRAIN_RESULT_REG, E
                            	  *EMI_DQSC = Rank1_DQS0 + (Rank1_DQS1 << 16);
                            	  *EMI_DQSD = Rank1_DQS2 + (Rank1_DQS3 << 16);	
                          }  
-
+                     
                #ifdef DUAL_RANK_LP1_LOG					 
 			 print("[EMI] Final DQSI \n");
 			 print("[EMI] R0 DQS0 = 0x%X\n", Rank0_DQS0);
@@ -2036,8 +2679,8 @@ else
      {
          *EMI_DQSI |= 0x3000000F;  //Enable DQSI_DCM_SW_TUNE to update DQS pulse counters for exit sefl-refresh
      }
-     __asm__ __volatile__ ("dsb" : : : "memory");
-      gpt_busy_wait_us(10);
+     
+      gpt_wait_us_dsb(10);
 
      while((*EMI_DQSI & 0x10000) == 0);  //wait auto-tuning done
      *EMI_DQSI &= (~0x20000000);  //Disable DQSI_DCM_SW_TUNE, Must mask DQSI_AUTO_TUNE_DONE
@@ -2065,23 +2708,20 @@ else
 	else   
 #endif
        {
-	   *EMI_DRCT |= 0x00000001;
-       }
+	*EMI_DRCT |= 0x00000001;
+    }
     }
     else if ((emi_setting->type & 0xF) == 2)  //LPDDR2
     {
 	*EMI_DRCT |= 0x00000001;  //0x00000045;  
     }
-    else if ((emi_setting->type & 0xF) == 3)
+    else if ((emi_setting->type & 0xF) == 3) //PCDDR3
     {
-         if ((emi_setting->type & 0xF00) == 0) 	 //PCDDR3
-         {
-		 *EMI_DRCT |= 0x00000001;
-         }
-	  else  //LPDDR3
-	  {
-		 *EMI_DRCT |= 0x00000045;   // CM [20121018] wait for implement 
-	  }
+        *EMI_DRCT |= 0x00000001;
+    }
+    else if ((emi_setting->type & 0xF) == 4)  //LPDDR3
+    {
+        *EMI_DRCT |= 0x00000001;   
     }
 
     return ret;
@@ -2170,48 +2810,80 @@ int __EMI_EnablePerformancePowerControl(EMI_SETTINGS *emi_setting)
 			*EMI_ADSJ = 0x77445544;
     	       }
     }
-    else if ((emi_setting->type & 0xF) == 3)
-    {
-         if ((emi_setting->type & 0xF00) == 0)
+    else if ((emi_setting->type & 0xF) == 3)  //PCDDR3
 {
     /**
        * Setup Precharge & PDN delay
        */
 		 //*(volatile kal_uint32*)EMI_PPCT=0xFFDFBF0A;  //must disable memory preserve mode
 
-		 *(volatile kal_uint32*)EMI_SLCT=0x00000000;
+           	    *(volatile kal_uint32*)EMI_SLCT=0x3F183F00;
 
     /**
 			 * Setup 1/16 freq for HWDCM mode and enable arbitration controls
         */
-		 *(volatile kal_uint32*)EMI_ABCT=0x00000010;
+		     *(volatile kal_uint32*)EMI_ABCT=0xAA300010;
 
+       		  *EMI_ADSA = 0x33333210;
+       		  *EMI_ADSB = 0x66654210;
+       		  *EMI_ADSC = 0x33333210;
+       		  *EMI_ADSD = 0x77754210;
+       		  *EMI_ADSE = 0x77336633;
+       		  *EMI_ADSF = 0x66666532;
+       		  *EMI_ADSG = 0x44444432;
+       		  *EMI_ADSH = 0x66666532;
+       		  *EMI_ADSI = 0x66666532;
+       		  *EMI_ADSJ = 0x77777532;
          }
-	  else
+    else if ((emi_setting->type & 0xF) == 4)  //LPDDR3
 	  {
 		  /**
 			 * Setup Precharge & PDN delay
 			 */
 		  //*(volatile kal_uint32*)EMI_PPCT=0xFFDFBF0A;  // must disable memory preserve mode
 
-		  *(volatile kal_uint32*)EMI_SLCT=0x00000000;
+		 *(volatile kal_uint32*)EMI_SLCT=0x3F183F00;
 
     /**
         * Setup 1/16 freq for HWDCM mode and enable arbitration controls
         */
-		  *(volatile kal_uint32*)EMI_ABCT=0x00000010;
+		  *(volatile kal_uint32*)EMI_ABCT=0xAA300010;
 
-	  }
+       		  *EMI_ADSA = 0x44444210;
+       		  *EMI_ADSB = 0x66665210;
+       		  *EMI_ADSC = 0x44444210;
+       		  *EMI_ADSD = 0x77775210;
+       		  *EMI_ADSE = 0x77446644;
+       		  *EMI_ADSF = 0x44444421;
+       		  *EMI_ADSG = 0x44444421;
+       		  *EMI_ADSH = 0x44444421;
+       		  *EMI_ADSI = 0x77777521;
+       		  *EMI_ADSJ = 0x77444444;
     }
     else
     {
-        print("[EMI] Abnormal DRAM type setting");
+        print("[EMI] Abnormal DRAM type");
 	 while(1);
     }
 
     return 0;
 }
 
+/*************************************************************************
+* FUNCTION
+*  __EMI_EnableBandwidthLimiter()
+*
+* DESCRIPTION
+*   This routine aims to set EMI
+*
+* PARAMETERS
+*
+* RETURNS
+*  None
+*
+* GLOBALS AFFECTED
+*
+*************************************************************************/
 int __EMI_EnableBandwidthLimiter(EMI_SETTINGS *emi_setting)
 {
     if ((emi_setting->type & 0xF) == 1)   //LPDDR1
@@ -2257,20 +2929,31 @@ int __EMI_EnableBandwidthLimiter(EMI_SETTINGS *emi_setting)
               	*EMI_ARBG = 0x00080008;
     	       }
     }
-    else if ((emi_setting->type & 0xF) == 3)
+    else if ((emi_setting->type & 0xF) == 3)  //PCDDR3
     {
-         if ((emi_setting->type & 0xF00) == 0)    //PCDDR3 666
-         {
+           if (0x00070000 == (*EMI_CONN & 0x00070000))  //PCDDR3x32
+           {           
 		 *EMI_ARBA = 0x00005443;
 		 *EMI_ARBB = 0x00005400;
 		 *EMI_ARBC = 0xFFFF5429;
-		 *EMI_ARBD = 0x03035612;
-		 *EMI_ARBE = 0xC8005401;
+		 *EMI_ARBD = 0x06065612;
+		 *EMI_ARBE = 0xFE005401;
 		 *EMI_ARBF = 0x00005401;
 		 *EMI_ARBG = 0x00080008;
-         }
-	  else  //LPDDR3
-	  {
+           }
+	    else //PCDDR3x16
+	    {           
+		 *EMI_ARBA = 0x00005433;
+		 *EMI_ARBB = 0x00005400;
+		 *EMI_ARBC = 0x40605440;
+		 *EMI_ARBD = 0x0602560A;
+		 *EMI_ARBE = 0x58505601;
+		 *EMI_ARBF = 0x00005401;
+		 *EMI_ARBG = 0x00080008;
+            }
+    }
+    else if ((emi_setting->type & 0xF) == 4)  //LPDDR3
+    {
 		  *EMI_ARBA = 0x00005443;
 		  *EMI_ARBB = 0x00005400;
 		  *EMI_ARBC = 0xFFFF5429;
@@ -2278,28 +2961,31 @@ int __EMI_EnableBandwidthLimiter(EMI_SETTINGS *emi_setting)
 		  *EMI_ARBE = 0xC8005401;
 		  *EMI_ARBF = 0x00005401;
 		  *EMI_ARBG = 0x00080008;
-	  }
     }
 
     return 0;
 
 }
 
+/*
+ * mt_set_emi: Set up EMI/DRAMC.
+ */
 void mt_set_emi (void)
 {
+    unsigned int EMI_reg;
     int index = 0;
     EMI_SETTINGS *emi_set;
     EMI_DATA_TRAIN_REG_t    DATA_TRAIN_RESULT_REG;
 
     print("[EMI] DDR%d\r\n", mt_get_dram_type ());
 
-    print("[EMI] eMMC/NAND ID = %x,%x,%x,%x,%x,%x,%x,%x,%x\r\n", id[0], id[1], id[2], id[3], id[4], id[5], id[6], id[7], id[8]);
+    print("[EMI] FLASH ID=%x,%x,%x,%x,%x,%x,%x,%x,%x\r\n", id[0], id[1], id[2], id[3], id[4], id[5], id[6], id[7], id[8]);
 
     index = mt_get_mdl_number ();
 
     if (index < 0 || index >=  num_of_emi_records)
     {
-        print("[EMI] setting failed 0x%x\r\n", index);
+        print("[EMI] EMI Set Fail 0x%x\r\n", index);
         return;
     }
 
@@ -2307,7 +2993,22 @@ void mt_set_emi (void)
 
     emi_set = &emi_settings[index];
 
-    print("[EMI] EMI clock = %d\r\n", emi_set->EMI_Freq);
+    /*********
+      *
+      * Initial EMI Clock.
+      *
+      ********/
+
+    if (0 == mtk_pll_init_emi(emi_set->EMI_Freq))
+    {
+    	print("[EMI] EMI CLK=%d\r\n", emi_set->EMI_Freq);    
+    }
+    else
+    {
+    	print("[EMI] EMI CLK fail!");
+    }
+
+    gpt_wait_us_dsb(1000);
 
     /*********
       *
@@ -2333,8 +3034,8 @@ void mt_set_emi (void)
     /**
     * Add new timing delay to meet new EMI timing constrain that after enabling 1/5 DLL.
     */
-    __asm__ __volatile__ ("dsb" : : : "memory");
-     gpt_busy_wait_us(100);
+    
+     gpt_wait_us_dsb(100);
 
     *EMI_DRCT = 0x00000001;
 #else
@@ -2356,8 +3057,8 @@ void mt_set_emi (void)
        /**
        * Add new timing delay to meet new EMI timing constrain that after enabling 1/5 DLL.
        */
-       __asm__ __volatile__ ("dsb" : : : "memory");
-        gpt_busy_wait_us(100);
+       
+        gpt_wait_us_dsb(100);
 
 
 	if (2 == get_dram_rank_nr())
@@ -2368,8 +3069,8 @@ void mt_set_emi (void)
 	{
 		*EMI_DQSI |= 0x3000000F;  //Enable DQSI_DCM_SW_TUNE to update DQS pulse counters for exit sefl-refresh
 	}
-	__asm__ __volatile__ ("dsb" : : : "memory");
-	 gpt_busy_wait_us(10);
+
+	 gpt_wait_us_dsb(10);
 
        while((*EMI_DQSI & 0x10000) == 0);  //wait auto-tuning done
 
@@ -2413,73 +3114,87 @@ void mt_set_emi (void)
     __EMI_EnableBandwidthLimiter(emi_set);
 #endif
 
-print("[EMI] DQSI = 0x%X\n", *EMI_DQSI);
-print("[EMI] DQSA = 0x%X\n", *EMI_DQSA);
-print("[EMI] DQSB = 0x%X\n", *EMI_DQSB);
-print("[EMI] DQSC = 0x%X\n", *EMI_DQSC);
-print("[EMI] DQSD = 0x%X\n", *EMI_DQSD);
+print("DQSI= 0x%X\n", *EMI_DQSI);
+print("DQSA=0x%X\n", *EMI_DQSA);
+print("DQSB=0x%X\n", *EMI_DQSB);
+print("DQSC=0x%X\n", *EMI_DQSC);
+print("DQSD=0x%X\n", *EMI_DQSD);
 
-print("[EMI] DQSU = 0x%X\n", *EMI_DQSU);
-print("[EMI] DQSV = 0x%X\n", *EMI_DQSV);
-print("[EMI] DLLV = 0x%X\n", *EMI_DLLV);
+print("DQSU=0x%X\n", *EMI_DQSU);
+print("DQSV=0x%X\n", *EMI_DQSV);
+print("DLLV=0x%X\n", *EMI_DLLV);
 
-print("[EMI] IDLA = 0x%X\n", *EMI_IDLA);
+print("IDLA=0x%X\n", *EMI_IDLA);
 #ifdef EMI_DEBUG_LOG
-print("[EMI] IDLB = 0x%X\n", *EMI_IDLB);
-print("[EMI] IDLC = 0x%X\n", *EMI_IDLC);
-print("[EMI] IDLD = 0x%X\n", *EMI_IDLD);
-print("[EMI] IDLE = 0x%X\n", *EMI_IDLE);
-print("[EMI] IDLF = 0x%X\n", *EMI_IDLF);
-print("[EMI] IDLG = 0x%X\n", *EMI_IDLG);
-print("[EMI] IDLH = 0x%X\n", *EMI_IDLH);
+print("IDLB=0x%X\n", *EMI_IDLB);
+print("IDLC=0x%X\n", *EMI_IDLC);
+print("IDLD=0x%X\n", *EMI_IDLD);
+print("IDLE=0x%X\n", *EMI_IDLE);
+print("IDLF=0x%X\n", *EMI_IDLF);
+print("IDLG=0x%X\n", *EMI_IDLG);
+print("IDLH=0x%X\n", *EMI_IDLH);
 #endif
 
-print("[EMI] IDLI = 0x%X\n", *EMI_IDLI);
-print("[EMI] IDLJ = 0x%X\n", *EMI_IDLJ);
+print("IDLI=0x%X\n", *EMI_IDLI);
+print("IDLJ=0x%X\n", *EMI_IDLJ);
 
-print("[EMI] ODLA = 0x%X\n", *EMI_ODLA);
+print("ODLA=0x%X\n", *EMI_ODLA);
 
 #ifdef EMI_DEBUG_LOG
-print("[EMI] ODLB = 0x%X\n", *EMI_ODLB);
-print("[EMI] ODLC = 0x%X\n", *EMI_ODLC);
-print("[EMI] ODLD = 0x%X\n", *EMI_ODLD);
-print("[EMI] ODLE = 0x%X\n", *EMI_ODLE);
-print("[EMI] ODLF = 0x%X\n", *EMI_ODLF);
-print("[EMI] ODLG = 0x%X\n", *EMI_ODLG);
-print("[EMI] ODLH = 0x%X\n", *EMI_ODLH);
+print("ODLB=0x%X\n", *EMI_ODLB);
+print("ODLC=0x%X\n", *EMI_ODLC);
+print("ODLD=0x%X\n", *EMI_ODLD);
+print("ODLE=0x%X\n", *EMI_ODLE);
+print("ODLF=0x%X\n", *EMI_ODLF);
+print("ODLG=0x%X\n", *EMI_ODLG);
+print("ODLH=0x%X\n", *EMI_ODLH);
 
-print("[EMI] ODLI = 0x%X\n", *EMI_ODLI);
-print("[EMI] ODLJ = 0x%X\n", *EMI_ODLJ);
-print("[EMI] ODLK = 0x%X\n", *EMI_ODLK);
-print("[EMI] ODLL = 0x%X\n", *EMI_ODLL);
-print("[EMI] ODLM = 0x%X\n", *EMI_ODLM);
-print("[EMI] ODLN = 0x%X\n", *EMI_ODLN);
+print("ODLI=0x%X\n", *EMI_ODLI);
+print("ODLJ=0x%X\n", *EMI_ODLJ);
+print("ODLK=0x%X\n", *EMI_ODLK);
+print("ODLL=0x%X\n", *EMI_ODLL);
+print("ODLM=0x%X\n", *EMI_ODLM);
+print("ODLN=0x%X\n", *EMI_ODLN);
 #endif
 
-print("[EMI] CONI = 0x%X\n", *EMI_CONI);
-print("[EMI] CONJ = 0x%X\n", *EMI_CONJ);
-print("[EMI] CONK = 0x%X\n", *EMI_CONK);
-print("[EMI] CONL = 0x%X\n", *EMI_CONL);
-print("[EMI] CONN = 0x%X\n", *EMI_CONN);
-print("[EMI] GEND = 0x%X\n", *EMI_GEND);
-print("[EMI] DRCT = 0x%X\n", *EMI_DRCT);
+print("CONI=0x%X\n", *EMI_CONI);
+print("CONJ=0x%X\n", *EMI_CONJ);
+print("CONK=0x%X\n", *EMI_CONK);
+print("CONL=0x%X\n", *EMI_CONL);
+print("CONN=0x%X\n", *EMI_CONN);
+print("GEND=0x%X\n", *EMI_GEND);
+print("DRCT=0x%X\n", *EMI_DRCT);
 
 print("[EMI] DRVA = 0x%X\n", *EMI_DRVA);
 #ifdef EMI_DEBUG_LOG
-print("[EMI] DRVB = 0x%X\n", *EMI_DRVB);
+print("DRVB=0x%X\n", *EMI_DRVB);
 
-print("[EMI] DUTA = 0x%X\n", *EMI_DUTA);
-print("[EMI] DUTB = 0x%X\n", *EMI_DUTB);
-print("[EMI] DUTC = 0x%X\n", *EMI_DUTC);
+print("DUTA=0x%X\n", *EMI_DUTA);
+print("DUTB=0x%X\n", *EMI_DUTB);
+print("DUTC=0x%X\n", *EMI_DUTC);
 
-print("[EMI] DUCA = 0x%X\n", *EMI_DUCA);
-print("[EMI] DUCB = 0x%X\n", *EMI_DUCB);
-print("[EMI] DUCE = 0x%X\n", *EMI_DUCE);
+print("DUCA=0x%X\n", *EMI_DUCA);
+print("DUCB=0x%X\n", *EMI_DUCB);
+print("DUCE=0x%X\n", *EMI_DUCE);
 #endif
 
 }
 
 
+/*************************************************************************
+* FUNCTION
+*  SRAM_repair()
+*
+* DESCRIPTION
+*   This routine use to repair SRAM
+*
+* PARAMETERS
+*
+* RETURNS
+*  -1 : fail
+*    0 : cuccess
+*
+*************************************************************************/
 int SRAM_repair(REPAIR_MODULE module)
 {
     int result = 0;
@@ -2494,27 +3209,27 @@ int SRAM_repair(REPAIR_MODULE module)
 	  /* 1st mbist */
 	  /* MFG & MMSYS SRAM repair */
 	  *MFG_RP_CON = 0x0;	  
-	  __asm__ __volatile__ ("dsb" : : : "memory");	  
-	  gpt_busy_wait_us(1);
+	  	  
+	  gpt_wait_us_dsb(1);
 	  *MFG_RP_CON = 0x1;	  
-	  __asm__ __volatile__ ("dsb" : : : "memory");	  
-	  gpt_busy_wait_us(1);
+	  	  
+	  gpt_wait_us_dsb(1);
 	  *MFG_MBIST_MODE = 0x80000002;
-	  __asm__ __volatile__ ("dsb" : : : "memory");	  
-	  gpt_busy_wait_us(1);
+	  	  
+	  gpt_wait_us_dsb(1);
 
 	  *MDP_WROT_MBISR_RESET = 0x0;
-	  __asm__ __volatile__ ("dsb" : : : "memory");	  
-	  gpt_busy_wait_us(1);
+	  	  
+	  gpt_wait_us_dsb(1);
 	  *MDP_WROT_MBISR_RESET = 0x1;
-	  __asm__ __volatile__ ("dsb" : : : "memory");	  
-	  gpt_busy_wait_us(1);
+	  	  
+	  gpt_wait_us_dsb(1);
 	  *MMSYS_MBIST_CON = 0x08000;
-	   __asm__ __volatile__ ("dsb" : : : "memory");	  
-	  gpt_busy_wait_us(1);
+	   	  
+	  gpt_wait_us_dsb(1);
 	  *MMSYS_MBIST_MODE = 0x000020;
-	  __asm__ __volatile__ ("dsb" : : : "memory");	  
-	  gpt_busy_wait_us(10);
+	  	  
+	  gpt_wait_us_dsb(10);
 
 	  // wait for mbist
 	  while (*MFG_MBIST_DONE_0 != 0x0007fff8);	
@@ -2527,44 +3242,44 @@ int SRAM_repair(REPAIR_MODULE module)
 		print("[SRAM] MFG&MMSYS 1st MBIST fail \r\n");
 		/* load fuse */
 		*MEM_REPAIR = 0xc0000000;
-		__asm__ __volatile__ ("dsb" : : : "memory");	
-		gpt_busy_wait_us(10);
+		
+		gpt_wait_us_dsb(10);
 
 		/* 2nd mbist */
 		*MFG_RP_CON = 0x0;		
-		__asm__ __volatile__ ("dsb" : : : "memory");	
-		gpt_busy_wait_us(1);
+		
+		gpt_wait_us_dsb(1);
 		*MFG_MBIST_MODE = 0x00000000;		
-		__asm__ __volatile__ ("dsb" : : : "memory");	
-		gpt_busy_wait_us(1);
+		
+		gpt_wait_us_dsb(1);
 		*MFG_MBIST_MODE = 0x80000000;		
-		__asm__ __volatile__ ("dsb" : : : "memory");	
-		gpt_busy_wait_us(1);
+		
+		gpt_wait_us_dsb(1);
 		*MFG_RP_CON = 0x1;		
-		__asm__ __volatile__ ("dsb" : : : "memory");	
-		gpt_busy_wait_us(1);
+		
+		gpt_wait_us_dsb(1);
 		*MFG_MBIST_MODE = 0x80000002;		
-		__asm__ __volatile__ ("dsb" : : : "memory");	
-		gpt_busy_wait_us(1);
+		
+		gpt_wait_us_dsb(1);
 
 		*MMSYS_MBIST_CON = 0x00000;		
-		__asm__ __volatile__ ("dsb" : : : "memory");	
-		gpt_busy_wait_us(1);
+		
+		gpt_wait_us_dsb(1);
 		*MDP_WROT_MBISR_RESET = 0x0;		
-		__asm__ __volatile__ ("dsb" : : : "memory");	
-		gpt_busy_wait_us(1);
+		
+		gpt_wait_us_dsb(1);
 		*MMSYS_MBIST_MODE = 0x000000;		
-		__asm__ __volatile__ ("dsb" : : : "memory");	
-		gpt_busy_wait_us(1);
+		
+		gpt_wait_us_dsb(1);
 		*MMSYS_MBIST_CON = 0x08000;		
-		__asm__ __volatile__ ("dsb" : : : "memory");	
-		gpt_busy_wait_us(1);
+		
+		gpt_wait_us_dsb(1);
 		*MDP_WROT_MBISR_RESET = 0x1;		
-		__asm__ __volatile__ ("dsb" : : : "memory");	
-		gpt_busy_wait_us(1);
+		
+		gpt_wait_us_dsb(1);
 		*MMSYS_MBIST_MODE = 0x000020;
-		__asm__ __volatile__ ("dsb" : : : "memory");	
-		gpt_busy_wait_us(10);
+		
+		gpt_wait_us_dsb(10);
 
 		// wait for mbist
 		while (*MFG_MBIST_DONE_0 != 0x0007fff8);
@@ -2592,8 +3307,8 @@ int SRAM_repair(REPAIR_MODULE module)
 	  *MDP_WROT_MBISR_RESET = 0x0;		  
 	  *MMSYS_MBIST_CON = 0x0;	  
 	  *MMSYS_MBIST_MODE = 0x0;
-	  __asm__ __volatile__ ("dsb" : : : "memory");	  
-	  gpt_busy_wait_us(1);
+	  	  
+	  gpt_wait_us_dsb(1);
 	  
 	  break;
 	   	

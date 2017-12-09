@@ -1,4 +1,3 @@
-
 #ifndef _CAMERA_FEATURE_ID_H_
 #define _CAMERA_FEATURE_ID_H_
 

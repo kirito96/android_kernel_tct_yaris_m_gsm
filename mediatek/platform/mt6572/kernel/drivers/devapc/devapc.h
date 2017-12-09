@@ -13,6 +13,29 @@
 /*
  * Define enums.
  */
+/* Domain index */
+typedef enum
+{
+    E_DOM_AP=0,
+    E_DOM_MD,
+    E_DOM_CONN,
+    E_MAX_DOM
+} DEVAPC_DOM;
+
+/* Access permission attribute */
+typedef enum
+{
+    E_ATTR_L0=0,
+    E_ATTR_L1,
+    E_ATTR_L2,
+    E_ATTR_L3,
+    E_MAX_ATTR
+} DEVAPC_ATTR;
+
+
+/*
+ * Define enums.
+ */
 typedef struct {
     int             device_num;
     bool            forbidden;

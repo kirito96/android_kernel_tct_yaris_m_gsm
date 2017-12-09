@@ -1,10 +1,5 @@
 #include <ccci_common.h>
-#include <ccci_rpc.h>
-#include <ccci_fs.h>
-#include <ccci_tty.h>
-#include <ccci_ipc.h>
-#include <ccmni_net.h>
-#include <ccci_md.h>
+#include <ccci_platform.h>
 #include <linux/dma-mapping.h>
 
 
@@ -52,7 +47,7 @@ static unsigned int pcm_smem_size[MAX_MD_NUM] = {CCCI1_PCM_SMEM_SIZE};
 static unsigned int rpc_smem_size[MAX_MD_NUM] = {CCCI1_RPC_SMEM_SIZE};
 static unsigned int md_log_smem_size[MAX_MD_NUM] = {CCCI1_MD_LOG_SIZE};
 
-static int net_ver_cfg[MAX_MD_NUM] = {MD_SYS1_NET_VER};
+//static int net_ver_cfg[MAX_MD_NUM] = {MD_SYS1_NET_VER};
 static unsigned int net_v1_smem_size[MAX_MD_NUM] = {CC1MNI_V1_SMEM_SIZE};
 static unsigned int net_smem_ul_size[MAX_MD_NUM] = {CC1MNI_V2_SMEM_UL_SIZE};
 static unsigned int net_smem_dl_size[MAX_MD_NUM] = {CC1MNI_V2_SMEM_DL_SIZE};

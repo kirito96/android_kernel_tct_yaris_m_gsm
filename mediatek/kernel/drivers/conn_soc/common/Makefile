@@ -1,11 +1,18 @@
 #ccflags-y += -I$(src)/core/include
-ccflags-y += -I$(src)/linux/include -I$(src)/linux/pri/include -I$(src)/core/include -I$(src)/include -I$(src)/ -I$(src)/../../btif/inc
+ccflags-y += -I$(src)/linux/include \
+						 -I$(src)/linux/pri/include \
+						 -I$(src)/core/include \
+						 -I$(src)/include \
+						 -I$(src)/ \
+						 -I$(src)/../../btif/inc \
+						 -I$(src)/../../common_detect
 
 #CONFIG_MTK_COMBO=y
-EXT_FLAG=
+EXT_FLAG=_soc
 COMMON_SRC_PATH := $(src)
 COMMON_OBJ_PATH := $(src)
 
+ifeq ($(CONFIG_MTK_COMBO), m)
 # WMT DRIVER
 obj-$(CONFIG_MTK_COMBO) += mtk_stp_wmt$(EXT_FLAG).o
 # WMT DRIVER-core part
@@ -21,15 +28,15 @@ mtk_stp_wmt$(EXT_FLAG)-objs	+= linux/pri/stp_btif.o
 mtk_stp_wmt$(EXT_FLAG)-objs	+= linux/pub/osal.o linux/pub/bgw_desense.o
 # WMT DRIVER-platform implementation
 ccflags-y += -D WMT_PLAT_ALPS
-mtk_stp_wmt$(EXT_FLAG)-objs	+= platform/alps/wmt_plat_alps.o
+# mtk_stp_wmt$(EXT_FLAG)-objs	+= platform/alps/wmt_plat_alps.o
 
-mtk_stp_wmt$(EXT_FLAG)-objs	+= platform/alps/mtk_wcn_consys_hw.o
+# mtk_stp_wmt$(EXT_FLAG)-objs	+= platform/alps/mtk_wcn_consys_hw.o
 
 
 mtk_stp_wmt$(EXT_FLAG)-objs	+= linux/pri/stp_exp.o core/stp_core.o core/psm_core.o core/btm_core.o linux/pri/stp_dbg.o
 
 # WMT stub part (built-in kernel image)
-obj-y			+= platform/alps/mtk_wcn_consys_stub_alps.o
+# obj-y			+= platform/alps/mtk_wcn_consys_stub_alps.o
 
 
 
@@ -42,3 +49,11 @@ mtk_stp_gps$(EXT_FLAG)-objs	:= linux/pub/stp_chrdev_gps.o
 
 obj-$(CONFIG_MTK_COMBO_WIFI) += mtk_wmt_wifi$(EXT_FLAG).o
 mtk_wmt_wifi$(EXT_FLAG)-objs       := linux/pub/wmt_chrdev_wifi.o 
+
+endif
+
+ifeq ($(CONFIG_MTK_COMBO), y)
+subdir-ccflags-y += -D WMT_PLAT_ALPS
+obj-y += core/
+obj-y += linux/
+endif

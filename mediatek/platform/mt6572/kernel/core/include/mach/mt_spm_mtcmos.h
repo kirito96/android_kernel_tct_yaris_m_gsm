@@ -12,12 +12,6 @@
 extern "C" {
 #endif
 
-#ifdef __MT_SPM_MTCMOS_C__
-  #define EXTERN
-#else
-  #define EXTERN extern
-#endif
-
 /*=============================================================*/
 // Include files
 /*=============================================================*/
@@ -26,6 +20,7 @@ extern "C" {
 #include <linux/kernel.h>
 
 // project includes
+#include <mach/mt_spm.h>
 #include <mach/mt_typedefs.h>
 #include <mach/mt_reg_base.h>
 #include <mach/sync_write.h>
@@ -46,7 +41,7 @@ extern "C" {
 //
 // SPM
 //
-
+/*
 #define SPM_MFG_PWR_CON             (SPM_BASE + 0x0214)
 #define SPM_DIS_PWR_CON             (SPM_BASE + 0x023c)
 #define SPM_CONN_PWR_CON            (SPM_BASE + 0x0280)
@@ -54,7 +49,7 @@ extern "C" {
 #define SPM_PCM_REG13_DATA          (SPM_BASE + 0x03b4)
 #define SPM_PWR_STATUS              (SPM_BASE + 0x060c)
 #define SPM_PWR_STATUS_S            (SPM_BASE + 0x0610)
-
+*/
 //
 // INFRACFG_AO
 //
@@ -92,8 +87,6 @@ extern "C" {
 /*=============================================================*/
 
 
-#undef EXTERN
-
 #ifdef __cplusplus
 }
 #endif
@@ -112,12 +105,6 @@ extern "C" {
 
 #ifdef __cplusplus
 extern "C" {
-#endif
-
-#ifdef __MT_SPM_MTCMOS_C__
-  #define EXTERN
-#else
-  #define EXTERN extern
 #endif
 
 /*=============================================================*/
@@ -167,12 +154,19 @@ extern "C" {
 /*=============================================================*/
 // Global function definition
 /*=============================================================*/
+
+#ifdef __MT_SPM_MTCMOS_C__
+  #define SPM_EXTERN
+#else
+  #define SPM_EXTERN extern
+#endif
+
 /*
  * 1. for CPU MTCMOS: CPU0, CPU1, DBG, CPUSYS
  * 2. call spm_mtcmos_cpu_lock/unlock() before/after any operations
  */
-extern int spm_mtcmos_ctrl_cpu0(int state);
-extern int spm_mtcmos_ctrl_cpu1(int state);
+extern int spm_mtcmos_ctrl_cpu0(int state, int chkWfiBeforePdn);
+extern int spm_mtcmos_ctrl_cpu1(int state, int chkWfiBeforePdn);
 
 #if 0
 /*
@@ -182,15 +176,15 @@ extern int spm_mtcmos_ctrl_cpu1(int state);
 //extern void spm_mtcmos_noncpu_lock(unsigned long *flags);
 //extern void spm_mtcmos_noncpu_unlock(unsigned long *flags);
 
-EXTERN int spm_mtcmos_ctrl_mdsys1(int state);
-EXTERN int spm_mtcmos_ctrl_connsys(int state);
-EXTERN int spm_mtcmos_ctrl_disp(int state);
-EXTERN int spm_mtcmos_ctrl_mfg(int state);
+SPM_EXTERN int spm_mtcmos_ctrl_mdsys1(int state);
+SPM_EXTERN int spm_mtcmos_ctrl_connsys(int state);
+SPM_EXTERN int spm_mtcmos_ctrl_disp(int state);
+SPM_EXTERN int spm_mtcmos_ctrl_mfg(int state);
 #endif
 
-EXTERN int test_spm_gpu_power_on(void);
+SPM_EXTERN int test_spm_gpu_power_on(void);
 
-#undef EXTERN
+#undef SPM_EXTERN
 
 #ifdef __cplusplus
 }

@@ -8,7 +8,7 @@
 namespace android
 {
 
-class SpeechMessengerCCCI;
+class SpeechMessengerInterface;
 
 class SpeechDriverLAD : public SpeechDriverInterface
 {
@@ -63,21 +63,10 @@ class SpeechDriverLAD : public SpeechDriverInterface
         virtual status_t PCM2WayRecordOff();
         virtual status_t PCM2WayOn(const bool wideband_on);
         virtual status_t PCM2WayOff();
-#if defined(MTK_DUAL_MIC_SUPPORT) || defined(MTK_AUDIO_HD_REC_SUPPORT) || defined(JRD_HDVOICE_CUST) /*modify for dual mic cust by yi.zheng.hz*/
+#if defined(MTK_DUAL_MIC_SUPPORT) || defined(MTK_AUDIO_HD_REC_SUPPORT)
         virtual status_t DualMicPCM2WayOn(const bool wideband_on, const bool record_only);
         virtual status_t DualMicPCM2WayOff();
 #endif
-
-/* Add by yeqing.yan Start */
-        virtual bool LAD_PCM4WayOn();
-        virtual bool LAD_PCM4WayOff();
-        virtual bool LAD_VoiceBufferPlay();
-        virtual bool LAD_VoiceBufferClean();
-        virtual bool LAD_VoiceBufferStop();
-        virtual bool LAD_VoiceBufferRouteBegin();
-        virtual bool LAD_VoiceBufferRouteEnd();
-        virtual int32 LAD_GetPCM4WayState();
-/* Add by yeqing.yan End */
 
 
 
@@ -94,10 +83,14 @@ class SpeechDriverLAD : public SpeechDriverInterface
         virtual status_t SetAcousticLoopback(bool loopback_on);
         virtual status_t SetAcousticLoopbackBtCodec(bool enable_codec);
 
+        virtual status_t SetAcousticLoopbackDelayFrames(int32_t delay_frames);
+
+
         /**
          * volume control
          */
         virtual status_t SetDownlinkGain(int16_t gain);
+        virtual status_t SetEnh1DownlinkGain(int16_t gain);
         virtual status_t SetUplinkGain(int16_t gain);
         virtual status_t SetDownlinkMute(bool mute_on);
         virtual status_t SetUplinkMute(bool mute_on);
@@ -116,6 +109,8 @@ class SpeechDriverLAD : public SpeechDriverInterface
         virtual status_t SetSpeechEnhancement(bool enhance_on);
         virtual status_t SetSpeechEnhancementMask(const sph_enh_mask_struct_t &mask);
 
+        virtual status_t SetBtHeadsetNrecOn(const bool bt_headset_nrec_on);
+
 
         /**
          * speech enhancement parameters setting
@@ -124,17 +119,19 @@ class SpeechDriverLAD : public SpeechDriverInterface
 
         virtual status_t SetVariousKindsOfSpeechParameters(const void *param, const uint16_t data_length, const uint16_t ccci_message_id); // only available for LAD
         virtual status_t SetNBSpeechParameters(const AUDIO_CUSTOM_PARAM_STRUCT *pSphParamNB);
-#if defined(MTK_DUAL_MIC_SUPPORT) || defined(JRD_HDVOICE_CUST) /*modify for dual mic cust by yi.zheng.hz*/
+#if defined(MTK_DUAL_MIC_SUPPORT)
         virtual status_t SetDualMicSpeechParameters(const AUDIO_CUSTOM_EXTRA_PARAM_STRUCT *pSphParamDualMic);
 #endif
 #if defined(MTK_WB_SPEECH_SUPPORT)
         virtual status_t SetWBSpeechParameters(const AUDIO_CUSTOM_WB_PARAM_STRUCT *pSphParamWB);
 #endif
-/*porting for ALPS00712639(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P18)*/
-#if defined(MTK_VIBSPK_SUPPORT)
-       virtual status_t GetVibSpkParam(void* eVibSpkParam);
-       virtual status_t SetVibSpkParam(void* eVibSpkParam);
-#endif
+        //#if defined(MTK_VIBSPK_SUPPORT)
+        virtual status_t GetVibSpkParam(void *eVibSpkParam);
+        virtual status_t SetVibSpkParam(void *eVibSpkParam);
+        //#endif
+
+        virtual status_t GetNxpSmartpaParam(void *eParamNxpSmartpa);
+        virtual status_t SetNxpSmartpaParam(void *eParamNxpSmartpa);
 
         /**
          * check whether modem is ready.
@@ -151,8 +148,8 @@ class SpeechDriverLAD : public SpeechDriverInterface
 
     protected:
         SpeechDriverLAD(modem_index_t modem_index);
-        SpeechMessengerCCCI *pCCCI;
 
+        SpeechMessengerInterface *pCCCI;
 
         /**
          * recover status (speech/record/bgs/vt/p2w/tty)
@@ -165,10 +162,11 @@ class SpeechDriverLAD : public SpeechDriverInterface
          */
         virtual status_t CleanGainValueAndMuteStatus();
 
-        /**
-         * Check if Modem sie can be sent RecordOn cmd at this moment.
-         */
-        virtual bool CheckIfModemCanSendRecordOn();
+
+        // Speech Mode
+        speech_mode_t mSpeechMode;
+
+
 
     private:
         SpeechDriverLAD() {}
@@ -178,13 +176,7 @@ class SpeechDriverLAD : public SpeechDriverInterface
          */
         static SpeechDriverLAD *mLad1;
         static SpeechDriverLAD *mLad2;
-
-	//modify for dual mic cust by yi.zheng.hz begin
-#if defined(JRD_HDVOICE_CUST)
-	bool mbMtkDualMicSupport;
-        bool mbUsing2in1Speaker;
-#endif
-	//modify for dual mic cust by yi.zheng.hz end
+        static SpeechDriverLAD *mLad3;
 };
 
 } // end namespace android

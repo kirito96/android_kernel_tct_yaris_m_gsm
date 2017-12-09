@@ -1,3 +1,37 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein
+ * is confidential and proprietary to MediaTek Inc. and/or its licensors.
+ * Without the prior written permission of MediaTek inc. and/or its licensors,
+ * any reproduction, modification, use or disclosure of MediaTek Software,
+ * and information contained herein, in whole or in part, shall be strictly prohibited.
+ */
+/* MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
+ * AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+ * NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+ * SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+ * SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
+ * THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
+ * THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
+ * CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
+ * SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
+ * CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+ * AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+ * OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
+ * MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek Software")
+ * have been modified by MediaTek Inc. All revisions are subject to any receiver's
+ * applicable license agreements with MediaTek Inc.
+ */
 
 
 #include "tpd.h"
@@ -18,24 +52,38 @@
 #include <mach/eint.h>
 #include <linux/miscdevice.h>
 #include "cust_gpio_usage.h"
-#include"tpd_custom_mcs6024.h"
+#include"tpd_custom_mstar.h"
 
 #include <linux/mount.h>
 #include <linux/netdevice.h>
 #include <linux/proc_fs.h>
-
-#define GPIO_CTP_EN_PIN   GPIO22_CTP_EN_1V8
-#define  GPIO_CTP_EN_PIN_M_GPIO  GPIO22_CTP_EN_1V8_M_GPIO 
+#include <linux/gpio.h>
+#define  GPIO_CTP_EN_PIN   GPIO22
+#define  GPIO_CTP_EN_PIN_M_GPIO  GPIO_MODE_00 
 
 
 #define TPD_HAVE_BUTTON
 
+
 unsigned char MSG_FIRMWARE_JD[94*1024] =
 {
-  #include "YarisM_JD_V203_131011.h"
+  #include "Yarism_jd_2138A_V2.006_131210.h"
 };
 
 
+unsigned char MSG_FIRMWARE_EA[94*1024] =
+{
+  //#include "Soul3.5_2133A_Each_V5.02_140221.h"
+  //#include "Soul3.5_2133A_Each_V5.03_140325.h"
+  //#include "Soul3.5_2133A_Each_V5.06_140404.h"
+  //#include "Soul4_2138A_Each_V5.03_140611.h"
+  //#include "Soul4_2138A_Each_V5.06_140711.h"
+    #include "Soul4_2138A_Each_V5.07_140729.h"
+};
+unsigned char MSG_FIRMWARE_MT[94*1024] = 
+{
+    #include "Soul4Gl_2138A_MT_V1.05_140808.h"
+};
 volatile static u8 Fmr_Loader[1024];
  
 extern struct tpd_device *tpd;
@@ -98,11 +146,16 @@ typedef struct
 
 
 #define REPORT_PACKET_LENGTH    (8)
- #define MS_TS_MSG21XX_X_MAX   (480)
-#ifdef HZ_SOUL45_SUPPORT
-    #define MS_TS_MSG21XX_Y_MAX   (854)
+#ifdef SOUL4_KK_SUPPORT
+#define MS_TS_MSG21XX_X_MAX   (480)
+#define MS_TS_MSG21XX_Y_MAX   (800)
 #else
-    #define MS_TS_MSG21XX_Y_MAX   (800)
+ #define MS_TS_MSG21XX_X_MAX   (320)
+#ifdef HZ_SOUL45_SUPPORT
+    #define MS_TS_MSG21XX_Y_MAX   (480)
+#else
+    #define MS_TS_MSG21XX_Y_MAX   (480)
+#endif
 #endif
 
 #define TPD_OK 0
@@ -187,10 +240,1349 @@ static void HalTscrCDevWriteI2CSeq(u8 addr, u8* data, u16 size)
 }
 
 #endif
+#ifdef DMA_IIC
+#include <linux/dma-mapping.h>
+static unsigned char *I2CDMABuf_va = NULL;
+static volatile unsigned int I2CDMABuf_pa = NULL;
+static void _msg_dma_alloc(void)
+{
+    I2CDMABuf_va = (u8 *)dma_alloc_coherent(NULL, 4096, &I2CDMABuf_pa, GFP_KERNEL);
+}
+static void _msg_dma_free(void)
+{
+    if(NULL!=I2CDMABuf_va)
+    {
+        dma_free_coherent(NULL, 4096, I2CDMABuf_va, I2CDMABuf_pa);
+	    I2CDMABuf_va = NULL;
+	    I2CDMABuf_pa = 0;
+    }
+}
+#endif
 
+/******************************
+ITO
+******************************/
+#define ITO_TEST
+#ifdef ITO_TEST
+
+//modify:¸ù¾ÝÏîÄ¿ÐÞ¸Ä
+#include <open_test_ANA1_YEJI.h>
+#include <open_test_ANA2_YEJI.h>
+#include <open_test_ANA1_B_YEJI.h>
+#include <open_test_ANA2_B_YEJI.h>
+#include <open_test_ANA3_YEJI.h>
+
+#include <open_test_ANA1_MT.h>
+#include <open_test_ANA2_MT.h>
+#include <open_test_ANA1_B_MT.h>
+#include <open_test_ANA2_B_MT.h>
+#include <open_test_ANA3_MT.h>
+/*
+#include <open_test_ANA1_lianchuang.h>
+#include <open_test_ANA2_lianchuang.h>
+#include <open_test_ANA1_B_lianchuang.h>
+#include <open_test_ANA2_B_lianchuang.h>
+#include <open_test_ANA3_lianchuang.h>
+*/
+///////////////////////////////////////////////////////////////////////////
+u8 bItoTestDebug = 0;
+#define ITO_TEST_DEBUG(format, ...) \
+{ \
+    if(bItoTestDebug) \
+    { \
+        printk(KERN_ERR "ito_test ***" format "\n", ## __VA_ARGS__); \
+        mdelay(5); \
+    } \
+}
+#define ITO_TEST_DEBUG_MUST(format, ...)	printk(KERN_ERR "ito_test ***" format "\n", ## __VA_ARGS__);mdelay(5)
+//#define HQ_CTP_PS_TEST 1
+s16  s16_raw_data_1[48] = {0};
+s16  s16_raw_data_2[48] = {0};
+s16  s16_raw_data_3[48] = {0};
+u8 ito_test_keynum = 0;
+u8 ito_test_dummynum = 0;
+u8 ito_test_trianglenum = 0;
+u8 ito_test_2r = 0;
+u8 g_LTP = 1;	
+uint16_t *open_1 = NULL;
+uint16_t *open_1B = NULL;
+uint16_t *open_2 = NULL;
+uint16_t *open_2B = NULL;
+uint16_t *open_3 = NULL;
+u8 *MAP1 = NULL;
+u8 *MAP2=NULL;
+u8 *MAP3=NULL;
+u8 *MAP40_1 = NULL;
+u8 *MAP40_2 = NULL;
+u8 *MAP40_3 = NULL;
+u8 *MAP40_4 = NULL;
+u8 *MAP41_1 = NULL;
+u8 *MAP41_2 = NULL;
+u8 *MAP41_3 = NULL;
+u8 *MAP41_4 = NULL;
+
+static U8 g_fail_channel[48] = {0};
+static int fail_channel_count = 0;
+
+#define ITO_TEST_ADDR_TP  (0x4C>>1)
+#define ITO_TEST_ADDR_REG (0xC4>>1)
+#define REG_INTR_FIQ_MASK           0x04
+#define FIQ_E_FRAME_READY_MASK      ( 1 << 8 )
+#define MAX_CHNL_NUM (48)
+#define BIT0  (1<<0)
+#define BIT1  (1<<1)
+#define BIT5  (1<<5)
+#define BIT11 (1<<11)
+#define BIT15 (1<<15)
+
+static int ito_test_i2c_read(U8 addr, U8* read_data, U16 size)//modify : ¸ù¾ÝÏîÄ¿ÐÞ¸Ä i2c_clientma
+{
+    int rc;
+    U8 addr_before = i2c_clientma->addr;
+    i2c_clientma->addr = addr;
+
+    #ifdef DMA_IIC
+    if(size>8&&NULL!=I2CDMABuf_va)
+    {
+        int i = 0;
+        i2c_clientma->ext_flag = i2c_clientma->ext_flag | I2C_DMA_FLAG ;
+        rc = i2c_master_recv(i2c_clientma, (unsigned char *)I2CDMABuf_pa, size);
+        for(i = 0; i < size; i++)
+   		{
+        	read_data[i] = I2CDMABuf_va[i];
+    	}
+    }
+    else
+    {
+        rc = i2c_master_recv(i2c_clientma, read_data, size);
+    }
+    i2c_clientma->ext_flag = i2c_clientma->ext_flag & (~I2C_DMA_FLAG);	
+    #else
+    rc = i2c_master_recv(i2c_clientma, read_data, size);
+    #endif
+
+    i2c_clientma->addr = addr_before;
+    if( rc < 0 )
+    {
+        ITO_TEST_DEBUG_MUST("ito_test_i2c_read error %d,addr=%d\n", rc,addr);
+    }
+    return rc;
+}
+
+static int ito_test_i2c_write(U8 addr, U8* data, U16 size)//modify : ¸ù¾ÝÏîÄ¿ÐÞ¸Ä i2c_clientma
+{
+    int rc;
+    U8 addr_before = i2c_clientma->addr;
+    i2c_clientma->addr = addr;
+
+#ifdef DMA_IIC
+    if(size>8&&NULL!=I2CDMABuf_va)
+	{
+	    int i = 0;
+	    for(i=0;i<size;i++)
+    	{
+    		 I2CDMABuf_va[i]=data[i];
+    	}
+		i2c_clientma->ext_flag = i2c_clientma->ext_flag | I2C_DMA_FLAG ;
+		rc = i2c_master_send(i2c_clientma, (unsigned char *)I2CDMABuf_pa, size);
+	}
+	else
+	{
+		rc = i2c_master_send(i2c_clientma, data, size);
+	}
+    i2c_clientma->ext_flag = i2c_clientma->ext_flag & (~I2C_DMA_FLAG);	
+#else
+    rc = i2c_master_send(i2c_clientma, data, size);
+#endif
+
+    i2c_clientma->addr = addr_before;
+    if( rc < 0 )
+    {
+        ITO_TEST_DEBUG_MUST("ito_test_i2c_write error %d,addr = %d,data[0]=%d\n", rc, addr,data[0]);
+    }
+    return rc;
+}
+
+static void ito_test_reset(void)//modify:¸ù¾ÝÏîÄ¿ÐÞ¸Ä
+{
+    ITO_TEST_DEBUG("reset tp\n");
+    
+	mt_set_gpio_mode(GPIO_CTP_EN_PIN, GPIO_CTP_EN_PIN_M_GPIO);
+	mt_set_gpio_dir(GPIO_CTP_EN_PIN, GPIO_DIR_OUT);
+	mt_set_gpio_out(GPIO_CTP_EN_PIN, GPIO_OUT_ONE);
+	mt_set_gpio_out(GPIO_CTP_EN_PIN, GPIO_OUT_ZERO);
+	mdelay(10);
+	mt_set_gpio_out(GPIO_CTP_EN_PIN, GPIO_OUT_ONE);
+	mdelay(50);
+}
+
+static void ito_test_disable_irq(void)//modify:¸ù¾ÝÏîÄ¿ÐÞ¸Ä
+{
+//	disable_irq_nosync(irq_msg21xx);
+	mt65xx_eint_mask(CUST_EINT_TOUCH_PANEL_NUM);
+}
+
+static void ito_test_enable_irq(void)//modify:¸ù¾ÝÏîÄ¿ÐÞ¸Ä
+{
+//	enable_irq(irq_msg21xx);
+	mt65xx_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);
+}
+
+static void ito_test_set_iic_rate(u32 iicRate)//modify:¸ù¾ÝÆ½Ì¨ÐÞ¸Ä,iicËÙÂÊÒªÇó50K
+{
+	#ifdef CONFIG_I2C_SPRD//Õ¹Ñ¶Æ½Ì¨
+        sprd_i2c_ctl_chg_clk(i2c_clientma->adapter->nr, iicRate);
+        mdelay(100);
+	#endif
+    #ifdef MTK//MTKÆ½Ì¨
+        i2c_clientma->timing = iicRate/1000;
+    #endif
+}
+
+static void ito_test_WriteReg( u8 bank, u8 addr, u16 data )
+{
+    u8 tx_data[5] = {0x10, bank, addr, data & 0xFF, data >> 8};
+    ito_test_i2c_write( ITO_TEST_ADDR_REG, &tx_data[0], 5 );
+}
+
+static void ito_test_WriteReg8Bit( u8 bank, u8 addr, u8 data )
+{
+    u8 tx_data[4] = {0x10, bank, addr, data};
+    ito_test_i2c_write ( ITO_TEST_ADDR_REG, &tx_data[0], 4 );
+}
+
+static unsigned short ito_test_ReadReg( u8 bank, u8 addr )
+{
+    u8 tx_data[3] = {0x10, bank, addr};
+    u8 rx_data[2] = {0};
+
+    ito_test_i2c_write( ITO_TEST_ADDR_REG, &tx_data[0], 3 );
+    ito_test_i2c_read ( ITO_TEST_ADDR_REG, &rx_data[0], 2 );
+    return ( rx_data[1] << 8 | rx_data[0] );
+}
+
+static u32 ito_test_get_TpType(void)
+{
+    u8 tx_data[3] = {0};
+    u8 rx_data[4] = {0};
+    u32 Major = 0, Minor = 0;
+
+    ITO_TEST_DEBUG("GetTpType\n");
+        
+    tx_data[0] = 0x53;
+    tx_data[1] = 0x00;
+    tx_data[2] = 0x2A;
+    ito_test_i2c_write(ITO_TEST_ADDR_TP, &tx_data[0], 3);
+    mdelay(50);
+    ito_test_i2c_read(ITO_TEST_ADDR_TP, &rx_data[0], 4);
+    Major = (rx_data[1]<<8) + rx_data[0];
+    Minor = (rx_data[3]<<8) + rx_data[2];
+
+    ITO_TEST_DEBUG("***TpTypeMajor = %d ***\n", Major);
+    ITO_TEST_DEBUG("***TpTypeMinor = %d ***\n", Minor);
+    
+    return Major;
+}
+
+//modify:×¢Òâ¸ÃÏîÄ¿tpÊýÄ¿
+#define TP_OF_MUTTO         (1)
+#define TP_OF_LIANCHUANG    (2)
+#define TP_OF_JUNDA         (4)
+
+static u32 ito_test_choose_TpType(void)
+{
+    u32 tpType = 0;
+    u8 i = 0;
+    open_1 = NULL;
+    open_1B = NULL;
+    open_2 = NULL;
+    open_2B = NULL;
+    open_3 = NULL;
+    MAP1 = NULL;
+    MAP2 = NULL;
+    MAP3 = NULL;
+    MAP40_1 = NULL;
+    MAP40_2 = NULL;
+    MAP40_3 = NULL;
+    MAP40_4 = NULL;
+    MAP41_1 = NULL;
+    MAP41_2 = NULL;
+    MAP41_3 = NULL;
+    MAP41_4 = NULL;
+    ito_test_keynum = 0;
+    ito_test_dummynum = 0;
+    ito_test_trianglenum = 0;
+    ito_test_2r = 0;
+
+    for(i=0;i<10;i++)
+    {
+        tpType = ito_test_get_TpType();
+        ITO_TEST_DEBUG("tpType=%d;i=%d;\n",tpType,i);
+        if(TP_OF_LIANCHUANG==tpType
+           ||TP_OF_JUNDA==tpType)//modify:×¢Òâ¸ÃÏîÄ¿tpÊýÄ¿
+        {
+            break;
+        }
+        else if(i<5)
+        {
+            mdelay(100);  
+        }
+        else
+        {
+            ito_test_reset();
+        }
+    }
+  /*  
+    if(TP_OF_LIANCHUANG==tpType)//modify:×¢Òâ¸ÃÏîÄ¿tpÊýÄ¿
+    {
+        open_1 = open_1_lianchuang;
+        open_1B = open_1B_lianchuang;
+        open_2 = open_2_lianchuang;
+        open_2B = open_2B_lianchuang;
+        open_3 = open_3_lianchuang;
+        MAP1 = MAP1_lianchuang;
+        MAP2 = MAP2_lianchuang;
+        MAP3 = MAP3_lianchuang;
+        MAP40_1 = MAP40_1_lianchuang;
+        MAP40_2 = MAP40_2_lianchuang;
+        MAP40_3 = MAP40_3_lianchuang;
+        MAP40_4 = MAP40_4_lianchuang;
+        MAP41_1 = MAP41_1_lianchuang;
+        MAP41_2 = MAP41_2_lianchuang;
+        MAP41_3 = MAP41_3_lianchuang;
+        MAP41_4 = MAP41_4_lianchuang;
+        ito_test_keynum = NUM_KEY_LIANCHUANG;
+        ito_test_dummynum = NUM_DUMMY_LIANCHUANG;
+        ito_test_trianglenum = NUM_SENSOR_LIANCHUANG;
+        ito_test_2r = ENABLE_2R_LIANCHUANG;
+    }*/
+    if(TP_OF_MUTTO==tpType)
+    {
+        open_1 = open_1_MT;
+        open_1B = open_1B_MT;
+        open_2 = open_2_MT;
+        open_2B = open_2B_MT;
+        open_3 = open_3_MT;
+        MAP1 = MAP1_MT;
+        MAP2 = MAP2_MT;
+        MAP3 = MAP3_MT;
+        MAP40_1 = MAP40_1_MT;
+        MAP40_2 = MAP40_2_MT;
+        MAP40_3 = MAP40_3_MT;
+        MAP40_4 = MAP40_4_MT;
+        MAP41_1 = MAP41_1_MT;
+        MAP41_2 = MAP41_2_MT;
+        MAP41_3 = MAP41_3_MT;
+        MAP41_4 = MAP41_4_MT;
+        ito_test_keynum = NUM_KEY_MT;
+        ito_test_dummynum = NUM_DUMMY_MT;
+        ito_test_trianglenum = NUM_SENSOR_MT;
+        ito_test_2r = ENABLE_2R_MT;
+    }
+    else
+    {
+        open_1 = open_1_yeji;
+        open_1B = open_1B_yeji;
+        open_2 = open_2_yeji;
+        open_2B = open_2B_yeji;
+        open_3 = open_3_yeji;
+        MAP1 = MAP1_yeji;
+        MAP2 = MAP2_yeji;
+        MAP3 = MAP3_yeji;
+        MAP40_1 = MAP40_1_yeji;
+        MAP40_2 = MAP40_2_yeji;
+        MAP40_3 = MAP40_3_yeji;
+        MAP40_4 = MAP40_4_yeji;
+        MAP41_1 = MAP41_1_yeji;
+        MAP41_2 = MAP41_2_yeji;
+        MAP41_3 = MAP41_3_yeji;
+        MAP41_4 = MAP41_4_yeji;
+        ito_test_keynum = NUM_KEY_YEJI;
+        ito_test_dummynum = NUM_DUMMY_YEJI;
+        ito_test_trianglenum = NUM_SENSOR_YEJI;
+        ito_test_2r = ENABLE_2R_YEJI;
+    }
+    return tpType;
+}
+
+static void ito_test_EnterSerialDebugMode(void)
+{
+    u8 data[5];
+
+    data[0] = 0x53;
+    data[1] = 0x45;
+    data[2] = 0x52;
+    data[3] = 0x44;
+    data[4] = 0x42;
+    ito_test_i2c_write(ITO_TEST_ADDR_REG, &data[0], 5);
+
+    data[0] = 0x37;
+    ito_test_i2c_write(ITO_TEST_ADDR_REG, &data[0], 1);
+
+    data[0] = 0x35;
+    ito_test_i2c_write(ITO_TEST_ADDR_REG, &data[0], 1);
+
+    data[0] = 0x71;
+    ito_test_i2c_write(ITO_TEST_ADDR_REG, &data[0], 1);
+}
+
+static uint16_t ito_test_get_num( void )
+{
+    uint16_t    num_of_sensor,i;
+    uint16_t 	RegValue1,RegValue2;
+ 
+    num_of_sensor = 0;
+        
+    RegValue1 = ito_test_ReadReg( 0x11, 0x4A); //bank:ana, addr:h0025  
+    ITO_TEST_DEBUG("ito_test_get_num,RegValue1=%d\n",RegValue1);
+    if ( ( RegValue1 & BIT1) == BIT1 )
+    {
+    	RegValue1 = ito_test_ReadReg( 0x12, 0x0A); //bank:ana2, addr:h0005  			
+    	RegValue1 = RegValue1 & 0x0F;
+    	
+    	RegValue2 = ito_test_ReadReg( 0x12, 0x16); //bank:ana2, addr:h000b    		
+    	RegValue2 = (( RegValue2 >> 1 ) & 0x0F) + 1;
+    	
+    	num_of_sensor = RegValue1 * RegValue2;
+    }
+	else
+	{
+	    for(i=0;i<4;i++)
+	    {
+	        num_of_sensor+=(ito_test_ReadReg( 0x12, 0x0A)>>(4*i))&0x0F; //bank:ana2, addr:h0005  
+	    }
+	}
+    ITO_TEST_DEBUG("ito_test_get_num,num_of_sensor=%d\n",num_of_sensor);
+    return num_of_sensor;        
+}
+
+static void ito_test_polling( void )
+{
+    uint16_t    reg_int = 0x0000;
+    uint8_t     dbbus_tx_data[5];
+    uint8_t     dbbus_rx_data[4];
+    uint16_t    reg_value;
+
+
+    reg_int = 0;
+
+    ito_test_WriteReg( 0x13, 0x0C, BIT15 ); //bank:fir, addr:h0006         
+    ito_test_WriteReg( 0x12, 0x14, (ito_test_ReadReg(0x12,0x14) | BIT0) ); //bank:ana2, addr:h000a        
+            
+    ITO_TEST_DEBUG("polling start\n");
+    while( ( reg_int & BIT0 ) == 0x0000 )
+    {
+        dbbus_tx_data[0] = 0x10;
+        dbbus_tx_data[1] = 0x3D; //bank:intr_ctrl, addr:h000c    
+        dbbus_tx_data[2] = 0x18;
+        ito_test_i2c_write(ITO_TEST_ADDR_REG, dbbus_tx_data, 3);
+        ito_test_i2c_read(ITO_TEST_ADDR_REG,  dbbus_rx_data, 2);
+        reg_int = dbbus_rx_data[1];
+    }
+    ITO_TEST_DEBUG("polling end\n");
+    reg_value = ito_test_ReadReg( 0x3D, 0x18 ); 
+    ito_test_WriteReg( 0x3D, 0x18, reg_value & (~BIT0) );      
+}
+
+static uint16_t ito_test_get_data_out( int16_t* s16_raw_data )
+{
+    uint8_t     i,dbbus_tx_data[8];
+    uint16_t    raw_data[48]={0};
+    uint16_t    num_of_sensor;
+    uint16_t    reg_int;
+    uint8_t		dbbus_rx_data[96]={0};
+  
+    num_of_sensor = ito_test_get_num();
+    if(num_of_sensor*2>96)
+    {
+        ITO_TEST_DEBUG("danger,num_of_sensor=%d\n",num_of_sensor);
+        return num_of_sensor;
+    }
+
+    reg_int = ito_test_ReadReg( 0x3d, REG_INTR_FIQ_MASK<<1 ); 
+    ito_test_WriteReg( 0x3d, REG_INTR_FIQ_MASK<<1, (reg_int & (uint16_t)(~FIQ_E_FRAME_READY_MASK) ) ); 
+    ito_test_polling();
+    dbbus_tx_data[0] = 0x10;
+    dbbus_tx_data[1] = 0x13; //bank:fir, addr:h0020 
+    dbbus_tx_data[2] = 0x40;
+    ito_test_i2c_write(ITO_TEST_ADDR_REG, dbbus_tx_data, 3);
+    mdelay(20);
+    ito_test_i2c_read(ITO_TEST_ADDR_REG, &dbbus_rx_data[0], (num_of_sensor * 2));
+    mdelay(100);
+    for(i=0;i<num_of_sensor * 2;i++)
+    {
+        ITO_TEST_DEBUG("dbbus_rx_data[%d]=%d\n",i,dbbus_rx_data[i]);
+    }
+ 
+    reg_int = ito_test_ReadReg( 0x3d, REG_INTR_FIQ_MASK<<1 ); 
+    ito_test_WriteReg( 0x3d, REG_INTR_FIQ_MASK<<1, (reg_int | (uint16_t)FIQ_E_FRAME_READY_MASK ) ); 
+
+
+    for( i = 0; i < num_of_sensor; i++ )
+    {
+        raw_data[i] = ( dbbus_rx_data[ 2 * i + 1] << 8 ) | ( dbbus_rx_data[2 * i] );
+        s16_raw_data[i] = ( int16_t )raw_data[i];
+    }
+    
+    return(num_of_sensor);
+}
+
+static void ito_test_send_data_in( uint8_t step )
+{
+    uint16_t	i;
+    uint8_t 	dbbus_tx_data[512];
+    uint16_t 	*Type1=NULL;        
+
+    ITO_TEST_DEBUG("ito_test_send_data_in step=%d\n",step);
+	if( step == 4 )
+    {
+        Type1 = &open_1[0];        
+    }
+    else if( step == 5 )
+    {
+        Type1 = &open_2[0];      	
+    }
+    else if( step == 6 )
+    {
+        Type1 = &open_3[0];      	
+    }
+    else if( step == 9 )
+    {
+        Type1 = &open_1B[0];        
+    }
+    else if( step == 10 )
+    {
+        Type1 = &open_2B[0];      	
+    } 
+     
+    dbbus_tx_data[0] = 0x10;
+    dbbus_tx_data[1] = 0x11; //bank:ana, addr:h0000
+    dbbus_tx_data[2] = 0x00;    
+    for( i = 0; i <= 0x3E ; i++ )
+    {
+        dbbus_tx_data[3+2*i] = Type1[i] & 0xFF;
+        dbbus_tx_data[4+2*i] = ( Type1[i] >> 8 ) & 0xFF;    	
+    }
+    ito_test_i2c_write(ITO_TEST_ADDR_REG, dbbus_tx_data, 3+0x3F*2);
+ 
+    dbbus_tx_data[2] = 0x7A * 2; //bank:ana, addr:h007a
+    for( i = 0x7A; i <= 0x7D ; i++ )
+    {
+        dbbus_tx_data[3+2*(i-0x7A)] = 0;
+        dbbus_tx_data[4+2*(i-0x7A)] = 0;    	    	
+    }
+    ito_test_i2c_write(ITO_TEST_ADDR_REG, dbbus_tx_data, 3+8);  
+    
+    dbbus_tx_data[0] = 0x10;
+    dbbus_tx_data[1] = 0x12; //bank:ana2, addr:h0005
+      
+    dbbus_tx_data[2] = 5 * 2;
+    dbbus_tx_data[3] = Type1[128+5] & 0xFF;
+    dbbus_tx_data[4] = ( Type1[128+5] >> 8 ) & 0xFF;
+    ito_test_i2c_write(ITO_TEST_ADDR_REG, dbbus_tx_data, 5);
+    
+    dbbus_tx_data[2] = 0x0B * 2; //bank:ana2, addr:h000b
+    dbbus_tx_data[3] = Type1[128+0x0B] & 0xFF;
+    dbbus_tx_data[4] = ( Type1[128+0x0B] >> 8 ) & 0xFF;
+    ito_test_i2c_write(ITO_TEST_ADDR_REG, dbbus_tx_data, 5);
+    
+    dbbus_tx_data[2] = 0x12 * 2; //bank:ana2, addr:h0012
+    dbbus_tx_data[3] = Type1[128+0x12] & 0xFF;
+    dbbus_tx_data[4] = ( Type1[128+0x12] >> 8 ) & 0xFF;
+    ito_test_i2c_write(ITO_TEST_ADDR_REG, dbbus_tx_data, 5);
+    
+    dbbus_tx_data[2] = 0x15 * 2; //bank:ana2, addr:h0015
+    dbbus_tx_data[3] = Type1[128+0x15] & 0xFF;
+    dbbus_tx_data[4] = ( Type1[128+0x15] >> 8 ) & 0xFF;
+    ito_test_i2c_write(ITO_TEST_ADDR_REG, dbbus_tx_data, 5);        
+}
+
+static void ito_test_set_v( uint8_t Enable, uint8_t Prs)	
+{
+    uint16_t    u16RegValue;        
+    
+    u16RegValue = ito_test_ReadReg( 0x12, 0x08); //bank:ana2, addr:h0004
+    u16RegValue = u16RegValue & 0xF1; 							
+    if ( Prs == 0 )
+    {
+    	ito_test_WriteReg( 0x12, 0x08, u16RegValue| 0x0C); 		
+    }
+    else if ( Prs == 1 )
+    {
+    	ito_test_WriteReg( 0x12, 0x08, u16RegValue| 0x0E); 		     	
+    }
+    else
+    {
+    	ito_test_WriteReg( 0x12, 0x08, u16RegValue| 0x02); 			
+    }    
+    
+    if ( Enable )
+    {
+        u16RegValue = ito_test_ReadReg( 0x11, 0x06); //bank:ana, addr:h0003  
+        ito_test_WriteReg( 0x11, 0x06, u16RegValue| 0x03);   	
+    }
+    else
+    {
+        u16RegValue = ito_test_ReadReg( 0x11, 0x06);    
+        u16RegValue = u16RegValue & 0xFC;					
+        ito_test_WriteReg( 0x11, 0x06, u16RegValue);         
+    }
+}
+
+static void ito_test_set_c( uint8_t Csub_Step )
+{
+    uint8_t i;
+    uint8_t dbbus_tx_data[MAX_CHNL_NUM+3];
+    uint8_t HighLevel_Csub = false;
+    uint8_t Csub_new;
+     
+    dbbus_tx_data[0] = 0x10;
+    dbbus_tx_data[1] = 0x11; //bank:ana, addr:h0042       
+    dbbus_tx_data[2] = 0x84;        
+    for( i = 0; i < MAX_CHNL_NUM; i++ )
+    {
+		Csub_new = Csub_Step;        
+        HighLevel_Csub = false;   
+        if( Csub_new > 0x1F )
+        {
+            Csub_new = Csub_new - 0x14;
+            HighLevel_Csub = true;
+        }
+           
+        dbbus_tx_data[3+i] = Csub_new & 0x1F;        
+        if( HighLevel_Csub == true )
+        {
+            dbbus_tx_data[3+i] |= BIT5;
+        }
+    }
+    ito_test_i2c_write(ITO_TEST_ADDR_REG, dbbus_tx_data, MAX_CHNL_NUM+3);
+
+    dbbus_tx_data[2] = 0xB4; //bank:ana, addr:h005a        
+    ito_test_i2c_write(ITO_TEST_ADDR_REG, dbbus_tx_data, MAX_CHNL_NUM+3);
+}
+
+static void ito_test_sw( void )
+{
+    ito_test_WriteReg( 0x11, 0x00, 0xFFFF ); //bank:ana, addr:h0000
+    ito_test_WriteReg( 0x11, 0x00, 0x0000 );
+    mdelay( 50 );
+}
+
+static void ito_test_first( uint8_t item_id , int16_t* s16_raw_data)		
+{
+    uint8_t     loop;
+    uint8_t     i,j;
+    int16_t     s16_raw_data_tmp[48]={0};
+    uint8_t     num_of_sensor, num_of_sensor2,total_sensor = 0;
+    uint16_t	u16RegValue;
+    uint8_t 	*pMapping=NULL;
+    
+    num_of_sensor = 0;
+    num_of_sensor2 = 0;	
+	
+    ITO_TEST_DEBUG("ito_test_first item_id=%d\n",item_id);
+    // stop cpu
+    ito_test_WriteReg( 0x0F, 0xE6, 0x01 ); //bank:mheg5, addr:h0073
+
+    ito_test_WriteReg( 0x1E, 0x24, 0x0500 ); //bank:chip, addr:h0012
+    ito_test_WriteReg( 0x1E, 0x2A, 0x0000 ); //bank:chip, addr:h0015
+    ito_test_WriteReg( 0x1E, 0xE6, 0x6E00 ); //bank:chip, addr:h0073
+    ito_test_WriteReg( 0x1E, 0xE8, 0x0071 ); //bank:chip, addr:h0074
+	    
+    if ( item_id == 40 )    			
+    {
+        pMapping = &MAP1[0];
+        if ( ito_test_2r )
+        {
+            total_sensor = ito_test_trianglenum/2; 
+        }
+        else
+        {
+		        total_sensor = ito_test_trianglenum/2 + ito_test_keynum + ito_test_dummynum;
+        }
+    }
+    else if( item_id == 41 )    		
+    {
+        pMapping = &MAP2[0];
+        if ( ito_test_2r )
+        {
+            total_sensor = ito_test_trianglenum/2; 
+        }
+        else
+        {
+		        total_sensor = ito_test_trianglenum/2 + ito_test_keynum + ito_test_dummynum;
+        }
+    }
+    else if( item_id == 42 )    		
+    {
+        pMapping = &MAP3[0];      
+        total_sensor = ito_test_trianglenum + ito_test_keynum+ ito_test_dummynum; 
+    }
+        	    
+    loop = 1;
+    if ( item_id != 42 )
+    {
+	      if(total_sensor>11)
+        {
+            loop = 2;
+        }
+    }	
+    
+    ITO_TEST_DEBUG("loop=%d\n", loop);
+	
+    for ( i = 0; i < loop; i ++ )
+    {
+        if ( i == 0 )
+        {
+            ito_test_send_data_in( item_id - 36 );
+        }
+        else
+        { 
+            if ( item_id == 40 )
+            { 
+                ito_test_send_data_in( 9 );
+            }
+            else
+            { 		
+                ito_test_send_data_in( 10 );
+            }
+        }
+	
+        ito_test_set_v(1,0);    
+        u16RegValue = ito_test_ReadReg( 0x11, 0x0E ); //bank:ana, addr:h0007   			
+        ito_test_WriteReg( 0x11, 0x0E, u16RegValue | BIT11 );				 		
+	
+        if ( g_LTP == 1 )
+        {
+	    	    ito_test_set_c( 32 );
+	    	}	    	
+        else
+        {	    	
+	    	    ito_test_set_c( 0 );
+        }
+        
+        ito_test_sw();
+		
+        if ( i == 0 )	 
+        {      
+            num_of_sensor=ito_test_get_data_out(  s16_raw_data_tmp );
+            ITO_TEST_DEBUG("num_of_sensor=%d;\n",num_of_sensor);
+        }
+        else	
+        {      
+            num_of_sensor2=ito_test_get_data_out(  &s16_raw_data_tmp[num_of_sensor] );
+            ITO_TEST_DEBUG("num_of_sensor=%d;num_of_sensor2=%d\n",num_of_sensor,num_of_sensor2);
+        }
+    }
+    
+    for ( j = 0; j < total_sensor; j ++ )
+    {
+        if ( g_LTP == 1 )
+        {
+            s16_raw_data[pMapping[j]] = s16_raw_data_tmp[j] + 4096;
+        }
+        else
+        {
+            s16_raw_data[pMapping[j]] = s16_raw_data_tmp[j];	
+        }
+    }	
+
+    return;
+}
+
+typedef enum
+{
+	ITO_TEST_OK = 0,
+	ITO_TEST_FAIL,
+	ITO_TEST_GET_TP_TYPE_ERROR,
+} ITO_TEST_RET;
+
+ITO_TEST_RET ito_test_second (u8 item_id)
+{
+    ITO_TEST_RET ret = ITO_TEST_OK;
+	u8 i = 0;
+    
+	s32  s16_raw_data_jg_tmp1 = 0;
+	s32  s16_raw_data_jg_tmp2 = 0;
+	s32  jg_tmp1_avg_Th_max =0;
+	s32  jg_tmp1_avg_Th_min =0;
+	s32  jg_tmp2_avg_Th_max =0;
+	s32  jg_tmp2_avg_Th_min =0;
+
+	u8  Th_Tri = 40;        
+	u8  Th_bor = 40;        
+
+	if ( item_id == 40 )    			
+    {
+        for (i=0; i<(ito_test_trianglenum/2)-2; i++)
+        {
+			s16_raw_data_jg_tmp1 += s16_raw_data_1[MAP40_1[i]];
+		}
+		for (i=0; i<2; i++)
+        {
+			s16_raw_data_jg_tmp2 += s16_raw_data_1[MAP40_2[i]];
+		}
+    }
+    else if( item_id == 41 )    		
+    {
+        for (i=0; i<(ito_test_trianglenum/2)-2; i++)
+        {
+			s16_raw_data_jg_tmp1 += s16_raw_data_2[MAP41_1[i]];
+		}
+		for (i=0; i<2; i++)
+        {
+			s16_raw_data_jg_tmp2 += s16_raw_data_2[MAP41_2[i]];
+		}
+    }
+
+	    jg_tmp1_avg_Th_max = (s16_raw_data_jg_tmp1 / ((ito_test_trianglenum/2)-2)) * ( 100 + Th_Tri) / 100 ;
+	    jg_tmp1_avg_Th_min = (s16_raw_data_jg_tmp1 / ((ito_test_trianglenum/2)-2)) * ( 100 - Th_Tri) / 100 ;
+        jg_tmp2_avg_Th_max = (s16_raw_data_jg_tmp2 / 2) * ( 100 + Th_bor) / 100 ;
+	    jg_tmp2_avg_Th_min = (s16_raw_data_jg_tmp2 / 2 ) * ( 100 - Th_bor) / 100 ;
+	
+        ITO_TEST_DEBUG("item_id=%d;sum1=%d;max1=%d;min1=%d;sum2=%d;max2=%d;min2=%d\n",item_id,s16_raw_data_jg_tmp1,jg_tmp1_avg_Th_max,jg_tmp1_avg_Th_min,s16_raw_data_jg_tmp2,jg_tmp2_avg_Th_max,jg_tmp2_avg_Th_min);
+
+	if ( item_id == 40 ) 
+	{
+		for (i=0; i<(ito_test_trianglenum/2)-2; i++)
+		{
+			if (s16_raw_data_1[MAP40_1[i]] > jg_tmp1_avg_Th_max || s16_raw_data_1[MAP40_1[i]] < jg_tmp1_avg_Th_min)
+			{
+				g_fail_channel[fail_channel_count] = MAP40_1[i];
+				fail_channel_count ++; 
+				ret = ITO_TEST_FAIL;
+			}
+		}
+		
+		for (i=0; i<(ito_test_trianglenum/2)-3; i++)//modify: 
+		{
+            if (s16_raw_data_1[MAP40_1[i]] > s16_raw_data_1[MAP40_1[i+1]])
+            { 
+                g_fail_channel[fail_channel_count] = MAP40_1[i];
+                fail_channel_count ++; 
+                ret = ITO_TEST_FAIL;
+            }
+		}
+		
+		for (i=0; i<2; i++)
+		{
+			if (s16_raw_data_1[MAP40_2[i]] > jg_tmp2_avg_Th_max || s16_raw_data_1[MAP40_2[i]] < jg_tmp2_avg_Th_min) 
+			{
+				g_fail_channel[fail_channel_count] = MAP40_2[i];
+				fail_channel_count ++; 
+				ret = ITO_TEST_FAIL;
+			}
+		} 
+	}
+
+	if ( item_id == 41 ) 
+	{
+		for (i=0; i<(ito_test_trianglenum/2)-2; i++)
+		{
+			if (s16_raw_data_2[MAP41_1[i]] > jg_tmp1_avg_Th_max || s16_raw_data_2[MAP41_1[i]] < jg_tmp1_avg_Th_min) 
+			{
+				g_fail_channel[fail_channel_count] = MAP41_1[i];
+				fail_channel_count ++; 
+				ret = ITO_TEST_FAIL;
+			}	
+		}
+    
+        for (i=0; i<(ito_test_trianglenum/2)-3; i++)//modify: 
+        {
+            if (s16_raw_data_2[MAP41_1[i]] < s16_raw_data_2[MAP41_1[i+1]])
+            { 
+                g_fail_channel[fail_channel_count] = MAP41_1[i];
+                fail_channel_count ++; 
+                ret = ITO_TEST_FAIL;
+            }
+        }
+
+		for (i=0; i<2; i++)
+		{
+			if (s16_raw_data_2[MAP41_2[i]] > jg_tmp2_avg_Th_max || s16_raw_data_2[MAP41_2[i]] < jg_tmp2_avg_Th_min)
+			{ 
+				g_fail_channel[fail_channel_count] = MAP41_2[i];
+				fail_channel_count ++; 
+				ret = ITO_TEST_FAIL;
+			}
+		} 
+	}
+
+	return ret;
+}
+
+ITO_TEST_RET ito_test_second_2r (u8 item_id)
+{
+    ITO_TEST_RET ret = ITO_TEST_OK;
+	u8 i = 0;
+    
+	s32  s16_raw_data_jg_tmp1 = 0;
+	s32  s16_raw_data_jg_tmp2 = 0;
+	s32  s16_raw_data_jg_tmp3 = 0;
+	s32  s16_raw_data_jg_tmp4 = 0;
+	
+	s32  jg_tmp1_avg_Th_max =0;
+	s32  jg_tmp1_avg_Th_min =0;
+	s32  jg_tmp2_avg_Th_max =0;
+	s32  jg_tmp2_avg_Th_min =0;
+	s32  jg_tmp3_avg_Th_max =0;
+	s32  jg_tmp3_avg_Th_min =0;
+	s32  jg_tmp4_avg_Th_max =0;
+	s32  jg_tmp4_avg_Th_min =0;
+
+	u8  Th_Tri = 40;    // non-border threshold    
+	u8  Th_bor = 40;    // border threshold    
+
+	if ( item_id == 40 )    			
+  {
+    for (i=0; i<(ito_test_trianglenum/4)-2; i++)
+    {
+      s16_raw_data_jg_tmp1 += s16_raw_data_1[MAP40_1[i]];  //first region: non-border 
+		}
+		
+		for (i=0; i<2; i++)
+		{
+		  s16_raw_data_jg_tmp2 += s16_raw_data_1[MAP40_2[i]];  //first region: border
+		}
+
+		for (i=0; i<(ito_test_trianglenum/4)-2; i++)
+		{
+		  s16_raw_data_jg_tmp3 += s16_raw_data_1[MAP40_3[i]];  //second region: non-border
+		}
+		
+		for (i=0; i<2; i++)
+		{
+		  s16_raw_data_jg_tmp4 += s16_raw_data_1[MAP40_4[i]];  //second region: border
+		}
+  }
+  else if( item_id == 41 )    		
+  {
+		for (i=0; i<(ito_test_trianglenum/4)-2; i++)
+		{
+		  s16_raw_data_jg_tmp1 += s16_raw_data_2[MAP41_1[i]];  //first region: non-border
+		}
+		
+		for (i=0; i<2; i++)
+		{
+		  s16_raw_data_jg_tmp2 += s16_raw_data_2[MAP41_2[i]];  //first region: border
+		}
+		
+		for (i=0; i<(ito_test_trianglenum/4)-2; i++)
+		{
+		  s16_raw_data_jg_tmp3 += s16_raw_data_2[MAP41_3[i]];  //second region: non-border
+		}
+		
+		for (i=0; i<2; i++)
+		{
+		  s16_raw_data_jg_tmp4 += s16_raw_data_2[MAP41_4[i]];  //second region: border
+		}
+	}
+
+	    jg_tmp1_avg_Th_max = (s16_raw_data_jg_tmp1 / ((ito_test_trianglenum/4)-2)) * ( 100 + Th_Tri) / 100 ;
+	    jg_tmp1_avg_Th_min = (s16_raw_data_jg_tmp1 / ((ito_test_trianglenum/4)-2)) * ( 100 - Th_Tri) / 100 ;
+        jg_tmp2_avg_Th_max = (s16_raw_data_jg_tmp2 / 2) * ( 100 + Th_bor) / 100 ;
+	    jg_tmp2_avg_Th_min = (s16_raw_data_jg_tmp2 / 2) * ( 100 - Th_bor) / 100 ;
+		jg_tmp3_avg_Th_max = (s16_raw_data_jg_tmp3 / ((ito_test_trianglenum/4)-2)) * ( 100 + Th_Tri) / 100 ;
+	    jg_tmp3_avg_Th_min = (s16_raw_data_jg_tmp3 / ((ito_test_trianglenum/4)-2)) * ( 100 - Th_Tri) / 100 ;
+        jg_tmp4_avg_Th_max = (s16_raw_data_jg_tmp4 / 2) * ( 100 + Th_bor) / 100 ;
+	    jg_tmp4_avg_Th_min = (s16_raw_data_jg_tmp4 / 2) * ( 100 - Th_bor) / 100 ;
+		
+	
+        ITO_TEST_DEBUG("item_id=%d;sum1=%d;max1=%d;min1=%d;sum2=%d;max2=%d;min2=%d;sum3=%d;max3=%d;min3=%d;sum4=%d;max4=%d;min4=%d;\n",item_id,s16_raw_data_jg_tmp1,jg_tmp1_avg_Th_max,jg_tmp1_avg_Th_min,s16_raw_data_jg_tmp2,jg_tmp2_avg_Th_max,jg_tmp2_avg_Th_min,s16_raw_data_jg_tmp3,jg_tmp3_avg_Th_max,jg_tmp3_avg_Th_min,s16_raw_data_jg_tmp4,jg_tmp4_avg_Th_max,jg_tmp4_avg_Th_min);
+
+
+	if ( item_id == 40 ) 
+	{
+		for (i=0; i<(ito_test_trianglenum/4)-2; i++)
+		{
+			if (s16_raw_data_1[MAP40_1[i]] > jg_tmp1_avg_Th_max || s16_raw_data_1[MAP40_1[i]] < jg_tmp1_avg_Th_min) 
+			{
+				g_fail_channel[fail_channel_count] = MAP40_1[i];
+				fail_channel_count ++; 
+				ret = ITO_TEST_FAIL;
+			}
+		}
+		
+		for (i=0; i<2; i++)
+		{
+			if (s16_raw_data_1[MAP40_2[i]] > jg_tmp2_avg_Th_max || s16_raw_data_1[MAP40_2[i]] < jg_tmp2_avg_Th_min) 
+			{
+				g_fail_channel[fail_channel_count] = MAP40_2[i];				
+				fail_channel_count ++; 
+				ret = ITO_TEST_FAIL;
+			}	
+		} 
+		
+		for (i=0; i<(ito_test_trianglenum/4)-2; i++)
+		{
+			if (s16_raw_data_1[MAP40_3[i]] > jg_tmp3_avg_Th_max || s16_raw_data_1[MAP40_3[i]] < jg_tmp3_avg_Th_min) 
+			{
+				g_fail_channel[fail_channel_count] = MAP40_3[i];
+				fail_channel_count ++; 
+				ret = ITO_TEST_FAIL;
+			}
+		}
+		
+		for (i=0; i<2; i++)
+		{
+			if (s16_raw_data_1[MAP40_4[i]] > jg_tmp4_avg_Th_max || s16_raw_data_1[MAP40_4[i]] < jg_tmp4_avg_Th_min) 
+			{
+				g_fail_channel[fail_channel_count] = MAP40_4[i];
+				fail_channel_count ++; 
+				ret = ITO_TEST_FAIL;
+			}
+		} 
+	}
+
+	if ( item_id == 41 ) 
+	{
+		for (i=0; i<(ito_test_trianglenum/4)-2; i++)
+		{
+			if (s16_raw_data_2[MAP41_1[i]] > jg_tmp1_avg_Th_max || s16_raw_data_2[MAP41_1[i]] < jg_tmp1_avg_Th_min) 
+			{
+				g_fail_channel[fail_channel_count] = MAP41_1[i];
+				fail_channel_count ++; 
+				ret = ITO_TEST_FAIL;
+			}	
+		}
+		
+		for (i=0; i<2; i++)
+		{
+			if (s16_raw_data_2[MAP41_2[i]] > jg_tmp2_avg_Th_max || s16_raw_data_2[MAP41_2[i]] < jg_tmp2_avg_Th_min) 
+			{
+				g_fail_channel[fail_channel_count] = MAP41_2[i];
+				fail_channel_count ++; 
+				ret = ITO_TEST_FAIL;
+			}
+		}
+		
+		for (i=0; i<(ito_test_trianglenum/4)-2; i++)
+		{
+			if (s16_raw_data_2[MAP41_3[i]] > jg_tmp3_avg_Th_max || s16_raw_data_2[MAP41_3[i]] < jg_tmp3_avg_Th_min) 
+			{	
+				g_fail_channel[fail_channel_count] = MAP41_3[i];
+				fail_channel_count ++; 
+				ret = ITO_TEST_FAIL;
+			}	
+		}
+		
+		for (i=0; i<2; i++)
+		{
+			if (s16_raw_data_2[MAP41_4[i]] > jg_tmp4_avg_Th_max || s16_raw_data_2[MAP41_4[i]] < jg_tmp4_avg_Th_min) 
+			{
+				g_fail_channel[fail_channel_count] = MAP41_4[i];
+				fail_channel_count ++; 
+				ret = ITO_TEST_FAIL;
+			}	
+		} 
+	}
+
+	return ret;
+}
+
+static ITO_TEST_RET ito_test_interface(void)
+{
+    ITO_TEST_RET ret1 = ITO_TEST_OK, ret2 = ITO_TEST_OK, ret3 = ITO_TEST_OK;
+    uint16_t i = 0;
+#ifdef DMA_IIC
+    _msg_dma_alloc();
+#endif
+    ito_test_set_iic_rate(50000);
+    ITO_TEST_DEBUG("start\n");
+    ito_test_disable_irq();
+	ito_test_reset();
+    if(!ito_test_choose_TpType())
+    {
+        ITO_TEST_DEBUG("choose tpType fail\n");
+        ret1 = ITO_TEST_GET_TP_TYPE_ERROR;
+        goto ITO_TEST_END;
+    }
+    ito_test_EnterSerialDebugMode();
+    mdelay(100);
+    ITO_TEST_DEBUG("EnterSerialDebugMode\n");
+    // stop cpu
+    ito_test_WriteReg8Bit ( 0x0F, 0xE6, 0x01 ); //bank:mheg5, addr:h0073
+    // stop watch dog
+    ito_test_WriteReg ( 0x3C, 0x60, 0xAA55 ); //bank:reg_PIU_MISC_0, addr:h0030
+    ITO_TEST_DEBUG("stop mcu and disable watchdog V.005\n");   
+    mdelay(50);
+    
+	for(i = 0;i < 48;i++)
+	{
+		s16_raw_data_1[i] = 0;
+		s16_raw_data_2[i] = 0;
+		s16_raw_data_3[i] = 0;
+	}	
+	
+    fail_channel_count = 0; // Reset fail_channel_count to 0 before test start
+	
+    ito_test_first(40, s16_raw_data_1);
+    ITO_TEST_DEBUG("40 get s16_raw_data_1\n");
+    if(ito_test_2r)
+    {
+        ret2=ito_test_second_2r(40);
+    }
+    else
+    {
+        ret2=ito_test_second(40);
+    }
+    
+    ito_test_first(41, s16_raw_data_2);
+    ITO_TEST_DEBUG("41 get s16_raw_data_2\n");
+    if(ito_test_2r)
+    {
+        ret3=ito_test_second_2r(41);
+    }
+    else
+    {
+        ret3=ito_test_second(41);
+    }
+    
+    ito_test_first(42, s16_raw_data_3);
+    ITO_TEST_DEBUG("42 get s16_raw_data_3\n");
+    
+    ITO_TEST_END:
+#ifdef DMA_IIC
+    _msg_dma_free();
+#endif
+    ito_test_set_iic_rate(100000);
+	ito_test_reset();
+    ito_test_enable_irq();
+    ITO_TEST_DEBUG("end\n");
+    
+    if ((ret1 != ITO_TEST_OK) && (ret2 == ITO_TEST_OK) && (ret3 == ITO_TEST_OK))
+    {
+        return ITO_TEST_GET_TP_TYPE_ERROR;		
+    }
+    else if ((ret1 == ITO_TEST_OK) && ((ret2 != ITO_TEST_OK) || (ret3 != ITO_TEST_OK)))
+    {
+    		return ITO_TEST_FAIL;	
+    }
+    else
+    {
+    		return ITO_TEST_OK;	
+    }
+}
+
+#include <linux/proc_fs.h>
+#define ITO_TEST_AUTHORITY 0777 
+static struct proc_dir_entry *msg_ito_test = NULL;
+static struct proc_dir_entry *debug = NULL;
+static struct proc_dir_entry *debug_on_off = NULL;
+static struct proc_dir_entry *fail_channel = NULL;
+static struct proc_dir_entry *data = NULL;
+#define PROC_MSG_ITO_TESE      "msg-ito-test"
+#define PROC_ITO_TEST_DEBUG      "debug"
+#define PROC_ITO_TEST_DEBUG_ON_OFF     "debug-on-off"
+#define PROC_ITO_TEST_FAIL_CHANNEL     "fail-channel"
+#define PROC_ITO_TEST_DATA      "data"
+ITO_TEST_RET g_ito_test_ret = ITO_TEST_OK;
+
+static int ito_test_proc_read_debug(char *page, char **start, off_t off, int count, int *eof, void *data)
+{
+    int cnt = 0;
+    
+    g_ito_test_ret = ito_test_interface();
+    if(ITO_TEST_OK==g_ito_test_ret)
+    {
+        ITO_TEST_DEBUG_MUST("ITO_TEST_OK");
+    }
+    else if(ITO_TEST_FAIL==g_ito_test_ret)
+    {
+        ITO_TEST_DEBUG_MUST("ITO_TEST_FAIL");
+    }
+    else if(ITO_TEST_GET_TP_TYPE_ERROR==g_ito_test_ret)
+    {
+        ITO_TEST_DEBUG_MUST("ITO_TEST_GET_TP_TYPE_ERROR");
+    }
+    
+    cnt = sprintf(page, "%d", g_ito_test_ret);
+
+    *eof = 1;
+
+    return cnt;
+}
+
+static int ito_test_proc_write_debug(struct file *file, const char *buffer, unsigned long count, void *data)
+{    
+    u16 i = 0;
+    mdelay(5);
+
+    ITO_TEST_DEBUG_MUST("ito_test_ret = %d",g_ito_test_ret);
+    mdelay(5);
+    for(i=0;i<48;i++)
+    {
+        ITO_TEST_DEBUG_MUST("data_1[%d]=%d;\n",i,s16_raw_data_1[i]);
+    }
+    mdelay(5);
+    for(i=0;i<48;i++)
+    {
+        ITO_TEST_DEBUG_MUST("data_2[%d]=%d;\n",i,s16_raw_data_2[i]);
+    }
+    mdelay(5);
+    for(i=0;i<48;i++)
+    {
+        ITO_TEST_DEBUG_MUST("data_3[%d]=%d;\n",i,s16_raw_data_3[i]);
+    }
+    mdelay(5);
+
+    return count;
+}
+
+static int ito_test_proc_read_debug_on_off(char *page, char **start, off_t off, int count, int *eof, void *data)
+{
+    int cnt= 0;
+    
+    bItoTestDebug = 1;
+    ITO_TEST_DEBUG_MUST("on debug bItoTestDebug = %d",bItoTestDebug);
+    
+    *eof = 1;
+    return cnt;
+}
+
+static int ito_test_proc_write_debug_on_off(struct file *file, const char *buffer, unsigned long count, void *data)
+{    
+    bItoTestDebug = 0;
+    ITO_TEST_DEBUG_MUST("off debug bItoTestDebug = %d",bItoTestDebug);
+    return count;
+}
+
+static int ito_test_proc_read_fail_channel(char *page, char **start, off_t off, int count, int *eof, void *data)
+{
+    int cnt = 0;
+    int i;
+
+    ITO_TEST_DEBUG_MUST("ito_test_proc_read_fail_channel()\n");
+    ITO_TEST_DEBUG_MUST("fail_channel_count = %d\n", fail_channel_count);
+    
+    for (i = 0; i < fail_channel_count; i ++)
+    {
+    	  page[i] = g_fail_channel[i];
+    }
+
+    *eof = 1;
+
+    cnt = fail_channel_count;
+
+    return cnt;
+}
+
+static int ito_test_proc_write_fail_channel(struct file *file, const char *buffer, unsigned long count, void *data)
+{    
+    ITO_TEST_DEBUG_MUST("ito_test_proc_write_fail_channel()\n");
+
+    return count;
+}
+
+static int ito_test_proc_read_data(char *page, char **start, off_t off, int count, int *eof, void *data)
+{
+    int cnt = 0;
+    int i;
+    u8 high_byte, low_byte;
+
+    ITO_TEST_DEBUG_MUST("ito_test_proc_read_data()\n");
+    
+    for (i = 0; i < 48; i ++)
+    {
+    	  high_byte = (s16_raw_data_1[i] & 0xFF00) >> 8;
+    	  low_byte = (s16_raw_data_1[i] & 0x00FF) << 8;
+    	  
+        page[i*2] = high_byte;
+        page[i*2+1] = low_byte;
+    }
+
+    for (i = 0; i < 48; i ++)
+    {
+        high_byte = (s16_raw_data_2[i] & 0xFF00) >> 8;
+        low_byte = (s16_raw_data_2[i] & 0x00FF) << 8;
+        
+        page[i*2+96] = high_byte;
+        page[i*2+1+96] = low_byte;
+    }
+
+    *eof = 1;
+    
+    cnt = 96*2;
+
+    return cnt;
+}
+
+static int ito_test_proc_write_data(struct file *file, const char *buffer, unsigned long count, void *data)
+{    
+    ITO_TEST_DEBUG_MUST("ito_test_proc_write_data()\n");
+
+    return count;
+}
+
+static void ito_test_create_entry(void)
+{
+    printk(KERN_ALERT "Enter here!\n");
+    msg_ito_test = proc_mkdir(PROC_MSG_ITO_TESE, NULL);
+    debug = create_proc_entry(PROC_ITO_TEST_DEBUG, ITO_TEST_AUTHORITY, msg_ito_test);
+    debug_on_off= create_proc_entry(PROC_ITO_TEST_DEBUG_ON_OFF, ITO_TEST_AUTHORITY, msg_ito_test);
+    fail_channel = create_proc_entry(PROC_ITO_TEST_FAIL_CHANNEL, ITO_TEST_AUTHORITY, msg_ito_test);
+    data = create_proc_entry(PROC_ITO_TEST_DATA, ITO_TEST_AUTHORITY, msg_ito_test);
+
+    if (NULL==debug) 
+    {
+        ITO_TEST_DEBUG_MUST("create_proc_entry ITO TEST DEBUG failed\n");
+    } 
+    else 
+    {
+        debug->read_proc = ito_test_proc_read_debug;
+        debug->write_proc = ito_test_proc_write_debug;
+        ITO_TEST_DEBUG_MUST("create_proc_entry ITO TEST DEBUG OK\n");
+    }
+
+    if (NULL==debug_on_off) 
+    {
+        ITO_TEST_DEBUG_MUST("create_proc_entry ITO TEST ON OFF failed\n");
+    } 
+    else 
+    {
+        debug_on_off->read_proc = ito_test_proc_read_debug_on_off;
+        debug_on_off->write_proc = ito_test_proc_write_debug_on_off;
+        ITO_TEST_DEBUG_MUST("create_proc_entry ITO TEST ON OFF OK\n");
+    }
+
+    if (NULL==fail_channel) 
+    {
+        ITO_TEST_DEBUG_MUST("create_proc_entry ITO TEST FAIL CHANNEL failed\n");
+    } 
+    else 
+    {
+        fail_channel->read_proc = ito_test_proc_read_fail_channel;
+        fail_channel->write_proc = ito_test_proc_write_fail_channel;
+        ITO_TEST_DEBUG_MUST("create_proc_entry ITO TEST FAIL CHANNEL OK\n");
+    }
+
+    if (NULL==data) 
+    {
+        ITO_TEST_DEBUG_MUST("create_proc_entry ITO TEST DATA failed\n");
+    } 
+    else 
+    {
+        data->read_proc = ito_test_proc_read_data;
+        data->write_proc = ito_test_proc_write_data;
+        ITO_TEST_DEBUG_MUST("create_proc_entry ITO TEST DATA OK\n");
+    }
+}
+#endif
 static u8 *dma_bufferma = NULL;//FTS_BYTE=u8;
 static u32 dma_handlema = NULL;
 static struct mutex dma_model_mutexma;
+
+/*reset the chip*/
+static void _HalTscrHWReset(void)
+{
+	mt_set_gpio_mode(GPIO_CTP_EN_PIN, GPIO_CTP_EN_PIN_M_GPIO);
+	mt_set_gpio_dir(GPIO_CTP_EN_PIN, GPIO_DIR_OUT);
+	mt_set_gpio_out(GPIO_CTP_EN_PIN, GPIO_OUT_ONE);
+	mt_set_gpio_out(GPIO_CTP_EN_PIN, GPIO_OUT_ZERO);
+	mdelay(10);
+	mt_set_gpio_out(GPIO_CTP_EN_PIN, GPIO_OUT_ONE);
+	mdelay(50);
+}
 
 static void I2cDMA_init()
 {
@@ -210,6 +1602,7 @@ static void I2cDMA_exit()
 		dma_bufferma = NULL;
 		dma_handlema= 0;
 	}
+	_HalTscrHWReset();
 	printk("[MSG2138A][TSP] dma_free_coherent OK\n");
 }
 
@@ -352,17 +1745,6 @@ static u8 g_dwiic_info_data[1024];
 static u8 Auto_APK_flag=0;//if apk upgrade =1;
 unsigned short fw_major_version=0,fw_minor_version=0;
 
-/*reset the chip*/
-static void _HalTscrHWReset(void)
-{
-	mt_set_gpio_mode(GPIO_CTP_EN_PIN, GPIO_CTP_EN_PIN_M_GPIO);
-	mt_set_gpio_dir(GPIO_CTP_EN_PIN, GPIO_DIR_OUT);
-	mt_set_gpio_out(GPIO_CTP_EN_PIN, GPIO_OUT_ONE);
-	mt_set_gpio_out(GPIO_CTP_EN_PIN, GPIO_OUT_ZERO);
-	mdelay(10);
-	mt_set_gpio_out(GPIO_CTP_EN_PIN, GPIO_OUT_ONE);
-	mdelay(50);
-}
 /*add by liukai for release the touch action*/
 static void msg21xx_release(void)
 {
@@ -644,6 +2026,15 @@ static int drvTP_read_info_dwiic_c33 ( void )
 
     TP_DEBUG("***major = %d ***\n", fw_major_version);
     TP_DEBUG("***minor = %d ***\n", fw_minor_version);
+/*
+    if((fw_major_version+fw_minor_version)==0)
+    {
+	//fw_major_version=1; //default test for MT -------------------------------------llf
+	//fw_minor_version=2;
+	fw_major_version=2; //default test for junda -------------------------------------llf
+	fw_minor_version=0;
+    }
+*/	
     for(index=0;index<16;index++){
 		TP_DEBUG("g_dwiic_info_data [%d] = %c \n",index,g_dwiic_info_data[index]);
     }
@@ -690,18 +2081,23 @@ static ssize_t firmware_update_c33 ( size_t size, EMEM_TYPE_t emem_type )
 		{
 			for ( j = 0; j < 1024; j++ )        //Read 1k bytes
 			{
-				temp[i][j] = MSG_FIRMWARE_JD[(i*1024)+j]; // Read the bin files of slave firmware from the baseband file system
-			}
-		}
-		printk("[MSG2138A] Date transf completed !\n");
-	}
+				//temp[i][j] = MSG_FIRMWARE_JD[(i*1024)+j];
+				if(fw_major_version==5)
+                                	temp[i][j] = MSG_FIRMWARE_EA[(i*1024)+j]; // Read the bin files of slave firmware from the baseband file system 
+				else if(fw_major_version==1)
+					temp[i][j] = MSG_FIRMWARE_MT[(i*1024)+j];
+                        }
+                }
+		printk("[MSG2138A] Date transf completed !\n"); 
+        }
 	  /*-----------------------------------//Auto upgrade to get date-------------------------------------------*/ 
 
 #if (0)
     drvTP_read_info_dwiic_c33();//check
 
     mtk_wdt_restart(WK_WDT_EXT_TYPE_NOLOCK);//avoid watchdog timeout
-    if ( g_dwiic_info_data[0] == 'M' && g_dwiic_info_data[1] == 'S' && g_dwiic_info_data[2] == 'T' && g_dwiic_info_data[3] == 'A' && g_dwiic_info_data[4] == 'R' && g_dwiic_info_data[5] == 'T' && g_dwiic_info_data[6] == 'P' && g_dwiic_info_data[7] == 'C' )
+
+    if (1) //( g_dwiic_info_data[0] == 'M' && g_dwiic_info_data[1] == 'S' && g_dwiic_info_data[2] == 'T' && g_dwiic_info_data[3] == 'A' && g_dwiic_info_data[4] == 'R' && g_dwiic_info_data[5] == 'T' && g_dwiic_info_data[6] == 'P' && g_dwiic_info_data[7] == 'C' )
     {
 		// updata FW Version
 		//drvTP_info_updata_C33 ( 8, &temp[32][8], 5 );
@@ -825,6 +2221,7 @@ static ssize_t firmware_update_c33 ( size_t size, EMEM_TYPE_t emem_type )
     // calculate CRC 32
     Init_CRC32_Table_A ( &crc_tab[0] );
 
+    mtk_wdt_restart(WK_WDT_EXT_TYPE_NOLOCK);//avoid watchdog timeout
 	for ( i = 0; i < 32; i++ ) // total  33 KB : last 1KB don't write : 2 byte per R/W
 	{
 		if ( emem_type == EMEM_INFO )
@@ -880,6 +2277,7 @@ static ssize_t firmware_update_c33 ( size_t size, EMEM_TYPE_t emem_type )
 		mdelay ( 100 );
 
 		drvDB_WriteReg ( 0x3C, 0xE4, 0x2F43 );
+		mtk_wdt_restart(WK_WDT_EXT_TYPE_NOLOCK);//avoid watchdog timeout
 	}
 
 	printk("[MSG2138A] Write Flash Completed \n");
@@ -954,6 +2352,7 @@ static void firmware_version()
     unsigned char dbbus_tx_data[3];
     unsigned char dbbus_rx_data[4] ;
 
+    _HalTscrHWReset();
     dbbusDWIICEnterSerialDebugMode();
     dbbusDWIICStopMCU();
     dbbusDWIICIICUseBus();
@@ -972,9 +2371,19 @@ static void firmware_version()
     fw_major_version = (dbbus_rx_data[1]<<8)+dbbus_rx_data[0];
     fw_minor_version = (dbbus_rx_data[3]<<8)+dbbus_rx_data[2];
 
-    TP_DEBUG("***major = %d ***\n", fw_major_version);
-    TP_DEBUG("***minor = %d ***\n", fw_minor_version);
+    TP_DEBUG("<***major = %d ***>\n", fw_major_version);
+    TP_DEBUG("<***minor = %d ***>\n", fw_minor_version);
+	//first factory version
+	if( (fw_major_version==1) && (fw_minor_version==2) )
+	{
+		fw_major_version = 5 ;
+		fw_minor_version = 0 ;
+		TP_DEBUG("this is first factory version...\n");
+	}
+
     sprintf(fw_version,"%03d%03d", fw_major_version, fw_minor_version);
+    _HalTscrHWReset();
+    return ;
     //TP_DEBUG(printk("***fw_version = %s ***\n", fw_version);)
 }
 
@@ -1035,6 +2444,7 @@ static int firmware_updata()
 			firmware_update_c33 ( 1, EMEM_MAIN );
 		}
 	}
+	_HalTscrHWReset();
 	 i2c_clientma->timing = 100;
 	 i2c_clientma->addr = FW_ADDR_MSG21XX_TP;
 	return 1;
@@ -1120,7 +2530,7 @@ static ssize_t firmware_update_show ( struct device *dev,
     return sprintf ( buf, "%s\n", fw_version );
 }
 
-static DEVICE_ATTR(update, 0777, firmware_update_show, firmware_update_store);
+static DEVICE_ATTR(update, 0644, firmware_update_show, firmware_update_store);
 /*test=================*/
 /*Add by Tracy.Lin for update touch panel firmware and get fw version*/
 
@@ -1137,7 +2547,7 @@ static ssize_t firmware_version_store(struct device *dev,
 	firmware_version();
     	return size;
 }
-static DEVICE_ATTR(version, 0777, firmware_version_show, firmware_version_store);
+static DEVICE_ATTR(version, 0644, firmware_version_show, firmware_version_store);
 
 static ssize_t firmware_data_show(struct device *dev,
                                   struct device_attribute *attr, char *buf)
@@ -1155,7 +2565,7 @@ static ssize_t firmware_data_store(struct device *dev,
     FwDataCnt++;
     return size;
 }
-static DEVICE_ATTR(data, 0777, firmware_data_show, firmware_data_store);
+static DEVICE_ATTR(data, 0644, firmware_data_show, firmware_data_store);
 #endif  // APK_UPGRADE
 #endif  //__FIRMWARE_UPDATE__
 
@@ -1186,6 +2596,125 @@ static int tpd_keys_local[TPD_KEY_COUNT] = TPD_KEYS;
 static int tpd_keys_dim_local[TPD_KEY_COUNT][4] = TPD_KEYS_DIM;
 #endif
 
+/**********************************************/
+
+
+
+/*********************************************/
+
+
+#ifdef HQ_CTP_PS_TEST
+
+#define HQALSPS_DEVICE_NAME               		"hq-sprd-alsps-tpd-dev"
+#define HQALSPS_INPUT_NAME               		"hq-sprd-alsps-tpd-input"
+#define HQALSPS_IOCTL_MAGIC        			0XCF
+#define HQALSPS_IOCTL_PROX_ON		_IO(HQALSPS_IOCTL_MAGIC, 7)
+#define HQALSPS_IOCTL_PROX_OFF		_IO(HQALSPS_IOCTL_MAGIC, 8)
+int ps_state = -1;
+static int mstar2133_pls_opened=0;
+extern int tp_pls_status;
+
+static void  msg2133_ps_mode_enable(bool enable)
+{
+	int err = 0;
+	unsigned char dbbus_tx_data[4];
+	unsigned char dbbus_rx_data[4];
+	if(enable)
+	{
+	      dbbus_tx_data[0] = 0x52;
+	      dbbus_tx_data[1] = 0x00;
+	      dbbus_tx_data[2] = 0x4A;
+	      dbbus_tx_data[3] = 0xA0;
+	      err = i2c_master_send(i2c_clientma, &dbbus_tx_data[0], 4);
+	      printk("i2c_client-addr=%d\n",i2c_clientma->addr);
+	      printk(" pls wuyongtao_ctp ctp ps open err = %d \n",err);
+	}
+	else
+	{     
+	      dbbus_tx_data[0] = 0x52;
+	      dbbus_tx_data[1] = 0x00;
+	      dbbus_tx_data[2] = 0x4A;
+	      dbbus_tx_data[3] = 0xA1;
+	      err = i2c_master_send(i2c_clientma, &dbbus_tx_data[0], 4);
+	      printk("pls  wuyongtao_ctp ctp ps close err = %d \n",err);
+	}
+	printk("pls  wuyongtao_ctp ctp ps msg2133a_ps_mode_enable\n");
+} 
+
+ int mstar2133_pls_enable(void)
+ {
+	 printk("<6> wuyongtao ==>ap3212c_pls_enable\n");
+	 msg2133_ps_mode_enable(true);
+	 mstar2133_pls_opened = 1;
+	 ps_state = -1;
+	 //input_report_abs(input_dev, ABS_DISTANCE, 1);
+	 //input_sync(input_dev);
+	 //mod_timer(&ps_timer, jiffies + msecs_to_jiffies(200) );
+	 return 0;
+ }
+ 
+ int mstar2133_pls_disable(void)
+ {
+
+	 printk("<6> wuyongtao ==>ap3212c_pls_disable");
+	msg2133_ps_mode_enable(false);
+	 mstar2133_pls_opened = 0;
+	ps_state = -1;
+	// del_timer_sync(&ps_timer);	 
+	 return 0;
+ }
+ static int mstar2133_pls_open(struct inode *inode, struct file *file)
+ {
+	 printk("%s\n", __func__);
+	 if (mstar2133_pls_opened)
+		 return -EBUSY;
+	 mstar2133_pls_opened = 1;
+	 return 0;
+ }
+ static int mstar2133_pls_release(struct inode *inode, struct file *file)
+ {
+	 printk("%s", __func__);
+	 mstar2133_pls_opened = 0;
+	 return 0;//ap3212c_pls_disable(AP3212C_PLS_BOTH);
+ }
+static int mstar2133_pls_unlocked_ioctl(struct file *file, unsigned int cmd,unsigned long arg)
+ {
+	 void __user *argp = (void __user *)arg;
+	 printk("%s: cmd %d", __func__, _IOC_NR(cmd));
+	 switch (cmd) {
+	 case 1:
+		 printk("%s: HQALSPS_IOCTL_PROX_ON*************************\n", __func__);
+		 mstar2133_pls_enable();
+		 break;
+	 case 2:
+		 printk("%s: HQALSPS_IOCTL_PROX_OFF*************************\n", __func__);
+		 mstar2133_pls_disable();
+		 break;
+	 default:
+		 printk("%s: invalid cmd %d\n", __func__, _IOC_NR(cmd));
+		 return -EINVAL;
+	 }
+	 return 0;
+ }
+
+ static struct file_operations mstar2133_pls_fops = {
+	 .owner 		 = THIS_MODULE,
+	 .open			 = mstar2133_pls_open,
+	 .release		 = mstar2133_pls_release,
+	 .unlocked_ioctl	 = mstar2133_pls_unlocked_ioctl,
+ };
+ static struct miscdevice mstar2133_pls_device = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = HQALSPS_DEVICE_NAME,
+	.fops = &mstar2133_pls_fops,
+};
+
+int  get_msg2133_data(void )
+{
+	return  ps_state;
+}
+
+#endif
 
  static void msg21xx_data_disposal(void)
  {
@@ -1200,9 +2729,12 @@ static int tpd_keys_dim_local[TPD_KEY_COUNT][4] = TPD_KEYS_DIM;
 	static u32 preKeyStatus=0;
 	//static u32 preFingerNum=0;
 	
-//#define SWAP_X_Y   (1)
+#ifdef SOUL4_KK_SUPPORT
+#else
+#define SWAP_X_Y   (1)
 #define REVERSE_X  (1)
 #define REVERSE_Y  (1)
+#endif
 #ifdef SWAP_X_Y
 	int tempx;
 	int tempy;
@@ -1255,6 +2787,20 @@ static int tpd_keys_dim_local[TPD_KEY_COUNT][4] = TPD_KEYS_DIM;
 		}
 		else
 		{
+#ifdef HQ_CTP_PS_TEST
+			if(0x80 == val[5])
+			{	
+				ps_state = 0;
+				printk("[MSG2133A] ps_state=%d\n", ps_state);//add zy
+				return 1;
+			}
+			else if (0x40 == val[5])
+			{	
+				ps_state = 1;
+				printk("[MSG2133A] ps_state=%d\n", ps_state);//add zy
+				return 1;
+			}	
+#endif
 			touchData.nTouchKeyMode = 1; //TouchKeyMode
 			touchData.nTouchKeyCode = val[5]; //TouchKeyCode
 			touchData.nFingerNum = 1;
@@ -1318,56 +2864,56 @@ static int tpd_keys_dim_local[TPD_KEY_COUNT][4] = TPD_KEYS_DIM;
 		if(touchData.nTouchKeyMode)
 		{
 			printk("[MSG2138A]useful key code report touch key code = %d\n",touchData.nTouchKeyCode);
-			if (touchData.nTouchKeyCode == 2)
-				{
-					touchkeycode = KEY_MENU;
-					touchData.Point[0].X=400;     //change key code to point ABS by wwl
-					touchData.Point[0].Y=900;	
-				}
-			
-			if (touchData.nTouchKeyCode == 4)
-				{
-					touchkeycode =KEY_HOMEPAGE;
-					touchData.Point[0].X=240;
-					touchData.Point[0].Y=900;	
-				}
 			if (touchData.nTouchKeyCode == 1)
 				{
+					#ifdef SOUL4_KK_SUPPORT
+					touchkeycode = KEY_MENU;
+					touchData.Point[0].X=60;	 //change key code to point ABS by wwl
+					touchData.Point[0].Y=870;
+					#else
+					touchkeycode = KEY_MENU;
+					touchData.Point[0].X=265;     //change key code to point ABS by wwl
+					touchData.Point[0].Y=510;	
+					#endif
+				}
+			
+			if (touchData.nTouchKeyCode == 2)
+				{
+					#ifdef SOUL4_KK_SUPPORT
+					touchkeycode = KEY_HOMEPAGE;
+					touchData.Point[0].X=170;	 //change key code to point ABS by wwl
+					touchData.Point[0].Y=870;
+					#else
+					touchkeycode =KEY_HOMEPAGE;
+					touchData.Point[0].X=159;
+					touchData.Point[0].Y=510;	
+					#endif
+				}
+			if (touchData.nTouchKeyCode == 4)
+				{
+					#ifdef SOUL4_KK_SUPPORT
+					touchkeycode = KEY_BACK;
+					touchData.Point[0].X=300;	 //change key code to point ABS by wwl
+					touchData.Point[0].Y=870;
+					#else
 					touchkeycode =KEY_BACK;
-					touchData.Point[0].X=80;
-					touchData.Point[0].Y=900;
+					touchData.Point[0].X=53;
+					touchData.Point[0].Y=510;
+					#endif
 				}
 			if (touchData.nTouchKeyCode == 8)
 				touchkeycode = KEY_SEARCH;
-			
-			if(preKeyStatus!=touchkeycode)
+		//PR623092 change key code to report ABS value
+		/*if(preKeyStatus!=touchkeycode)
 			{
-				
 				preKeyStatus=touchkeycode;
-				
-				if (FACTORY_BOOT == get_boot_mode()|| RECOVERY_BOOT == get_boot_mode())
-					{   
-						printk("factory mode \n");
-						input_report_key(tpd->dev, touchkeycode, 1);
-						input_mt_sync(tpd->dev);
-					}	 
-				else
-					{
-
-					       //change report key code to report abs add by wwl
-						input_report_abs(tpd->dev, ABS_MT_TOUCH_MAJOR, 100);
-						input_report_abs(tpd->dev, ABS_PRESSURE, 100);
-	 					input_report_key(tpd->dev, BTN_TOUCH, 1);
-						input_report_abs(tpd->dev, ABS_MT_POSITION_X, touchData.Point[0].X);
-						input_report_abs(tpd->dev, ABS_MT_POSITION_Y, touchData.Point[0].Y);
-						input_mt_sync(tpd->dev);
-						touchData.nFingerNum=0;
-						//printk("finger num X= %d Y= %d\n",touchData.Point[0].X,touchData.Point[0].Y);
-					}
+				input_report_key(tpd->dev, touchkeycode, 1);
 			}
+
 			input_sync(tpd->dev);
+			*/
 		}
-        else
+        //else
         {
 		preKeyStatus=0; //clear key status..
 //		printk("finger num = %d\n",touchData.nFingerNum);
@@ -1381,11 +2927,11 @@ static int tpd_keys_dim_local[TPD_KEY_COUNT][4] = TPD_KEYS_DIM;
 			
 				}
 			//preFingerNum=0;
-				input_report_key(tpd->dev,KEY_BACK , 0);
+				input_report_key(tpd->dev, KEY_BACK , 0);
 				input_report_key(tpd->dev, KEY_HOME, 0);
 				input_report_key(tpd->dev, KEY_MENU, 0);
 				input_report_key(tpd->dev, KEY_SEARCH, 0);
-				
+				input_report_key(tpd->dev, KEY_HOMEPAGE, 0);
 				input_report_abs(tpd->dev, ABS_PRESSURE, 0);
 				input_report_key(tpd->dev, BTN_TOUCH, 0);
 				
@@ -1413,6 +2959,8 @@ static int tpd_keys_dim_local[TPD_KEY_COUNT][4] = TPD_KEYS_DIM;
 							input_report_key(tpd->dev,BTN_TOUCH,1);
 			
 						}
+					if(touchData.Point[i].X > 473)
+						return;
 					input_report_abs(tpd->dev, ABS_MT_TOUCH_MAJOR, 100);
 	 				input_report_abs(tpd->dev, ABS_PRESSURE, 100);
 	 				input_report_key(tpd->dev, BTN_TOUCH, 1);
@@ -1482,7 +3030,7 @@ static int FW_repair_detect (void)
     u8 dbbus_tx_data[4];
     unsigned char dbbus_rx_data[2] = {0};
 
-    printk("[MSG2138A]--------------------------------------FW_repair_detect\n");
+    printk("[MSG2138A] FW_repair_detect ......\n");
     mt65xx_eint_mask(CUST_EINT_TOUCH_PANEL_NUM);
 
     _HalTscrHWReset();
@@ -1536,6 +3084,7 @@ static int FW_repair_detect (void)
 		drvTP_read_info_dwiic_c33();
 	}
     }
+    _HalTscrHWReset();
     i2c_clientma->timing = 100;
     i2c_clientma->addr = FW_ADDR_MSG21XX_TP;
     return 0;
@@ -1545,31 +3094,56 @@ static int Upgrade_detect()
 {
 	unsigned short wanted_major_version=0,wanted_minor_version=0;
 
-	printk("[MSG2138A]--------------------------------------Upgrade_detect\n");
+	printk("[MSG2138A] Upgrade_detect version: <%d.%3d\n>",fw_major_version,fw_minor_version);
 
 	if(fw_major_version==2)//junda
 	{
 		wanted_major_version= (MSG_FIRMWARE_JD[0x7f4f] << 8) + MSG_FIRMWARE_JD[0x7f4e];
 		wanted_minor_version= (MSG_FIRMWARE_JD[0x7f51] << 8) + MSG_FIRMWARE_JD[0x7f50];
 	}
-	else
+
+	else if(fw_major_version==5) //EACH
+	{
+		//TPMSG="EACH";
+		wanted_major_version= (MSG_FIRMWARE_EA[0x7f4f] << 8) + MSG_FIRMWARE_EA[0x7f4e];
+		wanted_minor_version= (MSG_FIRMWARE_EA[0x7f51] << 8) + MSG_FIRMWARE_EA[0x7f50];
+	}
+	else if(fw_major_version==1)
+	{
+		wanted_major_version = (MSG_FIRMWARE_MT[0x7f4f] << 8) + MSG_FIRMWARE_MT[0x7f4e];
+		wanted_minor_version = (MSG_FIRMWARE_MT[0x7f51] << 8) + MSG_FIRMWARE_MT[0x7f50]; 
+	}
+	else 
 	{
 		FW_repair_detect();
+		printk("[MSG2138A] after FW repair, Upgrade_detect version: <%d.%3d\n>",fw_major_version,fw_minor_version);
 		if(fw_major_version==2)//junda
 		{
 			wanted_major_version= (MSG_FIRMWARE_JD[0x7f4f] << 8) + MSG_FIRMWARE_JD[0x7f4e];
 			wanted_minor_version= (MSG_FIRMWARE_JD[0x7f51] << 8) + MSG_FIRMWARE_JD[0x7f50];
 		}
-	/*
+	
 		else if(fw_major_version==5) //EACH
 		{
-			TPMSG="EACH";
+			//TPMSG="EACH";
 			wanted_major_version= (MSG_FIRMWARE_EA[0x7f4f] << 8) + MSG_FIRMWARE_EA[0x7f4e];
 			wanted_minor_version= (MSG_FIRMWARE_EA[0x7f51] << 8) + MSG_FIRMWARE_EA[0x7f50];
 		}
-	*/
+		else if(fw_major_version==1)
+		{
+			wanted_major_version = (MSG_FIRMWARE_MT[0x7f4f] << 8) + MSG_FIRMWARE_MT[0x7f4e];
+			wanted_minor_version = (MSG_FIRMWARE_MT[0x7f51] << 8) + MSG_FIRMWARE_MT[0x7f50]; 		
+		}
+		else if(fw_major_version == 0xFFFF && fw_minor_version == 0xFFFF) //only for soul35:when touchpanel firmware upgrade failed, the fw_major_version and fw_minor_version turn into 0xFFFF.
+		{
+			printk("[MSG2138A] YUELI:force to upgrade\n");
+			firmware_updata();//force to upgrade
+			return 0;
+		}
+
 		else
 		{
+			printk("[MSG2138A] error: FW repair Upgrade_detect fail ,return -1 \n");
 			return -1;
 		}
 	}
@@ -1581,7 +3155,48 @@ static int Upgrade_detect()
 		firmware_updata();//force to upgrade
 	return 0;
 }
- 
+/*****************************************
+fan xin add for ito_test
+*******************************************/
+#ifdef ITO_TEST
+static struct kobject *tpswitch_ctrl_kobj;
+#define tpswitch_ctrl_attr(_name) \
+static struct kobj_attribute _name##_attr = {	\
+	.attr	= {				\
+		.name = __stringify(_name),	\
+		.mode = 0644,			\
+	},					\
+	.show	= _name##_show,			\
+	.store	= _name##_store,		\
+}
+
+static ssize_t name_show ( struct device *dev,
+                                      struct device_attribute *attr, char *buf )
+{
+	return sprintf ( buf, "%s\n", "msg2133a");
+}
+static ssize_t name_store(struct device *dev,
+                                   struct device_attribute *attr, const char *buf, size_t size)
+{
+	return 0;
+}
+tpswitch_ctrl_attr(name);
+static struct attribute *g_attr[] = {	
+	&name_attr.attr,
+	NULL,
+};
+static struct attribute_group tpswitch_attr_group = {
+	.attrs = g_attr,
+};
+static int tpswitch_sysfs_init(void)
+{ 
+	tpswitch_ctrl_kobj = kobject_create_and_add("tp_information", NULL);
+	if (!tpswitch_ctrl_kobj)
+		return -ENOMEM;
+
+	return sysfs_create_group(tpswitch_ctrl_kobj, &tpswitch_attr_group);
+}
+#endif
  static int __devinit tpd_probe(struct i2c_client *client, const struct i2c_device_id *id)
  {	 
 	printk("[MSG2138A]--------------------------------------tpd_probe\n",__func__);
@@ -1592,6 +3207,17 @@ static int Upgrade_detect()
 	i2c_clientma = client;
 
 	unsigned short wanted_major_version=0,wanted_minor_version=0;
+
+        mt_set_gpio_mode(GPIO_CTP_EINT_PIN, GPIO_CTP_EINT_PIN_M_EINT);
+        mt_set_gpio_dir(GPIO_CTP_EINT_PIN, GPIO_DIR_IN);
+        mt_set_gpio_pull_enable(GPIO_CTP_EINT_PIN, GPIO_PULL_ENABLE);
+        mt_set_gpio_pull_select(GPIO_CTP_EINT_PIN, GPIO_PULL_UP);
+
+        mt65xx_eint_set_sens(CUST_EINT_TOUCH_PANEL_NUM, CUST_EINT_TOUCH_PANEL_SENSITIVE);
+        mt65xx_eint_set_hw_debounce(CUST_EINT_TOUCH_PANEL_NUM, CUST_EINT_TOUCH_PANEL_DEBOUNCE_CN);
+        mt65xx_eint_registration(CUST_EINT_TOUCH_PANEL_NUM, CUST_EINT_TOUCH_PANEL_DEBOUNCE_EN, 1, tpd_eint_interrupt_handler, 1);
+        mt65xx_eint_mask(CUST_EINT_TOUCH_PANEL_NUM);
+	mdelay(100);
 
 	//power on
 	mt_set_gpio_mode(GPIO_CTP_EN_PIN, GPIO_CTP_EN_PIN_M_GPIO);
@@ -1608,7 +3234,7 @@ static int Upgrade_detect()
 	if((i2c_smbus_read_i2c_block_data(i2c_clientma, 0x00, 1, &data))< 0)
 	   {
 		   printk("[CTP-I2C-ERROR] [MSG2138A]transfer error addr=0x%x------llf, line: %d\n", i2c_clientma->addr,__LINE__);
-		  retval==Upgrade_detect();
+		  retval = Upgrade_detect();
 		  if(retval<0){
 		   	return -1; 
 		  }
@@ -1617,6 +3243,7 @@ static int Upgrade_detect()
 			tpd_load_status = 1;
 			printk("[MSG2138A][The CTP is MSG2138A ---llf] OK!**********\n");
 		  }
+		return -1; 
 	   }
 
 	/*frameware upgrade*/
@@ -1675,8 +3302,8 @@ static int Upgrade_detect()
 	if (IS_ERR(firmware_cmd_dev))
 		pr_err("Failed to create device(firmware_cmd_dev)!\n");
 
-	// version
-	if (device_create_file(firmware_cmd_dev, &dev_attr_version) < 0)
+	// versions
+	if (device_create_file(firmware_cmd_dev, &dev_attr_versions) < 0)
 		pr_err("Failed to create device file(%s)!\n", dev_attr_version.attr.name);
 	// update
 	if (device_create_file(firmware_cmd_dev, &dev_attr_update) < 0)
@@ -1684,35 +3311,39 @@ static int Upgrade_detect()
 	// data
 	if (device_create_file(firmware_cmd_dev, &dev_attr_data) < 0)
 		pr_err("Failed to create device file(%s)!\n", dev_attr_data.attr.name);
+#ifdef ITO_TEST
+	tpswitch_sysfs_init();
+#endif
 	dev_set_drvdata(firmware_cmd_dev, NULL);
 #endif
 
-	//mdelay(100);reduce waiting time to speed up booting up add by wwl   
+#ifdef HQ_CTP_PS_TEST
+	tp_pls_status = 0;
+	retval = misc_register(&mstar2133_pls_device);
+	if (retval != 0) {
+		printk("cannot register miscdev on mstar2133_pls_device\n");
+	}
+#endif
+	mdelay(100);//reduce waiting time to speed up booting up add by wwl   
 
-	mt_set_gpio_mode(GPIO_CTP_EINT_PIN, GPIO_CTP_EINT_PIN_M_EINT);
-	mt_set_gpio_dir(GPIO_CTP_EINT_PIN, GPIO_DIR_IN);
-	mt_set_gpio_pull_enable(GPIO_CTP_EINT_PIN, GPIO_PULL_ENABLE);
-	mt_set_gpio_pull_select(GPIO_CTP_EINT_PIN, GPIO_PULL_UP);
+	input_set_abs_params(tpd->dev, ABS_MT_POSITION_X, 0, TPD_RES_X, 0, 0);
 
-	mt65xx_eint_set_sens(CUST_EINT_TOUCH_PANEL_NUM, CUST_EINT_TOUCH_PANEL_SENSITIVE);
-	mt65xx_eint_set_hw_debounce(CUST_EINT_TOUCH_PANEL_NUM, CUST_EINT_TOUCH_PANEL_DEBOUNCE_CN);
-	mt65xx_eint_registration(CUST_EINT_TOUCH_PANEL_NUM, CUST_EINT_TOUCH_PANEL_DEBOUNCE_EN, 1, tpd_eint_interrupt_handler, 1); 
-	mt65xx_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);
-
-
-	msleep(100);
 	mthread = kthread_run(touch_event_handler, 0, TPD_DEVICEMA);
 	 if (IS_ERR(mthread))
 		 { 
 		  retval = PTR_ERR(mthread);
 		  TPD_DMESG(TPD_DEVICEMA " failed to create kernel mthread: %d\n", retval);
 		}
-
+#ifdef ITO_TEST
+    ito_test_create_entry();
+#endif
 	if(device_create_file(&i2c_clientma->dev, &dev_attr_versions)>=0)
 	{            
 		printk("device_create_file_version \n");        
 	}
 	TPD_DMESG("Touch Panel Device Probe %s\n", (retval < TPD_OK) ? "FAIL" : "PASS");
+	mt65xx_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);
+	tpd_load_status = 1;
 	return 0;
    
  }
@@ -1774,6 +3405,15 @@ static int Upgrade_detect()
 	mt_set_gpio_out(GPIO_CTP_EN_PIN, GPIO_OUT_ONE);
 	msleep(500);
 	mt65xx_eint_unmask(CUST_EINT_TOUCH_PANEL_NUM);  
+ #ifdef HQ_CTP_PS_TEST
+
+	if(mstar2133_pls_opened)
+		{
+			msg2133_ps_mode_enable(1);
+			printk("==%s= mstar2133_pls_opened ! return\n", __func__);
+		}
+#endif
+
 	
 	 return retval;
  }
@@ -1783,6 +3423,15 @@ static int Upgrade_detect()
 	 int retval = TPD_OK;
  
 	TPD_DEBUG("TPD enter sleep\n");
+#ifdef HQ_CTP_PS_TEST
+ 
+	if(mstar2133_pls_opened)
+	{
+		printk("==%s== mstar2133_pls_opened ! return \n", __func__);
+		return;
+	}
+	
+#endif
 	mt65xx_eint_mask(CUST_EINT_TOUCH_PANEL_NUM);
 
 	mt_set_gpio_mode(GPIO_CTP_EN_PIN, GPIO_CTP_EN_PIN_M_GPIO);

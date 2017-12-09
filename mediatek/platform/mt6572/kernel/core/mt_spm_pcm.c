@@ -425,9 +425,10 @@ bool spm_cpu_pdn_enable(SPM_PCM_SCENARIO scenario,bool enable)
 
 bool spm_init_pcm(SPM_PCM_CONFIG* pcm_config)
 {
-  pcm_config_curr =   pcm_config;
   u32 timer_val,wdt_timer_val;
   bool wfi_sel[2] = {false,false};
+
+  pcm_config_curr =   pcm_config;
     
     if(pcm_config->scenario == SPM_PCM_DEEP_IDLE)
         spm_crit2("%s with cpu_pdn=%d, pwr_level=%d, infra_pdn=%d\n",pcm_scenario[pcm_config->scenario],pcm_config->cpu_pdn,pcm_config->pcm_pwrlevel,pcm_config->infra_pdn);
@@ -538,7 +539,7 @@ void spm_kick_pcm(SPM_PCM_CONFIG* pcm_config)
         /* In order to prevent glitch from SRCLKENA,we move the co-clock logic to SPM 26M-wake/sleep VSR in MT6572/82 */
         spm_write(SPM_CLK_CON, spm_read(SPM_CLK_CON) |CC_SRCLKENA_MASK );
      }
-    else
+     else
         spm_write(SPM_PCM_PWR_IO_EN, 0);
 
     /* for E2 enable LPM to do 32k-less feature*/
@@ -580,7 +581,7 @@ void spm_trigger_wfi(SPM_PCM_CONFIG* pcm_config)
 static u32 spm_parse_wake_reason(SPM_PCM_CONFIG* pcm_config, wake_status_t* wake_status_p)
 {
     int i,len;
-    char *p,*buff= &pcm_config->result[0];
+    char *p,*buff= (char*)&pcm_config->result[0];
     PCM_DBG_REG  *pcm_dbg_reg= &wake_status_p->pcm_dbg_reg;
     
     p=buff;
@@ -705,7 +706,7 @@ wake_status_t* spm_get_wakeup_status(SPM_PCM_CONFIG* pcm_config)
 
 const char* spm_get_wake_up_result(SPM_PCM_SCENARIO scenario)
 {
-    return pcm_config_arr[scenario]->result;
+    return (char*) pcm_config_arr[scenario]->result;
 }
 
 void spm_clean_after_wakeup(void)

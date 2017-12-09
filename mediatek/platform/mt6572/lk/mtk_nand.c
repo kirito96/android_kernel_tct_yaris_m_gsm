@@ -9,12 +9,25 @@
 #include "nand_device_list.h"
 #include <kernel/event.h>
 #include <platform/mt_irq.h>
+#include <string.h>
+#include <printf.h>
+#include <stdlib.h>
 
 //#define NAND_LK_TEST
 #ifdef NAND_LK_TEST
 #include "mt_partition.h"
 #endif
+#if defined(MTK_COMBO_NAND_SUPPORT)
+	// BMT_POOL_SIZE is not used anymore
+#else
+	#ifndef PART_SIZE_BMTPOOL
+	#define BMT_POOL_SIZE (80)
+	#else
+	#define BMT_POOL_SIZE (PART_SIZE_BMTPOOL)
+	#endif
+#endif
 
+#define PMT_POOL_SIZE	(2)
 
 #ifdef CONFIG_CMD_NAND
 extern int mt_part_register_device(part_dev_t * dev);
@@ -75,7 +88,7 @@ static bool g_bInitDone;
 u32 total_size;
 u32 g_nand_size = 0;
 
-static unsigned char g_data_buf[4096+128] __attribute__ ((aligned(32)));
+__attribute__ ((aligned(64))) static unsigned char g_data_buf[4096+128] ;
 static unsigned char g_spare_buf[256];
 static u32 download_size = 0;
 
@@ -203,7 +216,7 @@ static void ECC_Config(nand_ecc_level ecc_level)
 {
     u32 u4ENCODESize;
     u32 u4DECODESize;
-    u32 ecc_bit_cfg;
+    u32 ecc_bit_cfg =  ECC_CNFG_ECC4;
     switch(ecc_level)
     {
 	case 4:
@@ -1058,13 +1071,13 @@ static int nand_part_write(part_dev_t * dev, uchar * src, ulong dst, int size)
     u32 u4RowAddr = dst >> nand->page_shift;
     u32 u4RowEnd;
     u32 u4WriteLen = 0;
-    int i4Len;
-    int k = 0;
+    u32 i4Len;
+    u32 k = 0;
 
     for (k = 0; k < sizeof(g_kCMD.au1OOB); k++)
         *(g_kCMD.au1OOB + k) = 0xFF;
 
-    while ((size > u4WriteLen) && (u4BlkAddr < u4BlkEnd))
+    while ((size > (int)u4WriteLen) && (u4BlkAddr < u4BlkEnd))
     {
         if (!u4ColAddr)
         {
@@ -1125,8 +1138,8 @@ static int nand_part_read(part_dev_t * dev, ulong source, uchar * dst, int size)
     u32 u4RowAddr = source >> nand->page_shift;
     u32 u4RowEnd;
     u32 u4ReadLen = 0;
-    int i4Len;
-    while ((size > u4ReadLen) && (u4BlkAddr < u4BlkEnd))
+    u32 i4Len;
+    while ((size > (int)u4ReadLen) && (u4BlkAddr < u4BlkEnd))
     {
         res = nand_block_bad(nand, (u4BlkAddr * u4PageNumPerBlock));
 
@@ -1161,7 +1174,7 @@ static int nand_part_read(part_dev_t * dev, ulong source, uchar * dst, int size)
     return (int)u4ReadLen;
 }
 
-static void nand_command_bp(struct nand_chip *nand_chip, unsigned command, int column, int page_addr)
+static void nand_command_bp(struct nand_chip *nand_chip, unsigned command, int column, u32 page_addr)
 {
     struct nand_chip *nand = nand_chip;
     u32 timeout;
@@ -1334,7 +1347,7 @@ void lk_nand_irq_handler(unsigned int irq)
 
 int nand_init_device(struct nand_chip *nand)
 {
-    int i, j, busw,index;
+    int index;
     u8 id[NAND_MAX_ID];
     u32 spare_bit;
     u32 spare_per_sec;
@@ -1451,12 +1464,20 @@ int nand_init_device(struct nand_chip *nand)
 		mt_irq_unmask(MT_NFI_IRQ_ID);
 	}
     g_nand_size = nand->chipsize;
+    #if defined(MTK_COMBO_NAND_SUPPORT)
+    nand->chipsize -= (PART_SIZE_BMTPOOL);
+    #else
     nand->chipsize -= nand->erasesize * (BMT_POOL_SIZE);
+    #endif
    // nand->chipsize -= nand->erasesize * (PMT_POOL_SIZE);
     g_bInitDone = true;
     if (!g_bmt)
     {
+    		#if defined(MTK_COMBO_NAND_SUPPORT)
+        if (!(g_bmt = init_bmt(nand, (PART_SIZE_BMTPOOL)/nand->erasesize)))
+        #else
         if (!(g_bmt = init_bmt(nand, BMT_POOL_SIZE)))
+        #endif
         {
             MSG(INIT, "Error: init bmt failed\n");
             return -1;
@@ -1582,10 +1603,8 @@ void nand_driver_test(void){
 int nand_erase(u64 offset, u64 size)
 {
     u32 img_size = (u32)size;
-    u32 tpgsz;
     u32 tblksz;
     u32 cur_offset;
-    u32 i = 0;
 	u32 block_size = g_nand_chip.erasesize;
 
     // do block alignment check
@@ -1656,7 +1675,6 @@ static int erase_fail_test = 0;
 bool nand_erase_hw (u32 offset)
 {
     bool bRet = TRUE;
-    u32 timeout, u4SecNum = g_nand_chip.oobblock >> 9;
     u32 rownob = devinfo.addr_cycle - 2;
     u32 page_addr = offset / g_nand_chip.oobblock;
 
@@ -1696,7 +1714,7 @@ bool mark_block_bad_hw(u32 offset)
 	unsigned char spare_buf[64];
     u32 page_addr = offset / g_nand_chip.oobblock;
     u32 u4SecNum = g_nand_chip.oobblock >> 9;
-    int i, page_num = (g_nand_chip.erasesize / g_nand_chip.oobblock);
+    u32 i, page_num = (g_nand_chip.erasesize / g_nand_chip.oobblock);
 
     memset(buf,0xFF,4096);
 
@@ -1714,8 +1732,6 @@ bool mark_block_bad_hw(u32 offset)
 }
 int nand_write_page_hw(u32 page, u8 *dat, u8 *oob)
 {
-    u32 pagesz = g_nand_chip.oobblock;
-    u32 u4SecNum = pagesz >> 9;
 
     int i, j, start, len;
     bool empty = TRUE;
@@ -1742,7 +1758,7 @@ int nand_write_page_hw(u32 page, u8 *dat, u8 *oob)
 	return nand_exec_write_page(&g_nand_chip, page, g_nand_chip.oobblock, (u8 *)dat,(u8 *)oob);
 
   }
-int nand_write_page_hwecc (unsigned int logical_addr, char *buf, char *oob_buf)
+int nand_write_page_hwecc (unsigned int logical_addr, unsigned char *buf, unsigned char *oob_buf)
 {
 	u32 page_size = g_nand_chip.oobblock;
 	u32 block_size = g_nand_chip.erasesize;
@@ -1751,8 +1767,8 @@ int nand_write_page_hwecc (unsigned int logical_addr, char *buf, char *oob_buf)
 	u32 pages_per_blk = (block_size/page_size);
     u32 page_in_block = (logical_addr/page_size)%pages_per_blk;
 
-    int i;
-    int start, len, offset;
+    u32 i;
+    u32 start, len, offset;
     for (i = 0; i < sizeof(g_spare_buf); i++)
         *(g_spare_buf + i) = 0xFF;
 
@@ -1813,6 +1829,11 @@ int nand_write_img(u32 addr, void *data, u32 img_sz,u32 partition_size,int img_t
 	}else if(page_size == 2048){
 		img_spare_size = 64;
 	}
+	else
+	{
+		printf("[nand_write_img]Not support page size\n",page_size);
+		return -1;	
+  }
 
 	if(img_type == YFFS2_IMG){
 		write_size = page_size + img_spare_size;
@@ -1909,7 +1930,7 @@ int nand_write_img_ex(u32 addr, void *data, u32 length,u32 total_size, u32 *next
 	unsigned int img_spare_size,write_size;
 	unsigned int block_size = g_nand_chip.erasesize;
 	unsigned int partition_end = partition_start + partition_size;
-	unsigned int first_chunk = 0;
+	//unsigned int first_chunk = 0;
 	unsigned int last_chunk = 0;
 	unsigned int left_size = 0;
 	bool ret;
@@ -1931,6 +1952,11 @@ int nand_write_img_ex(u32 addr, void *data, u32 length,u32 total_size, u32 *next
 	}else if(page_size == 2048){
 		img_spare_size = 64;
 	}
+	else
+	{
+		printf("[nand_write_img]Not support page size\n",page_size);
+		return -1;	
+  }	
     if(last_addr % page_size){
 		printf("[nand_write_img_ex]write addr is not page_size %d alignment\n",page_size);
 		return -1;
@@ -1946,7 +1972,7 @@ int nand_write_img_ex(u32 addr, void *data, u32 length,u32 total_size, u32 *next
 	}
 	if(addr == partition_start){
 		printf("[nand_write_img_ex]first chunk\n");
-		first_chunk = 1;
+		//first_chunk = 1;
 		download_size = 0;
 		memset(g_data_buf,0xff,write_size);
 	}
@@ -2060,7 +2086,7 @@ int nand_write_img_ex(u32 addr, void *data, u32 length,u32 total_size, u32 *next
 
 int check_data_empty(void *data, unsigned size)
 {
-		int i;
+		u32 i;
 		u32 *tp = (u32 *)data;
 
 		for(i =0;i<size/4;i++){
@@ -2073,7 +2099,7 @@ int check_data_empty(void *data, unsigned size)
 
 static u32 find_next_good_block(u32 start_block)
 {
-	int i;
+	u32 i;
 	u32 dst_block = 0;
 	for(i=start_block;i<(total_size/g_nand_chip.erasesize);i++)
 	{
@@ -2090,7 +2116,7 @@ static bool block_replace(u32 src_block, u32 dst_block, u32 error_page)
 	bool ret;
 	u32 block_size = g_nand_chip.erasesize;
 	u32 page_size = g_nand_chip.page_size;
-	int i;
+	u32 i;
 	u8 *data_buf;
 	u8 *spare_buf;
 	ret = __nand_erase(dst_block*block_size);

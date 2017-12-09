@@ -19,6 +19,7 @@
 #include <linux/pagemap.h>
 #include <linux/init.h>
 #include <linux/highmem.h>
+#include <linux/vmpressure.h>
 #include <linux/vmstat.h>
 #include <linux/file.h>
 #include <linux/writeback.h>
@@ -42,8 +43,6 @@
 #include <linux/sysctl.h>
 #include <linux/oom.h>
 #include <linux/prefetch.h>
-//Google Patch
-//https://android.googlesource.com/kernel/common/+/29b8a347fcba8a7df5478f746f1d2a422e294190%5E%21/#F0
 #include <linux/debugfs.h>
 
 #include <asm/tlbflush.h>
@@ -204,8 +203,7 @@ static unsigned long zone_nr_lru_pages(struct mem_cgroup_zone *mz,
 
 	return zone_page_state(mz->zone, NR_LRU_BASE + lru);
 }
-//Google Patch
-//https://android.googlesource.com/kernel/common/+/29b8a347fcba8a7df5478f746f1d2a422e294190%5E%21/#F0
+
 struct dentry *debug_file;
 
 static int debug_shrinker_show(struct seq_file *s, void *unused)
@@ -218,7 +216,6 @@ static int debug_shrinker_show(struct seq_file *s, void *unused)
 
 	down_read(&shrinker_rwsem);
 	list_for_each_entry(shrinker, &shrinker_list, list) {
-		//char name[64];
 		int num_objs;
 
 		num_objs = shrinker->shrink(shrinker, &sc);
@@ -253,9 +250,6 @@ void register_shrinker(struct shrinker *shrinker)
 	up_write(&shrinker_rwsem);
 }
 EXPORT_SYMBOL(register_shrinker);
-
-//Google Patch
-//https://android.googlesource.com/kernel/common/+/29b8a347fcba8a7df5478f746f1d2a422e294190%5E%21/#F0
 
 static int __init add_shrinker_debug(void)
 {
@@ -427,15 +421,10 @@ static void set_reclaim_mode(int priority, struct scan_control *sc,
 	 * reclaim/compaction.Depending on the order, we will either set the
 	 * sync mode or just reclaim order-0 pages later.
 	 */
-#ifdef CONFIG_ZRAM
-	// disable lumpy reclaim, see kernel patch: mm: vmscan: remove lumpy reclaim
-	sc->reclaim_mode = 0;
-#else
 	if (COMPACTION_BUILD)
 		sc->reclaim_mode = RECLAIM_MODE_COMPACTION;
 	else
 		sc->reclaim_mode = RECLAIM_MODE_LUMPYRECLAIM;
-#endif
 
 	/*
 	 * Avoid using lumpy reclaim or reclaim/compaction if possible by
@@ -780,7 +769,7 @@ static enum page_references page_check_references(struct page *page,
 		return PAGEREF_RECLAIM;
 
 	if (referenced_ptes) {
-		if (PageAnon(page))
+		if (PageSwapBacked(page))
 			return PAGEREF_ACTIVATE;
 		/*
 		 * All mapped pages start out with page table
@@ -1930,7 +1919,7 @@ static unsigned long shrink_list(enum lru_list lru, unsigned long nr_to_scan,
 	int file = is_file_lru(lru);
 
 	if (is_active_lru(lru)) {
-		if (sc->hibernation_mode || inactive_list_is_low(mz, file))
+		if (inactive_list_is_low(mz, file))
 			shrink_active_list(nr_to_scan, mz, sc, priority, file);
 		return 0;
 	}
@@ -1946,7 +1935,7 @@ static int vmscan_swappiness(struct mem_cgroup_zone *mz,
 	return mem_cgroup_swappiness(mz->mem_cgroup);
 }
 
-#ifdef CONFIG_ZRAM
+#if defined(CONFIG_ZRAM) && defined(MTK_LCA_RAM_OPTIMIZE)
 // vmscan debug
 static int vmscan_swap_sum = 200;
 static int vmscan_swap_file_ratio = 1;
@@ -2032,14 +2021,14 @@ static void get_scan_count(struct mem_cgroup_zone *mz, struct scan_control *sc,
 	 * With swappiness at 100, anonymous and file have the same priority.
 	 * This scanning priority is essentially the inverse of IO cost.
 	 */
-#ifdef CONFIG_ZRAM
-	if (vmscan_swap_file_ratio) {
+#if defined(CONFIG_ZRAM) && defined(MTK_LCA_RAM_OPTIMIZE)
+    if (vmscan_swap_file_ratio) {
 	    anon_prio = (vmscan_swappiness(mz, sc) * anon) / (anon + file + 1);
 	    file_prio = (vmscan_swap_sum - vmscan_swappiness(mz, sc)) * file / (anon + file + 1);
 	} else {
 	    anon_prio = vmscan_swappiness(mz, sc);
 	    file_prio = vmscan_swap_sum - vmscan_swappiness(mz, sc);
-	}
+    }
 #else // CONFIG_ZRAM
 	anon_prio = vmscan_swappiness(mz, sc);
 	file_prio = 200 - vmscan_swappiness(mz, sc);
@@ -2072,11 +2061,11 @@ static void get_scan_count(struct mem_cgroup_zone *mz, struct scan_control *sc,
 	 * proportional to the fraction of recently scanned pages on
 	 * each list that were recently referenced and in active use.
 	 */
-	ap = (anon_prio + 1) * (reclaim_stat->recent_scanned[0] + 1);
-	fp = (file_prio + 1) * (reclaim_stat->recent_scanned[1] + 1);
-        ap /= reclaim_stat->recent_rotated[0] + 1;
-        fp /= reclaim_stat->recent_rotated[1] + 1;
+	ap = anon_prio * (reclaim_stat->recent_scanned[0] + 1);
+	ap /= reclaim_stat->recent_rotated[0] + 1;
 
+	fp = file_prio * (reclaim_stat->recent_scanned[1] + 1);
+	fp /= reclaim_stat->recent_rotated[1] + 1;
 	spin_unlock_irq(&mz->zone->lru_lock);
 
 	fraction[0] = ap;
@@ -2088,7 +2077,9 @@ out:
 		unsigned long scan;
 
 		scan = zone_nr_lru_pages(mz, lru);
-		if ((priority || noswap) && !sc->hibernation_mode) {
+		if (sc->hibernation_mode)
+			scan = SWAP_CLUSTER_MAX;
+		else if ((priority || noswap || !vmscan_swappiness(mz, sc))) {
 			scan >>= priority;
 			if (!scan && force_scan)
 				scan = SWAP_CLUSTER_MAX;
@@ -2096,14 +2087,6 @@ out:
 		}
 		nr[lru] = scan;
 	}
-#ifdef CONFIG_ZRAM
-        vmscan_recent_scanned_anon = reclaim_stat->recent_scanned[0];
-        vmscan_recent_scanned_file = reclaim_stat->recent_scanned[1];
-        vmscan_recent_rotated_anon = reclaim_stat->recent_rotated[0];
-        vmscan_recent_rotated_file = reclaim_stat->recent_rotated[1];
-        vmscan_scan_anon_sum += nr[LRU_INACTIVE_ANON];
-        vmscan_scan_file_sum += nr[LRU_INACTIVE_FILE];
-#endif // CONFIG_ZRAM
 }
 
 /*
@@ -2121,8 +2104,10 @@ static inline bool should_continue_reclaim(struct mem_cgroup_zone *mz,
 	unsigned long pages_for_compaction;
 	unsigned long inactive_lru_pages;
 
-	if (sc->hibernation_mode && nr_reclaimed && nr_scanned && sc->nr_to_reclaim >= sc->nr_reclaimed)
+#if 0	// This will cause too aggressive memory reclaim
+	if (nr_reclaimed && nr_scanned && sc->nr_to_reclaim >= sc->nr_reclaimed)
 		return true;
+#endif
 
 	/* If not in reclaim/compaction mode, stop */
 	if (!(sc->reclaim_mode & RECLAIM_MODE_COMPACTION))
@@ -2236,12 +2221,16 @@ restart:
 static void shrink_zone(int priority, struct zone *zone,
 			struct scan_control *sc)
 {
+	unsigned long nr_reclaimed, nr_scanned;
 	struct mem_cgroup *root = sc->target_mem_cgroup;
 	struct mem_cgroup_reclaim_cookie reclaim = {
 		.zone = zone,
 		.priority = priority,
 	};
 	struct mem_cgroup *memcg;
+
+	nr_reclaimed = sc->nr_reclaimed;
+	nr_scanned = sc->nr_scanned;
 
 	memcg = mem_cgroup_iter(root, NULL, &reclaim);
 	do {
@@ -2267,6 +2256,10 @@ static void shrink_zone(int priority, struct zone *zone,
 		}
 		memcg = mem_cgroup_iter(root, memcg, &reclaim);
 	} while (memcg);
+
+	vmpressure(sc->gfp_mask, sc->target_mem_cgroup,
+		   sc->nr_scanned - nr_scanned,
+		   sc->nr_reclaimed - nr_reclaimed);
 }
 
 /* Returns true if compaction should go ahead for a high-order request */
@@ -2456,6 +2449,7 @@ static unsigned long do_try_to_free_pages(struct zonelist *zonelist,
 		count_vm_event(ALLOCSTALL);
 
 	for (priority = DEF_PRIORITY; priority >= 0; priority--) {
+		vmpressure_prio(sc->gfp_mask, sc->target_mem_cgroup, priority);
 		sc->nr_scanned = 0;
 		if (!priority)
 			disable_swap_token(sc->target_mem_cgroup);
@@ -2674,6 +2668,19 @@ static void age_active_anon(struct zone *zone, struct scan_control *sc,
 	} while (memcg);
 }
 
+static bool zone_balanced(struct zone *zone, int order,
+			  unsigned long balance_gap, int classzone_idx)
+{
+	if (!zone_watermark_ok_safe(zone, order, high_wmark_pages(zone) +
+				    balance_gap, classzone_idx, 0))
+		return false;
+
+	if (COMPACTION_BUILD && order && !compaction_suitable(zone, order))
+		return false;
+
+	return true;
+}
+
 /*
  * pgdat_balanced is used when checking if a node is balanced for high-order
  * allocations. Only zones that meet watermarks and are in a zone allowed
@@ -2733,8 +2740,7 @@ static bool sleeping_prematurely(pg_data_t *pgdat, int order, long remaining,
 			continue;
 		}
 
-		if (!zone_watermark_ok_safe(zone, order, high_wmark_pages(zone),
-							i, 0))
+		if (!zone_balanced(zone, order, 0, i))
 			all_zones_ok = false;
 		else
 			balanced += zone->present_pages;
@@ -2846,8 +2852,7 @@ loop_again:
 				break;
 			}
 
-			if (!zone_watermark_ok_safe(zone, order,
-					high_wmark_pages(zone), 0, 0)) {
+			if (!zone_balanced(zone, order, 0, 0)) {
 				end_zone = i;
 				break;
 			} else {
@@ -2922,9 +2927,8 @@ loop_again:
 				testorder = 0;
 
 			if ((buffer_heads_over_limit && is_highmem_idx(i)) ||
-				    !zone_watermark_ok_safe(zone, testorder,
-					high_wmark_pages(zone) + balance_gap,
-					end_zone, 0)) {
+			    !zone_balanced(zone, testorder,
+					   balance_gap, end_zone)) {
 				shrink_zone(priority, zone, &sc);
 
 				reclaim_state->reclaimed_slab = 0;
@@ -2951,8 +2955,7 @@ loop_again:
 				continue;
 			}
 
-			if (!zone_watermark_ok_safe(zone, testorder,
-					high_wmark_pages(zone), end_zone, 0)) {
+			if (!zone_balanced(zone, testorder, 0, end_zone)) {
 				all_zones_ok = 0;
 				/*
 				 * We are still under min water mark.  This
@@ -3118,7 +3121,10 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int order, int classzone_idx)
 		 * them before going back to sleep.
 		 */
 		set_pgdat_percpu_threshold(pgdat, calculate_normal_threshold);
-		schedule();
+
+		if (!kthread_should_stop())
+			schedule();
+
 		set_pgdat_percpu_threshold(pgdat, calculate_pressure_threshold);
 	} else {
 		if (remaining)
@@ -3230,6 +3236,11 @@ static int kswapd(void *p)
 						&balanced_classzone_idx);
 		}
 	}
+
+	tsk->flags &= ~(PF_MEMALLOC | PF_SWAPWRITE | PF_KSWAPD);
+	current->reclaim_state = NULL;
+	lockdep_clear_current_reclaim_state();
+
 	return 0;
 }
 
@@ -3342,8 +3353,14 @@ unsigned long shrink_memory_mask(unsigned long nr_to_reclaim, gfp_t mask)
 }
 EXPORT_SYMBOL_GPL(shrink_memory_mask);
 
+#ifdef CONFIG_MTKPASR
+extern void shrink_mtkpasr_all(void);
+#endif
 unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 {
+#ifdef CONFIG_MTKPASR
+	shrink_mtkpasr_all();
+#endif
 	return shrink_memory_mask(nr_to_reclaim, GFP_HIGHUSER_MOVABLE);
 }
 EXPORT_SYMBOL_GPL(shrink_all_memory);
@@ -3395,11 +3412,6 @@ int kswapd_run(int nid)
 	return ret;
 }
 
-        /*
-         * kernel patch
-         * commit: 0e343dbe08acb440f7914d989bcc32c1d1576735
-         * https://android.googlesource.com/kernel/common/+/0e343dbe08acb440f7914d989bcc32c1d1576735%5E!/#F0
-         */
 /*
  * Called by memory hotplug when all memory in a node is offlined.  Caller must
  * hold lock_memory_hotplug().
@@ -3659,7 +3671,6 @@ int zone_reclaim(struct zone *zone, gfp_t gfp_mask, unsigned int order)
  */
 int page_evictable(struct page *page, struct vm_area_struct *vma)
 {
-
 	if (mapping_unevictable(page_mapping(page)))
 		return 0;
 
@@ -3785,5 +3796,246 @@ int scan_unevictable_register_node(struct node *node)
 void scan_unevictable_unregister_node(struct node *node)
 {
 	device_remove_file(&node->dev, &dev_attr_scan_unevictable_pages);
+}
+#endif
+
+#ifdef CONFIG_MTKPASR
+
+extern void free_hot_cold_page(struct page *page, int cold);
+
+/* Isolate pages for PASR */
+#ifdef CONFIG_MTKPASR_ALLEXTCOMP
+int mtkpasr_isolate_page(struct page *page, int check_swap)
+#else
+int mtkpasr_isolate_page(struct page *page)
+#endif
+{
+	struct zone *zone = page_zone(page);
+	unsigned long flags;
+	isolate_mode_t mode = ISOLATE_ACTIVE|ISOLATE_INACTIVE|ISOLATE_ASYNC_MIGRATE;	// All LRUs except PageUnevictable
+
+	/* Lock this zone - USE trylock version! */
+	if (!spin_trylock_irqsave(&zone->lru_lock, flags)) {
+		printk(KERN_ALERT"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+		printk(KERN_ALERT"[%s][%d] Failed to lock this zone!\n",__FUNCTION__,__LINE__);
+		printk(KERN_ALERT"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+		return -EAGAIN;
+	}
+
+#ifdef CONFIG_MTKPASR_ALLEXTCOMP
+	/* Check whether we should handle SwapBacked, SwapCache pages */
+	if (check_swap) {
+		if (PageSwapBacked(page) || PageSwapCache(page)) {
+			spin_unlock_irqrestore(&zone->lru_lock, flags);
+			return -EACCES;
+		}
+	}
+#endif
+
+	/* Try to isolate this page */
+	if (__isolate_lru_page(page, mode, 0) != 0) {
+		spin_unlock_irqrestore(&zone->lru_lock, flags);
+		return -EACCES;
+	}
+	
+	/* Successfully isolated */
+	del_page_from_lru_list(zone, page, page_lru(page));
+	
+	/* Unlock this zone */
+	spin_unlock_irqrestore(&zone->lru_lock, flags);
+
+	return 0;
+}
+
+/* Drop page (in File/Anon LRUs) (Imitate the behavior of shrink_page_list) */
+/* If returns error, caller needs to putback page by itself. */
+int mtkpasr_drop_page(struct page *page)
+{
+	int ret;
+	unsigned long vm_flags = 0x0;
+	bool active = false;
+	struct address_space *mapping;
+	enum ttu_flags unmap_flags = TTU_UNMAP;
+
+	/* Suitable scan control */
+	struct scan_control sc = {
+		.gfp_mask = GFP_KERNEL,
+		.order = PAGE_ALLOC_COSTLY_ORDER + 1, 
+		.reclaim_mode = RECLAIM_MODE_SINGLE|RECLAIM_MODE_SYNC,	// We only handle "SwapBacked" pages in this reclaim_mode!
+	};
+
+	/* Try to isolate this page */
+#ifdef CONFIG_MTKPASR_ALLEXTCOMP
+	ret = mtkpasr_isolate_page(page, 0x1);
+#else
+	ret = mtkpasr_isolate_page(page);
+#endif
+	if (ret) {
+		return ret;
+	}
+	
+	/* Check whether it is evictable! */
+	if (unlikely(!page_evictable(page, NULL))) {
+		putback_lru_page(page);
+		return -EACCES;
+	}
+
+	/* If it is Active, reference and deactivate it */
+	if (PageActive(page)) {
+		active = TestClearPageActive(page);
+	}
+
+	/* If we fail to lock this page, ignore it */	
+	if (!trylock_page(page)) {
+		goto putback;
+	}
+	
+	/* If page is in writeback, we don't handle it here! */
+	if (PageWriteback(page)) {
+		goto unlock;
+	}
+	
+	/*
+	 * Anonymous process memory has backing store?
+	 * Try to allocate it some swap space here.
+	 */
+	if (PageAnon(page) && !PageSwapCache(page)) {
+		/* Check whether we have enough free memory */
+		/* Ok! It is safe to add this page to swap. */
+		if (!add_to_swap(page)){
+			goto unlock;
+		}
+	}
+	
+	/* We don't handle dirty file cache here (Related devices may be suspended) */
+	if (page_is_file_cache(page)) {
+		/* How do we handle pages in VM_EXEC vmas? */
+		if ((vm_flags & VM_EXEC)) {
+			goto unlock;
+		}
+		/* We don't handle dirty file pages! */
+		if (PageDirty(page)) {
+#ifdef CONFIG_MTKPASR_DEBUG 
+			printk(KERN_ALERT "\n\n\n\n\n\n [%s][%d]\n\n\n\n\n\n",__FUNCTION__,__LINE__);
+#endif
+			goto unlock;
+		}
+	}
+		
+	/*
+	 * The page is mapped into the page tables of one or more
+	 * processes. Try to unmap it here.
+	 */
+	mapping = page_mapping(page);
+	if (page_mapped(page) && mapping) {
+#if 0
+		/* Indicate unmap action for SwapBacked pages */
+		if (PageSwapBacked(page)) {
+			unmap_flags |= TTU_IGNORE_ACCESS; 
+		}
+#endif
+		/* To unmap */
+		switch (try_to_unmap(page, unmap_flags)) {
+		case SWAP_SUCCESS:
+			/* try to free the page below */
+			break;
+		case SWAP_FAIL:
+			goto restore_swap;
+		case SWAP_AGAIN:
+			goto restore_swap;
+		case SWAP_MLOCK:
+			goto restore_swap;
+
+		}
+	}
+	
+	/* Check whether it is dirtied. 
+	 * We have filtered out dirty file pages above. (IMPORTANT!)
+	 * "VM_BUG_ON(!PageSwapBacked(page))"
+	 * */
+	if (PageDirty(page)) {
+		/* Page is dirty, try to write it out here */
+		/* It's ok for zram swap! */
+		/* Should we need to apply GFP_IOFS? */
+		switch (pageout(page, mapping, &sc)) {
+		case PAGE_SUCCESS:
+			if (PageWriteback(page)) {
+				goto putback;
+			}
+			if (PageDirty(page)) {
+				goto putback;
+			}
+
+			/*
+			 * A synchronous write - probably a ramdisk.  Go
+			 * ahead and try to reclaim the page.
+			 */
+			if (!trylock_page(page)) {
+				goto putback;
+			}
+			if (PageDirty(page) || PageWriteback(page)) {
+				goto unlock;
+			}
+			mapping = page_mapping(page);
+		case PAGE_CLEAN:
+			/* try to free the page below */
+			break;
+		default:
+#ifdef CONFIG_MTKPASR_DEBUG 
+			printk(KERN_ALERT "\n\n\n\n\n\n [%s][%d]\n\n\n\n\n\n",__FUNCTION__,__LINE__);
+#endif
+			goto restore_unmap;
+		}
+	}
+
+	/* Release buffer */
+	if (page_has_private(page)) {
+		if (!try_to_release_page(page, sc.gfp_mask)) {
+			goto unlock;
+		}
+		if (!mapping && page_count(page) == 1) {
+			unlock_page(page);
+			if (put_page_testzero(page)) {
+				goto freeit;
+			} else {
+				/* Race! TOCHECK */
+				printk(KERN_ALERT "\n\n\n\n\n\n [%s][%d] RACE!!\n\n\n\n\n\n",__FUNCTION__,__LINE__);
+				goto notask;
+			}
+		}
+	}
+	if (!mapping || !__remove_mapping(mapping, page)) {
+		goto unlock;
+	}
+		
+	__clear_page_locked(page);
+
+freeit:
+	free_hot_cold_page(page, 0);
+	return 0;	
+
+restore_unmap:
+	/* Do something */
+
+restore_swap:
+	if (PageSwapCache(page))
+		try_to_free_swap(page);
+
+unlock:
+	unlock_page(page);
+
+putback:	
+	/* Activate it again if needed! */
+	if (active)
+		SetPageActive(page);
+	
+	/* We don't putback them to corresponding LRUs, because we want to do more tasks outside this function!
+	putback_lru_page(page); */
+
+	/* Failedly dropped pages. Do migration! */
+	return -EBUSY;
+
+notask:
+	return 0;
 }
 #endif

@@ -99,8 +99,10 @@
 //---------------digital pmic  register define end ---------------------------------------
 
 //---------------analog pmic  register define start --------------------------------------
+#if 0
 #define AFE_PMICANA_AUDIO_BASE        (0x0)
 
+#define CID                  (AFE_PMICANA_AUDIO_BASE + 0x100)
 #define TOP_CKPDN0                  (AFE_PMICANA_AUDIO_BASE + 0x102)
 #define TOP_CKPDN0_SET              (AFE_PMICANA_AUDIO_BASE + 0x104)
 #define TOP_CKPDN0_CLR              (AFE_PMICANA_AUDIO_BASE + 0x106)
@@ -133,7 +135,9 @@
 #define AUDTOP_CON7                 (AFE_PMICANA_AUDIO_BASE + 0x70E)
 #define AUDTOP_CON8                 (AFE_PMICANA_AUDIO_BASE + 0x710)
 #define AUDTOP_CON9                 (AFE_PMICANA_AUDIO_BASE + 0x712)
- 
+#else
+#include <mach/upmu_hw.h>
+#endif
 void Ana_Set_Reg(uint32 offset,uint32 value,uint32 mask);
 uint32  Ana_Get_Reg(uint32 offset);
 

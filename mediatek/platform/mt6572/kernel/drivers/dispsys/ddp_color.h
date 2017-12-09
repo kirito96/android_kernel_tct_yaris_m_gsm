@@ -3,6 +3,7 @@
 
 #include "ddp_drv.h"
 
+
 #define CFG_MAIN          (DISPSYS_COLOR_BASE+0x400)
 #define G_PIC_ADJ_MAIN_2  (DISPSYS_COLOR_BASE+0x438)
 #define DISP_COLOR_CK_ON  (DISPSYS_COLOR_BASE+0xF28)

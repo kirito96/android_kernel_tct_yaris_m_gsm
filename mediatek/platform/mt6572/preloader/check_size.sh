@@ -8,27 +8,27 @@ PL_MAX_ROM_SIZE=$(( 101888 - 1060 ))
 ROM_RPT_SIZE=500
 RAM_RPT_SIZE=500
 
-size `ls out/*.o` > report-objsize.txt
+size `ls ../../${MTK_ROOT_OUT}/PRELOADER_OBJ/obj/*.o` > ../../${MTK_ROOT_OUT}/PRELOADER_OBJ/report-objsize.txt
 
 # check image rom size
-PL_ROM_SIZE=$(stat -c%s "${PL_PATH}/${PL_IMAGE}")
+PL_ROM_SIZE=$(stat -c%s "${PL_IMAGE}")
 REMAIN_SIZE=$(($PL_ROM_SIZE%4))
 
 # check image rom size if mutiple of 4
 if [ $REMAIN_SIZE -ne 0 ]; then
     echo "===== ROM SIZE should be mutiple of 4 ($REMAIN_SIZE), padding ====="
     if [ $REMAIN_SIZE -eq 1 ]; then
-        echo "11" >> ${PL_PATH}/${PL_IMAGE}
+        echo "11" >> ${PL_IMAGE}
     fi
     if [ $REMAIN_SIZE -eq 2 ]; then
-        echo "2" >> ${PL_PATH}/${PL_IMAGE}
+        echo "2" >> ${PL_IMAGE}
     fi
     if [ $REMAIN_SIZE -eq 3 ]; then
-        echo "" >> ${PL_PATH}/${PL_IMAGE}
+        echo "" >> ${PL_IMAGE}
     fi
 fi
 
-PL_ROM_SIZE=$(stat -c%s "${PL_PATH}/${PL_IMAGE}")
+PL_ROM_SIZE=$(stat -c%s "${PL_IMAGE}")
 REMAIN_SIZE=$(($PL_ROM_SIZE%4))
 
 if [ $REMAIN_SIZE -ne 0 ]; then
@@ -44,14 +44,14 @@ if [ $PL_ROM_SIZE -gt $PL_MAX_ROM_SIZE ]; then
     echo "---------------------------------------------------------------"
     cat report-codesize.txt | awk -F' ' '{if ($3=="FUNC" && $2>sz) print $0}' sz=${ROM_RPT_SIZE}
     echo "---------------------------------------------------------------"
-    rm ${PL_PATH}/${PL_IMAGE}
+    rm ${PL_IMAGE}
     echo "BUILD FAIL."
     exit 1;
 fi
 
 # check image ram size
-PL_RAM_SIZE=$(awk '{if($3=="_bss_start") {BSS_START= strtonum("0x" $1)} ;
-             if($3=="_bss_end") {BSS_END=strtonum("0x" $1)}}
+PL_RAM_SIZE=$(mawk '{if($3=="_bss_start") {BSS_START=("0x" $1)+0} ;
+             if($3=="_bss_end") {BSS_END=("0x" $1)+0}}
              END{printf("%d\n",BSS_END-BSS_START)}' ${PL_FUN_MAP})
 if [ $PL_RAM_SIZE -gt $PL_MAX_RAM_SIZE ]; then
     echo "===================== Building Fail ==========================="
@@ -62,7 +62,7 @@ if [ $PL_RAM_SIZE -gt $PL_MAX_RAM_SIZE ]; then
     echo "---------------------------------------------------------------"
     cat report-codesize.txt | awk -F' ' '{if ($3=="OBJECT" && $2>sz) print $0}' sz=${RAM_RPT_SIZE}
     echo "---------------------------------------------------------------"
-    rm -f ${PL_PATH}/${PL_IMAGE}
+    rm -f ${PL_IMAGE}
     echo "BUILD FAIL."
     exit 1;
 fi

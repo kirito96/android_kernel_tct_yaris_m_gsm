@@ -2,6 +2,9 @@
 #define __DPI_REG_H__
 
 #include <stddef.h>
+#include <mach/mt_typedefs.h>
+#include <mach/sync_write.h>
+
 
 #ifdef __cplusplus
 extern "C" {

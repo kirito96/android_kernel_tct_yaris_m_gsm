@@ -8,6 +8,7 @@
 #include "ddp_reg.h"
 #include "ddp_path.h"
 #include "ddp_color.h"
+#include "ddp_debug.h"
 
 
 extern unsigned char pq_debug_flag;
@@ -562,7 +563,7 @@ DISPLAY_PQ_T * get_Color_index()
 
 void DpEngine_COLORonInit(void)
 {
-       //printk("===================init COLOR =======================\n");
+       //DDP_DRV_DBG("===================init COLOR =======================\n");
 
 
        spin_lock_init(&gHistLock);
@@ -598,7 +599,7 @@ void DpEngine_COLORonConfig(unsigned int srcWidth,unsigned int srcHeight)
     unsigned int u4Temp = 0;
     unsigned char h_series[20]={0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 
-    //printk("==========config COLOR g_Color_Param [%d %d %d %d %d %d %d %d %d]\n===============\n", g_Color_Param.u4SatGain, g_Color_Param.u4HueAdj[PURP_TONE], g_Color_Param.u4HueAdj[SKIN_TONE], g_Color_Param.u4HueAdj[GRASS_TONE], g_Color_Param.u4HueAdj[SKY_TONE], g_Color_Param.u4SatAdj[PURP_TONE], g_Color_Param.u4SatAdj[SKIN_TONE], g_Color_Param.u4SatAdj[GRASS_TONE], g_Color_Param.u4SatAdj[SKY_TONE]);
+    //DDP_DRV_DBG("==========config COLOR g_Color_Param [%d %d %d %d %d %d %d %d %d]\n===============\n", g_Color_Param.u4SatGain, g_Color_Param.u4HueAdj[PURP_TONE], g_Color_Param.u4HueAdj[SKIN_TONE], g_Color_Param.u4HueAdj[GRASS_TONE], g_Color_Param.u4HueAdj[SKY_TONE], g_Color_Param.u4SatAdj[PURP_TONE], g_Color_Param.u4SatAdj[SKIN_TONE], g_Color_Param.u4SatAdj[GRASS_TONE], g_Color_Param.u4SatAdj[SKY_TONE]);
 
     DISP_REG_SET((DISPSYS_COLOR_BASE + 0xf50), srcWidth);  //wrapper width
     DISP_REG_SET((DISPSYS_COLOR_BASE + 0xf54), srcHeight); //wrapper height

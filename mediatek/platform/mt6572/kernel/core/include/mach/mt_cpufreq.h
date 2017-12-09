@@ -19,20 +19,19 @@
 
 
 #define DVFS_D0              (1599000)   // KHz, OD
-#define DVFS_D1              (1400000)   // KHz, OD
-#define DVFS_D2              (1300000)   // KHz, OD
-#define DVFS_D3              (1200000)   // KHz, OD
-#define DVFS_F1              (1000000)   // KHz
-#define DVFS_F2              (800000)    // KHz
-#define DVFS_F3              (600000)    // KHz
-#define DVFS_F4              (500000)    // Khz
+#define DVFS_D1              (1404000)   // KHz, OD
+#define DVFS_D2              (1450000)   // KHz, OD
+#define DVFS_D3              (1209000)   // KHz, OD
+#define DVFS_F1              (1001000)   // KHz
+#define DVFS_F2              (806000)    // KHz
+#define DVFS_F3              (498000)    // KHz
 
 #define DVFS_V0              (1250)  // mV, OD
 #define DVFS_V1              (1150)  // mV
 
 #define DVFS_MIN_VCORE       (1150)
 #define DEFAULT_FREQ         (1001000)   // KHz
-#define NOR_MAX_FREQ         (1404000)   // KHz
+#define NOR_MAX_FREQ         (1001000)   // KHz
 
 #define CORE_NUM             (2)
 #define VCORE_NUM            (2)
@@ -80,7 +79,7 @@
 #define STARTUP_AUXADC          (0x4E)
 
 #define VOLT_TO_PMIC_VAL(VOLT)  ((VOLT - 700) * 100 / 625)
-#define PMIC_VAL_TO_VOLT(PMIC)  (PMIC *625 / 100 + 700)
+#define PMIC_VAL_TO_VOLT(PMIC)  (PMIC *625 / 100 + 700 + 1)
 
 enum cpu_src{
     CPU_SRC_MIN = 0,
@@ -109,4 +108,5 @@ extern unsigned int get_cur_vcore(void);
 extern unsigned int mt_cpufreq_cur_volt(void);
 extern int GPU_freq_output(void);
 extern int CPU_freq_output(void);
+extern void restore_default_volt(void);
 #endif

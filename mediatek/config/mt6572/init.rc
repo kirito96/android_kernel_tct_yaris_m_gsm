@@ -8,6 +8,8 @@
 import /init.usb.rc
 import /init.trace.rc
 
+import /FWUpgradeInit.rc
+
 import init.xlog.rc
 
 on early-init
@@ -27,19 +29,21 @@ on early-init
 
 on early_property:ro.build.type=user
     write /proc/bootprof "INIT: user build setting"
-    export BOOTCLASSPATH /system/framework/core.jar:/system/framework/core-junit.jar:/system/framework/bouncycastle.jar:/system/framework/ext.jar:/system/framework/framework.jar:/system/framework/telephony-common.jar:/system/framework/mms-common.jar:/system/framework/android.policy.jar:/system/framework/services.jar:/system/framework/apache-xml.jar:/system/framework/mediatek-common.jar:/system/framework/mediatek-framework.jar:/system/framework/secondary-framework.jar:/system/framework/CustomProperties.jar:/system/framework/mediatek-telephony-common.jar:/system/framework/mediatek-op.jar
+    export BOOTCLASSPATH /system/framework/core.jar:/system/framework/conscrypt.jar:/system/framework/okhttp.jar:/system/framework/core-junit.jar:/system/framework/bouncycastle.jar:/system/framework/ext.jar:/system/framework/framework.jar:/system/framework/framework2.jar:/system/framework/telephony-common.jar:/system/framework/voip-common.jar:/system/framework/mms-common.jar:/system/framework/android.policy.jar:/system/framework/services.jar:/system/framework/apache-xml.jar:/system/framework/webviewchromium.jar:/system/framework/mediatek-common.jar:/system/framework/mediatek-framework.jar:/system/framework/CustomProperties.jar:/system/framework/mediatek-telephony-common.jar:/system/framework/mediatek-tablet.jar:/system/framework/jrdcom.framework.jar
+    export CLASSPATH /system/framework/mediatek-op.jar
 
 on early_property:ro.build.type=userdebug
     write /proc/bootprof "INIT: userdebug build setting"
-    export BOOTCLASSPATH /system/framework/core.jar:/system/framework/core-junit.jar:/system/framework/bouncycastle.jar:/system/framework/ext.jar:/system/framework/framework.jar:/system/framework/telephony-common.jar:/system/framework/mms-common.jar:/system/framework/android.policy.jar:/system/framework/services.jar:/system/framework/apache-xml.jar:/system/framework/mediatek-common.jar:/system/framework/mediatek-framework.jar:/system/framework/secondary-framework.jar:/system/framework/CustomProperties.jar:/system/framework/mediatek-telephony-common.jar:/system/framework/mediatek-op.jar
-
-
+    export BOOTCLASSPATH /system/framework/core.jar:/system/framework/conscrypt.jar:/system/framework/okhttp.jar:/system/framework/core-junit.jar:/system/framework/bouncycastle.jar:/system/framework/ext.jar:/system/framework/framework.jar:/system/framework/framework2.jar:/system/framework/telephony-common.jar:/system/framework/voip-common.jar:/system/framework/mms-common.jar:/system/framework/android.policy.jar:/system/framework/services.jar:/system/framework/apache-xml.jar:/system/framework/webviewchromium.jar:/system/framework/mediatek-common.jar:/system/framework/mediatek-framework.jar:/system/framework/CustomProperties.jar:/system/framework/mediatek-telephony-common.jar:/system/framework/mediatek-tablet.jar:/system/framework/jrdcom.framework.jar
+    export CLASSPATH /system/framework/mediatek-op.jar
+    
 on early_property:ro.build.type=eng
     write /proc/bootprof "INIT: eng build setting"
-    export BOOTCLASSPATH /system/framework/core.jar:/system/framework/core-junit.jar:/system/framework/bouncycastle.jar:/system/framework/ext.jar:/system/framework/framework.jar:/system/framework/telephony-common.jar:/system/framework/mms-common.jar:/system/framework/android.policy.jar:/system/framework/services.jar:/system/framework/apache-xml.jar:/system/framework/mediatek-common.jar:/system/framework/mediatek-framework.jar:/system/framework/secondary-framework.jar:/system/framework/CustomProperties.jar:/system/framework/mediatek-telephony-common.jar:/system/framework/mediatek-op.jar:/system/framework/emma.jar
-
-on early_property:ro.hardware=mt6589
-    setprop ro.mtk.hardware mt6589
+    export BOOTCLASSPATH /system/framework/core.jar:/system/framework/conscrypt.jar:/system/framework/okhttp.jar:/system/framework/core-junit.jar:/system/framework/bouncycastle.jar:/system/framework/ext.jar:/system/framework/framework.jar:/system/framework/framework2.jar:/system/framework/telephony-common.jar:/system/framework/voip-common.jar:/system/framework/mms-common.jar:/system/framework/android.policy.jar:/system/framework/services.jar:/system/framework/apache-xml.jar:/system/framework/webviewchromium.jar:/system/framework/mediatek-common.jar:/system/framework/mediatek-framework.jar:/system/framework/CustomProperties.jar:/system/framework/mediatek-telephony-common.jar:/system/framework/mediatek-tablet.jar:/system/framework/emma.jar:/system/framework/jrdcom.framework.jar
+    export CLASSPATH /system/framework/mediatek-op.jar
+        
+on early_property:ro.hardware=mt6572
+    setprop ro.mtk.hardware mt6572
 
 on init
 
@@ -50,7 +54,7 @@ loglevel 5
 
 # setup the global environment
     export PATH /sbin:/vendor/bin:/system/sbin:/system/bin:/system/xbin
-    export LD_LIBRARY_PATH /vendor/lib:/system/lib
+    export LD_LIBRARY_PATH /vendor/lib:/system/lib:/custom/lib
     export ANDROID_BOOTLOGO 1
     export ANDROID_ROOT /system
     export ANDROID_ASSETS /system/app
@@ -59,6 +63,8 @@ loglevel 5
 
     export ASEC_MOUNTPOINT /mnt/asec
     export LOOP_MOUNTPOINT /mnt/obb
+
+    export USBOTG_STORAGE /storage/usbotg
 
 # Backward compatibility
     symlink /system/etc /etc
@@ -73,16 +79,31 @@ loglevel 5
     mount cgroup none /acct cpuacct
     mkdir /acct/uid
 
+# Create cgroup mount point for memory
+		mount tmpfs none /sys/fs/cgroup mode=0750,uid=0,gid=1000
+		mkdir /sys/fs/cgroup/memory 0750 root system
+		mount cgroup none /sys/fs/cgroup/memory memory
+		write /sys/fs/cgroup/memory/memory.move_charge_at_immigrate 1
+		chown root system /sys/fs/cgroup/memory/tasks
+		chmod 0660 /sys/fs/cgroup/memory/tasks
+		mkdir /sys/fs/cgroup/memory/sw 0750 root system
+		write /sys/fs/cgroup/memory/sw/memory.swappiness 100
+		write /sys/fs/cgroup/memory/sw/memory.move_charge_at_immigrate 1
+		chown root system /sys/fs/cgroup/memory/sw/tasks
+		chmod 0660 /sys/fs/cgroup/memory/sw/tasks
+
 
     mkdir /system
     mkdir /data 0771 system system
     mkdir /cache 0770 system cache
     mkdir /config 0500 root root
+    
+    #Create CIP mount point
+	mkdir /custom
 
     # See storage config details at http://source.android.com/tech/storage/
-    mkdir /mnt/shell 0700 shell shell
-    # mkdir /storage 0050 root sdcard_r
-    mkdir /storage 0055 root sdcard_r
+    mkdir /mnt/media_rw 0700 media_rw media_rw
+    mkdir /storage 0751 root sdcard_r
 
     mkdir /mnt/cd-rom 0000 system system
 
@@ -117,6 +138,7 @@ loglevel 5
     write /proc/sys/kernel/kptr_restrict 2
     write /proc/sys/kernel/dmesg_restrict 1
     write /proc/sys/vm/mmap_min_addr 32768
+    write /proc/sys/net/ipv4/ping_group_range "0 2147483647"
     write /proc/sys/kernel/sched_rt_runtime_us 950000
     write /proc/sys/kernel/sched_rt_period_us 1000000
 
@@ -146,11 +168,20 @@ loglevel 5
     write /dev/cpuctl/apps/bg_non_interactive/cpu.rt_runtime_us 700000
     write /dev/cpuctl/apps/bg_non_interactive/cpu.rt_period_us 1000000
 
+# qtaguid will limit access to specific data based on group memberships.
+#   net_bw_acct grants impersonation of socket owners.
+#   net_bw_stats grants access to other apps' detailed tagged-socket stats.
+    chown root net_bw_acct /proc/net/xt_qtaguid/ctrl
+    chown root net_bw_stats /proc/net/xt_qtaguid/stats
 
 # Allow everybody to read the xt_qtaguid resource tracking misc dev.
 # This is needed by any process that uses socket tagging.
     chmod 0644 /dev/xt_qtaguid
 
+# Create location for fs_mgr to store abbreviated output from filesystem
+# checker programs.
+    mkdir /dev/fscklogs 0770 root system
+    
 # Change ION driver permission
     chmod 0644 /dev/ion
 
@@ -170,15 +201,7 @@ on fs_property:ro.mount.fs=YAFFS
     mount yaffs2 mtd@system /system
 
     chmod 0750 /system/etc/partition_permission.sh
-# via: set ril and pppd
-    chown root /system/bin/pppd
-    chmod 4755 /system/bin/pppd
-    chown root /system/etc/ppp/ip-up-cdma
-    chmod 4755 /system/et/ppp/ip-up-cdma
-    chown root /system/etc/ppp/ipv6-up-cdma
-    chmod 4755 /system/etc/ppp/ipv6-up-cdma
-    chown root /system/etc/ppp/link-down-cdma
-    chmod 4755 /system/etc/ppp/link-down-cdma
+
 
     mount yaffs2 mtd@system /system ro remount
     mount yaffs2 mtd@userdata /data nosuid nodev
@@ -187,20 +210,11 @@ on fs_property:ro.mount.fs=YAFFS
 
 on fs_property:ro.mount.fs=EXT4
     write /proc/bootprof "INIT:eMMC:Mount_START"
-    exec /sbin/e2fsck -p /emmc@android
+    # exec /sbin/e2fsck -p /emmc@android
     # Mount /system rw first to give the filesystem a chance to save a checkpoint
     #mount ext4 emmc@android /system wait commit=1,data=journal,noauto_da_alloc
-    mount ext4 /emmc@android /system wait commit=1,noauto_da_alloc
-
-    chmod 0750 /system/etc/partition_permission.sh
-    # RIL need to do this before the folder /system changed to read only
-    chown radio system /system/etc/ril
-    chmod 0770 /system/etc/ril
-    chmod 0444 /system/etc/ril/oper.lis
-    # Wifi thermal need to chmod before system is changed to read only
-    chown root system /system/etc/throttle.sh
-    chmod 0750 /system/etc/throttle.sh
-    mount ext4 /emmc@android /system noatime ro remount wait
+    # mount ext4 /emmc@android /system wait commit=1,noauto_da_alloc
+    mount ext4 /emmc@android /system ro wait
     exec /sbin/e2fsck -pfD /emmc@usrdata
     exec /sbin/tune2fs -O has_journal /emmc@usrdata
     exec /system/bin/ext4_resize
@@ -208,28 +222,24 @@ on fs_property:ro.mount.fs=EXT4
     exec /sbin/e2fsck -p /emmc@cache
     exec /sbin/tune2fs -O has_journal /emmc@cache
     mount ext4 /emmc@cache /cache noatime nosuid nodev wait noauto_da_alloc,discard
+    # mount cip partitions
+    exec /sbin/e2fsck -p /emmc@custom
+	mount ext4 /emmc@custom /custom
     write /proc/bootprof "INIT:eMMC:Mount_END"
 
 on fs_property:ro.mount.fs=UBIFS
     write /proc/bootprof "INIT:NAND:Mount_START"
-    mount ubifs ubi@system /system
+    mount ubifs ubi@system /system wait
     chmod 0750 /system/etc/partition_permission.sh
-# via: set ril and pppd
-    chown root /system/bin/pppd
-    chmod 4755 /system/bin/pppd
-    chown root /system/etc/ppp/ip-up-cdma
-    chmod 4755 /system/et/ppp/ip-up-cdma
-    chown root /system/etc/ppp/ipv6-up-cdma
-    chmod 4755 /system/etc/ppp/ipv6-up-cdma
-    chown root /system/etc/ppp/link-down-cdma
-    chmod 4755 /system/etc/ppp/link-down-cdma
+
     # Wifi thermal need to chmod before system is changed to read only
     chown root system /system/etc/throttle.sh
     chmod 0750 /system/etc/throttle.sh
 
-    mount ubifs ubi@system /system ro remount 
-    mount ubifs ubi@userdata /data nosuid nodev 
-    mount ubifs ubi@cache /cache nosuid nodev wait
+    mount ubifs ubi@system /system ro remount wait
+    mount ubifs ubi@userdata /data nosuid nodev wait
+#    mount ubifs ubi@cache /cache nosuid nodev wait
+    mount yaffs2 mtd@cache /cache nosuid nodev
     write /proc/bootprof "INIT:NAND:Mount_END"
 
 # mount different fs end
@@ -239,6 +249,15 @@ on fs
 
    mount iso9660 loop@/system/mobile_toolkit/iAmCdRom.iso /mnt/cd-rom ro
 on post-fs
+    # change sbchk permission before mounted as read-only
+    mount rootfs rootfs / rw remount
+    chown nvram system /sbchk
+    chown nvram system /sbchk/sbchk
+    chown nvram system /sbchk/sec_chk.sh
+    chmod 750 /sbchk
+    chmod 750 /sbchk/sbchk
+    chmod 750 /sbchk/sec_chk.sh
+
     # once everything is setup, no need to modify /
     mount rootfs rootfs / ro remount
     # mount shared so changes propagate into child namespaces  -> move to init.ssd.rc
@@ -311,6 +330,7 @@ on post-fs
 # change owner
     chown root system /proc/bootprof
     chown root system /proc/mtprof/cputime
+    chown root system /proc/mtprof/reboot_pid
 
 on post-fs-data
     # We chown/chmod /data again so because mount is run as root + defaults
@@ -319,6 +339,9 @@ on post-fs-data
     # We restorecon /data in case the userdata partition has been reset.
     restorecon /data
 
+    # Avoid predictable entropy pool. Carry over entropy from previous boot.
+    copy /data/system/entropy.dat /dev/urandom
+    
     # Create dump dir and collect dumps.
     # Do this before we mount cache so eventually we can use cache for
     # storing dumps on platforms which do not have a dedicated dump partition.
@@ -336,7 +359,7 @@ on post-fs-data
     write /proc/apanic_console 1
 
     # create basic filesystem structure
-    mkdir /data/nvram 0770 root nvram
+    mkdir /data/nvram 2770 root nvram
     mkdir /data/misc 01771 system misc
     mkdir /data/misc/adb 02750 system shell
     mkdir /data/misc/bluedroid 0770 bluetooth net_bt_stack
@@ -345,7 +368,11 @@ on post-fs-data
     mkdir /data/misc/bluetooth 0770 system system
     mkdir /data/misc/keystore 0700 keystore keystore
     mkdir /data/misc/keychain 0771 system system
+    
+    mkdir /data/misc/radio 0770 system radio
     mkdir /data/misc/sms 0770 system radio
+    mkdir /data/misc/zoneinfo 0775 system system    
+
     mkdir /data/misc/vpn 0770 system vpn
     mkdir /data/misc/systemkeys 0700 system system
     # give system access to wpa_supplicant.conf for backup and restore
@@ -387,6 +414,16 @@ on post-fs-data
     mkdir /data/drm 0774 drm system
     mkdir /data/drm/wv 0770 drm system
 
+    # create directory for MediaDrm plug-ins - give drm the read/write access to
+    # the following directory.
+    # mkdir /data/mediadrm 0770 mediadrm mediadrm
+
+    # symlink to bugreport storage location
+    symlink /data/data/com.android.shell/files/bugreports /data/bugreports
+
+    # Separate location for storing security policy files on data
+    mkdir /data/security 0711 system system
+    
     # If there is no fs-post-data action in the init.<device>.rc file, you
     # must uncomment this line, otherwise encrypted filesystems
     # won't work.
@@ -400,21 +437,20 @@ on post-fs-data
     mkdir /data/misc/dhcp 0770 dhcp wifi
     chown dhcp wifi /data/misc/dhcp
 
+    # dhcpv6 server 
+    mkdir /data/misc/wide-dhcpv6 0770 dhcp wifi
+    chown dhcp wifi /data/misc/wide-dhcpv6
+    
     # radvd
     mkdir /data/misc/radvd 0770 system system
     chmod 444 /etc/radvd/radvd.conf
 
     # SGX
-    insmod /system/lib/modules/pvrsrvkm.ko
-    insmod /system/lib/modules/mtklfb.ko
-
-    # Permissions for System Server and daemons.
-    chown root   radio  /sys/class/leds/lcd-backlight/brightness
-    chown root   radio  /sys/class/leds/lcd-backlight/duty
-    chown root   radio  /sys/class/leds/lcd-backlight/div
+#    insmod /system/lib/modules/pvrsrvkm.ko
+#    insmod /system/lib/modules/mtklfb.ko
 
     # Touch Panel
-    chmod 0664 /dev/touch
+    #chmod 0664 /dev/touch
     chown root diag /sys/module/tpd_setting/parameters/tpd_calmat
     chown root diag /sys/module/tpd_setting/parameters/tpd_em_debounce_time
     chown root diag /sys/module/tpd_setting/parameters/tpd_mode
@@ -439,11 +475,13 @@ on post-fs-data
 
     # RTC
     mkdir /data/misc/rtc 0770 system system
+    chown system system /dev/rtc0
+    chmod 0660 /dev/rtc0
 
     # M4U
     #insmod /system/lib/modules/m4u.ko
     #mknod /dev/M4U_device c 188 0
-    chmod 0444 /dev/M4U_device
+    #chmod 0444 /dev/M4U_device
     #chown system media /dev/M4U_device
 
     # Sensor
@@ -456,17 +494,96 @@ on post-fs-data
     chmod 0660 /sys/devices/platform/msensor/driver/cpsopmode
     chmod 0660 /sys/devices/platform/msensor/driver/cpsreptxy
     chmod 0660 /sys/devices/platform/msensor/driver/cpsreptz
-
+	chmod 0660 /sys/devices/platform/gsensor/driver/cpsopmode
+    chmod 0660 /sys/devices/platform/gsensor/driver/cpsrange
+    chmod 0660 /sys/devices/platform/gsensor/driver/cpsbandwidth
     chown system system /dev/hwmsensor
     chown system system /dev/gyroscope
     chown system system /dev/msensor
     chown system system /dev/gsensor
     chown system system /dev/alsps
 
+    chmod 0660 /sys/class/misc/m_acc_misc/accenablenodata
+    chmod 0660 /sys/class/misc/m_acc_misc/accactive
+    chmod 0660 /sys/class/misc/m_acc_misc/accdelay
+    chmod 0660 /sys/class/misc/m_acc_misc/accbatch
+    chmod 0660 /sys/class/misc/m_acc_misc/accflush
+    chown system system /sys/class/misc/m_acc_misc/accenablenodata
+    chown system system /sys/class/misc/m_acc_misc/accactive
+    chown system system /sys/class/misc/m_acc_misc/accdelay
+    chown system system /sys/class/misc/m_acc_misc/accbatch
+    chown system system /sys/class/misc/m_acc_misc/accflush
+    
+    chmod 0660 /sys/class/misc/m_mag_misc/magactive
+    chmod 0660 /sys/class/misc/m_mag_misc/magdelay
+    chmod 0660 /sys/class/misc/m_mag_misc/magbatch
+    chmod 0660 /sys/class/misc/m_mag_misc/magflush
+    chmod 0660 /sys/class/misc/m_mag_misc/magoactive
+    chmod 0660 /sys/class/misc/m_mag_misc/magodelay
+    chmod 0660 /sys/class/misc/m_mag_misc/magobatch
+    chmod 0660 /sys/class/misc/m_mag_misc/magoflush
+    chown system system /sys/class/misc/m_mag_misc/magactive
+    chown system system /sys/class/misc/m_mag_misc/magdelay
+    chown system system /sys/class/misc/m_mag_misc/magbatch
+    chown system system /sys/class/misc/m_mag_misc/magflush
+    chown system system /sys/class/misc/m_mag_misc/magoactive
+    chown system system /sys/class/misc/m_mag_misc/magodelay
+    chown system system /sys/class/misc/m_mag_misc/magobatch
+    chown system system /sys/class/misc/m_mag_misc/magoflush
+
+    chmod 0660 /sys/class/misc/m_batch_misc/batchactive
+    chmod 0660 /sys/class/misc/m_batch_misc/batchdelay
+    chmod 0660 /sys/class/misc/m_batch_misc/batchbatch
+    chmod 0660 /sys/class/misc/m_batch_misc/batchflush
+    chown system system /sys/class/misc/m_batch_misc/batchactive
+    chown system system /sys/class/misc/m_batch_misc/batchdelay
+    chown system system /sys/class/misc/m_batch_misc/batchbatch
+    chown system system /sys/class/misc/m_batch_misc/batchflush
+    
+    chmod 0660 /sys/class/misc/m_gyro_misc/gyroenablenodata
+    chmod 0660 /sys/class/misc/m_gyro_misc/gyroactive
+    chmod 0660 /sys/class/misc/m_gyro_misc/gyrodelay
+    chmod 0660 /sys/class/misc/m_gyro_misc/gyrobatch
+    chmod 0660 /sys/class/misc/m_gyro_misc/gyroflush
+    chown system system /sys/class/misc/m_gyro_misc/gyroenablenodata
+    chown system system /sys/class/misc/m_gyro_misc/gyroactive
+    chown system system /sys/class/misc/m_gyro_misc/gyrodelay
+    chown system system /sys/class/misc/m_gyro_misc/gyrobatch
+    chown system system /sys/class/misc/m_gyro_misc/gyroflush
+    
+    chmod 0660 /sys/class/misc/m_alsps_misc/alsactive
+    chmod 0660 /sys/class/misc/m_alsps_misc/alsdelay
+    chmod 0660 /sys/class/misc/m_alsps_misc/alsbatch
+    chmod 0660 /sys/class/misc/m_alsps_misc/alsflush
+    chmod 0660 /sys/class/misc/m_alsps_misc/psactive
+    chmod 0660 /sys/class/misc/m_alsps_misc/psdelay
+    chmod 0660 /sys/class/misc/m_alsps_misc/psbatch
+    chmod 0660 /sys/class/misc/m_alsps_misc/psflush
+    chown system system /sys/class/misc/m_alsps_misc/alsactive
+    chown system system /sys/class/misc/m_alsps_misc/alsdelay
+    chown system system /sys/class/misc/m_alsps_misc/alsbatch
+    chown system system /sys/class/misc/m_alsps_misc/alsflush
+    chown system system /sys/class/misc/m_alsps_misc/psactive
+    chown system system /sys/class/misc/m_alsps_misc/psdelay
+    chown system system /sys/class/misc/m_alsps_misc/psbatch
+    chown system system /sys/class/misc/m_alsps_misc/psflush
+    
+    chmod 0660 /sys/class/misc/m_baro_misc/baroenablenodata
+    chmod 0660 /sys/class/misc/m_baro_misc/baroactive
+    chmod 0660 /sys/class/misc/m_baro_misc/barodelay
+    chmod 0660 /sys/class/misc/m_baro_misc/barobatch
+    chmod 0660 /sys/class/misc/m_baro_misc/baroflush
+    chown system system /sys/class/misc/m_baro_misc/baroenablenodata
+    chown system system /sys/class/misc/m_baro_misc/baroactive
+    chown system system /sys/class/misc/m_baro_misc/barodelay
+    chown system system /sys/class/misc/m_baro_misc/barobatch
+    chown system system /sys/class/misc/m_baro_misc/baroflush
+
+
     #Accdet
     chown root radio /sys/devices/platform/Accdet_Driver/driver/accdet_call_state
     #VideoCodec
-    insmod /system/lib/modules/vcodec_kernel_driver.ko
+    #insmod /system/lib/modules/vcodec_kernel_driver.ko
     mknod /dev/Vcodec c 160 0
     chmod 0660 /dev/Vcodec
     chown system media /dev/Vcodec
@@ -496,8 +613,6 @@ on post-fs-data
     chown system /sys/devices/platform/msensor/driver/cpsreptz
 
     mkdir       /data/data/mcube 0664 system system
-    # GPIO
-    chmod 0664 /dev/mtgpio
 
     # SPM SODI Enable
     chown media /proc/mcdi/sodi_en
@@ -540,7 +655,6 @@ on post-fs-data
     mkdir /data/misc/ppp 0770 bluetooth net_bt
 
     # Android SEC related device nodes
-    insmod /system/lib/modules/sec.ko
     mknod /dev/sec c 182 0
     chmod 0660 /dev/sec
     chown root system /dev/sec
@@ -550,21 +664,21 @@ on post-fs-data
     chmod 0660 /dev/fm
     chown system media /dev/fm
 
-    # device apc settings
-    insmod /system/lib/modules/devapc.ko
-
     # device info /proc interface
-    insmod /system/lib/modules/devinfo.ko
     mknod /dev/devmap c 196 0;
-    chmod 0444 /dev/devmap
-    chown root media /dev/devmap
+    chmod 0440 /dev/devmap
+    chown root system /dev/devmap
+
+    # BT relayer mode used VCOM
+    chown bluetooth radio /dev/ttyGS2
+    chmod 0660 /dev/ttyGS2
 
     # bluetooth
     mkdir /data/@btmtk 0770 bluetooth net_bt
+    chown bluetooth bluetooth /data/@btmtk/host_cache
+    chown bluetooth bluetooth /data/@btmtk/dev_cache
     chown bluetooth bluetooth /dev/hid-keyboard
     chmod 0660 /dev/hid-keyboard
-    chown bluetooth bluetooth /dev/btn
-    chmod 0660 /dev/btn
     #Use uinput's default permission
     chown system net_bt_admin /dev/uinput
 
@@ -574,19 +688,17 @@ on post-fs-data
     #HDMI
     chmod 0664 /dev/hdmitx
 
-    # JPEG
-    chmod 0444 /dev/mtk_jpeg
-    chmod 0444 /dev/mtk_gdma
-    chmod 0444 /dev/mtk_gfmt
-    chmod 0444 /dev/mtk_almk
+    #ALMK
+    chmod 0440 /dev/mtk_almk
 
     # DISP
-    chmod 0444 /dev/mtk_disp
+    chmod 0440 /dev/mtk_disp
+    chown system system /dev/mtk_disp
 
     #Camera
-    chmod 0664 /dev/camera-sysram
-    chmod 0664 /dev/camera-isp
-    chmod 0664 /dev/camera-pipemgr
+    chmod 0660 /dev/camera-sysram
+    chmod 0660 /dev/camera-isp
+    chmod 0660 /dev/camera-pipemgr
     chmod 0660 /dev/kd_camera_hw
     chmod 0660 /dev/kd_camera_flashlight
     chmod 0660 /dev/kd_camera_hw_bus2
@@ -601,6 +713,10 @@ on post-fs-data
     chown system camera /dev/kd_camera_hw_bus2
     chown system camera /dev/FM50AF
     chown system camera /dev/CAM_CAL_DRV
+
+    #battery
+    chmod 0660 /dev/MT_pmic_adc_cali
+    chown system system /dev/MT_pmic_adc_cali
 
     #MATV
     chmod 0660 /dev/MATV
@@ -618,9 +734,6 @@ on post-fs-data
     chmod 0660 /dev/mtkg2d
     chown system media /dev/mtkg2d
 
-    #for eng mode
-    chmod 0664 /dev/misc-sd
-
     chmod 0660 /sys/bus/platform/drivers/mem_bw_ctrl/concurrency_scenario
     chown system media /sys/bus/platform/drivers/mem_bw_ctrl/concurrency_scenario
 
@@ -636,16 +749,26 @@ on post-fs-data
     #chmod 666 /dev/ump
     #chown system.graphics /dev/ump
 
-    chmod 666 /dev/mali
-    chown system graphics /dev/mali
+    chmod 666 /dev/mali0
+    chown system graphics /dev/mali0
 
     #BT SCO CVSD, for MT6572 and MT6582 CVSD codec on AP
     chmod 0660 /dev/ebc
     chown system media /dev/ebc
 
-    chmod 0666 /dev/uio0
+    chmod 0666 /dev/exm0
+
+    #sbchk
+    mkdir /data/sec 0750 nvram system
 
     exec 0666 /system/xbin/autosanity
+
+    #KSM
+    #write /sys/kernel/mm/ksm/sleep_millisecs 100
+    #write /sys/kernel/mm/ksm/run 1
+# GPS
+    mkdir /data/gps_mnlp 0771 gps system
+
 # End of adding by MTK drivers
 # -----------------------
 
@@ -653,6 +776,8 @@ on boot
    chown root /remount.sh
    chmod 700 /remount.sh
    exec /remount.sh
+
+   start drvbd
 
     # xlog
     start xlogboot
@@ -705,10 +830,14 @@ on boot
 
     chown system system /sys/devices/system/cpu/cpufreq/interactive/timer_rate
     chmod 0660 /sys/devices/system/cpu/cpufreq/interactive/timer_rate
+    chown system system /sys/devices/system/cpu/cpufreq/interactive/timer_slack
+    chmod 0660 /sys/devices/system/cpu/cpufreq/interactive/timer_slack    
     chown system system /sys/devices/system/cpu/cpufreq/interactive/min_sample_time
     chmod 0660 /sys/devices/system/cpu/cpufreq/interactive/min_sample_time
     chown system system /sys/devices/system/cpu/cpufreq/interactive/hispeed_freq
     chmod 0660 /sys/devices/system/cpu/cpufreq/interactive/hispeed_freq
+    chown system system /sys/devices/system/cpu/cpufreq/interactive/target_loads
+    chmod 0660 /sys/devices/system/cpu/cpufreq/interactive/target_loads    
     chown system system /sys/devices/system/cpu/cpufreq/interactive/go_hispeed_load
     chmod 0660 /sys/devices/system/cpu/cpufreq/interactive/go_hispeed_load
     chown system system /sys/devices/system/cpu/cpufreq/interactive/above_hispeed_delay
@@ -720,6 +849,12 @@ on boot
     chmod 0660 /sys/devices/system/cpu/cpufreq/interactive/input_boost
     chown system system /sys/devices/system/cpu/cpufreq/hotplug/cpu_num_base
     chmod 0660 /sys/devices/system/cpu/cpufreq/hotplug/cpu_num_base
+    chown system system /sys/devices/system/cpu/cpufreq/interactive/boostpulse_duration
+    chmod 0660 /sys/devices/system/cpu/cpufreq/interactive/boostpulse_duration
+    chown system system /sys/devices/system/cpu/cpufreq/hotplug/cpu_num_base
+    chmod 0660 /sys/devices/system/cpu/cpufreq/hotplug/cpu_num_base
+    chown system system /sys/devices/system/cpu/cpufreq/interactive/io_is_busy
+    chmod 0660 /sys/devices/system/cpu/cpufreq/interactive/io_is_busy
 
     # Assume SMP uses shared cpufreq policy for all CPUs
     chown system system /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq
@@ -737,12 +872,6 @@ on boot
     chown system system /sys/class/leds/red/device/grpfreq
     chown system system /sys/class/leds/red/device/grppwm
     chown system system /sys/class/leds/red/device/blink
-    chown system system /sys/class/leds/red/brightness
-    chown system system /sys/class/leds/green/brightness
-    chown system system /sys/class/leds/blue/brightness
-    chown system system /sys/class/leds/red/device/grpfreq
-    chown system system /sys/class/leds/red/device/grppwm
-    chown system system /sys/class/leds/red/device/blink
     chown system system /sys/class/timed_output/vibrator/enable
     chown system system /sys/module/sco/parameters/disable_esco
     chown system system /sys/kernel/ipv4/tcp_wmem_min
@@ -754,6 +883,9 @@ on boot
     chown root   system /sys/kernel/debug/binder/transaction_log_enable
     chown root radio /proc/cmdline
 
+    chown system /sys/module/mlog/parameters/do_mlog
+    chown system /sys/module/mlog/parameters/timer_intval
+    
 	chown root   radio  /sys/class/leds/lcd-backlight/duty
 	chown root   radio  /sys/class/leds/lcd-backlight/div
 	chown system system /sys/class/leds/lcd-backlight/trigger
@@ -772,6 +904,9 @@ on boot
 
 # AGPS
     mkdir /data/agps_supl 0771 gps system
+
+# NFC
+    mkdir /data/nfc_socket 0771 nfc radio
 
 ## Thermal
   #change permissions on thermal devices
@@ -826,26 +961,26 @@ on boot
 		chown shell system /proc/driver/wmt_dbg
 		chown shell system /proc/driver/wmt_aee
 
-
+#Define device for ATCID
+    chmod 660 /dev/ttyGS0 
+    chown system /dev/ttyGS0 
+    chmod 660 /dev/ttyGS1 
+    chown system /dev/ttyGS1 
 # Define TCP buffer sizes for various networks
 #   ReadMin, ReadInitial, ReadMax, WriteMin, WriteInitial, WriteMax,
     setprop net.tcp.buffersize.default 4096,87380,524288,4096,16384,524288
     setprop net.tcp.buffersize.wifi    524288,1048576,2097152,262144,524288,1048576
-    setprop net.tcp.buffersize.lte     524288,1048576,2097152,262144,524288,1048576
+    setprop net.tcp.buffersize.lte     524288,1048576,2560000,262144,524288,1048576
     setprop net.tcp.buffersize.umts    4094,87380,524288,4096,16384,524288
     setprop net.tcp.buffersize.hspa    4094,87380,524288,4096,16384,524288
     setprop net.tcp.buffersize.hsupa   4094,87380,524288,4096,16384,524288
     setprop net.tcp.buffersize.hsdpa   4094,87380,524288,4096,16384,524288
     setprop net.tcp.buffersize.hspap   4094,87380,1220608,4096,16384,1220608
-    setprop net.tcp.buffersize.edge    4093,26280,35040,4096,16384,35040
-    setprop net.tcp.buffersize.gprs    4092,8760,11680,4096,8760,11680
-    setprop net.tcp.buffersize.evdo    4094,87380,262144,4096,16384,262144
+    setprop net.tcp.buffersize.edge    4094,87380,524288,4096,16384,524288
+    setprop net.tcp.buffersize.gprs    4094,87380,524288,4096,16384,524288
+    setprop net.tcp.buffersize.evdo    4094,87380,524288,4096,16384,524288
 
-# Set this property so surfaceflinger is not started by system_init
-    setprop system_init.startsurfaceflinger 0
 
-# set comob chipid 6572
-		setprop persist.mtk.wcn.combo.chipid 0x6572
 
     class_start core
     class_start main
@@ -879,6 +1014,17 @@ on property:vold.decrypt=trigger_shutdown_framework
     class_reset default
     class_reset main
 
+on property:sys.powerctl=*
+    powerctl ${sys.powerctl}
+
+# system server cannot write to /proc/sys files, so proxy it through init
+on property:sys.sysctl.extra_free_kbytes=*
+    write /proc/sys/vm/extra_free_kbytes ${sys.sysctl.extra_free_kbytes}
+
+## mtk printk uart controller
+on property:persist.uartconsole.enable=1
+    write /proc/mtprintk 1
+
 ## Daemon processes to be run by init.
 ##
 
@@ -890,6 +1036,26 @@ service ueventd /sbin/ueventd
     class core
     critical
     seclabel u:r:ueventd:s0
+
+service healthd /sbin/healthd
+    class core
+    critical
+    seclabel u:r:healthd:s0
+
+#service healthd /sbin/healthd
+#   class core
+#   critical
+#   seclabel u:r:healthd:s0
+
+#service healthd-charger /sbin/healthd -n
+#   class charger
+#   critical
+#   seclabel u:r:healthd:s0
+
+service healthd-charger /sbin/healthd -n
+    class charger
+    critical
+    seclabel u:r:healthd:s0
 
 on property:selinux.reload_policy=1
     restart ueventd
@@ -916,6 +1082,11 @@ service adbd /sbin/adbd
 on property:ro.kernel.qemu=1
     start adbd
 
+service drvbd /system/bin/drvbd
+    class main
+    user system
+    group system
+
 service debuggerd /system/bin/debuggerd
     class main
 
@@ -939,7 +1110,8 @@ service servicemanager /system/bin/servicemanager
     class core
     user system
     group system
-    #critical
+    critical
+    onrestart restart healthd
     onrestart restart pq
     onrestart restart zygote
     onrestart restart media
@@ -978,17 +1150,30 @@ service featured /system/bin/featured
     socket dfo stream 660 nvram system
 # DFO (End)
 
-service atci_service /system/bin/atci_service
-	socket atci-service stream 660 radio system
-	socket atci-serv-fw stream 660 radio system
-	user root
-	group radio system
+service atci_service /system/bin/atci_service 
+	socket atci-service stream 660 radio system 
+	socket atci-serv-fw stream 660 radio system 
+	user root 
+	disabled
+	group radio system                         
 
-
-service atcid-daemon /system/bin/atcid
-	user root
-	group radio system
+service atcid-daemon-u /system/bin/atcid
+	socket adb_atci_socket stream 660 radio system
+	user system
+	group radio system media
+	disabled
 	oneshot
+
+service atcid-daemon-e /system/bin/atcid
+	socket adb_atci_socket stream 660 radio system
+	user root 
+	group radio system
+	disabled
+	oneshot
+
+on early_property:ro.build.type=eng
+start atci_service
+start atcid-daemon-e
 
 service audio-daemon /system/bin/audiocmdservice_atci
     class main
@@ -1026,24 +1211,36 @@ service zygote /system/bin/app_process -Xzygote /system/bin --zygote --start-sys
 #
 # MT6620 related services (Begin)
 #
+# remove hald, and align to AOSP HAL workflow
+#service hald /system/bin/hald
+#    class main
+#    socket hald stream 0660 root system
+#    user system
+#    group system radio mount wifi inet net_admin
 
-service hald /system/bin/hald
-    class main
-    socket hald stream 0660 root system
-    user system
-    group system radio mount wifi inet net_admin
+# monitor property and power on/off wlan 
+on property:wlan.driver.status=ok
+	write /dev/wmtWifi "1"
 
-service insmod /system/bin/logwrapper insmod
+on property:wlan.driver.status=unloaded
+	write /dev/wmtWifi "0"
+
+service insmod insmod
     disabled
     oneshot
 
-service rmmod /system/bin/logwrapper rmmod
+service rmmod rmmod
     disabled
     oneshot
 
-service p2p_supplicant /system/bin/logwrapper /system/bin/wpa_supplicant \
-	-iwlan0 -Dnl80211 -c/data/misc/wifi/wpa_supplicant.conf -N \
-	-ip2p0 -Dnl80211 -c/data/misc/wifi/p2p_supplicant.conf -e/data/misc/wifi/entropy.bin -puse_p2p_group_interface=1 -ddd
+#remove -puse_p2p_group_interface=1, our driver doesnot support this feature
+#
+service p2p_supplicant /system/bin/wpa_supplicant \
+	-iwlan0 -Dnl80211 -c/data/misc/wifi/wpa_supplicant.conf \
+	-I/system/etc/wifi/wpa_supplicant_overlay.conf -N \
+	-ip2p0 -Dnl80211 -c/data/misc/wifi/p2p_supplicant.conf -e/data/misc/wifi/entropy.bin -ddd \
+	-I/system/etc/wifi/p2p_supplicant_overlay.conf \
+	-O/data/misc/wifi/sockets -g@android:wpa_wlan0
 	#   we will start as root and wpa_supplicant will switch to user wifi
 	#   after setting up the capabilities required for WEXT
 	#   user wifi
@@ -1053,8 +1250,10 @@ service p2p_supplicant /system/bin/logwrapper /system/bin/wpa_supplicant \
 	disabled
 	oneshot
 
-service wpa_supplicant /system/bin/logwrapper /system/bin/wpa_supplicant \
-	-iwlan0 -Dnl80211 -c/data/misc/wifi/wpa_supplicant.conf -e/data/misc/wifi/entropy.bin -ddd
+service wpa_supplicant /system/bin/wpa_supplicant \
+	-iwlan0 -Dnl80211 -c/data/misc/wifi/wpa_supplicant.conf -e/data/misc/wifi/entropy.bin -ddd \
+	-I/system/etc/wifi/wpa_supplicant_overlay.conf \
+	-O/data/misc/wifi/sockets -g@android:wpa_wlan0
 	#   we will start as root and wpa_supplicant will switch to user wifi
 	#   after setting up the capabilities required for WEXT
 	#   user wifi
@@ -1078,23 +1277,42 @@ service ap_daemon /system/bin/wpa_supplicant \
 # MT6620 related services (End)
 #
 
-service dhcpcd_wlan0 /system/bin/logwrapper /system/bin/dhcpcd -A -BK -dd
+
+
+service dhcpcd_bt-pan /system/bin/logwrapper /system/bin/dhcpcd -BK -dd
     class main
+    user dhcp
+    group net_admin net_raw       
     disabled
     oneshot
 
-service dhcpcd_p2p /system/bin/logwrapper /system/bin/dhcpcd -A -BK -dd
+    
+    
+service dhcpcd_wlan0 /system/bin/logwrapper /system/bin/dhcpcd -BK -dd
     class main
+	user dhcp
+	group net_admin net_raw 
+    disabled
+    oneshot
+
+service dhcpcd_p2p /system/bin/logwrapper /system/bin/dhcpcd -BK -dd
+    class main
+	user dhcp
+	group net_admin net_raw 
     disabled
     oneshot
 
 service iprenew_wlan0 /system/bin/logwrapper /system/bin/dhcpcd -n
     class main
+	user dhcp
+	group net_admin net_raw 
     disabled
     oneshot
 
 service iprenew_p2p /system/bin/logwrapper /system/bin/dhcpcd -n
     class main
+	user dhcp
+	group net_admin net_raw 
     disabled
     oneshot
 
@@ -1112,34 +1330,49 @@ on property:service.dhcp6c_wlan0.enable=0
 on property:service.dhcp6c_wlan0.enable=1
     start dhcp6c_wlan0
 
+service dhcp6c_PD /system/bin/dhcp6c -c "/etc/wide-dhcpv6/dhcp6cPD.conf" -Df
+	disabled
+	oneshot
+
+service pppoe_wlan0 /system/bin/launchpppoe
+    user root
+    group radio cache inet misc
+    disabled
+    oneshot
+
+on property:service.pppoe_wlan0.enable=0    
+    stop pppoe_wlan0    
+
+on property:service.pppoe_wlan0.enable=1
+    start pppoe_wlan0
+
 service DMAgent /system/bin/dm_agent_binder
     user system
     group system nvram cache
 
+service PPLAgent /system/bin/ppl_agent
+    user system
+    group system nvram cache
+
+#make sure drm server has rights to read and write sdcard
 service drm /system/bin/drmserver
     class main
     user drm
-    group drm system audio sdcard_rw net_raw inet drmrpc media
+    group drm system audio sdcard_rw net_raw inet drmrpc media sdcard_r media_rw
 
 service media /system/bin/mediaserver
     class main
     user root
-    group audio camera graphics inet net_bt net_bt_admin net_bw_acct drmrpc media sdcard_rw nvram ccci radio
+    group audio camera graphics inet net_bt net_bt_admin net_bw_acct drmrpc media sdcard_r nvram ccci radio system
     ioprio rt 4
 
 service vtservice /system/bin/vtservice
     class main
-    socket soc_vt_tcv dgram 660 media system
-    socket soc_vt_stk dgram 660 media system
-    socket soc_vt_svc dgram 660 media system
+    socket soc_vt_tcv dgram 660 radio system
+    socket soc_vt_stk dgram 660 radio system
+    socket soc_vt_svc dgram 660 radio system
     user root
-    group camera graphics media sdcard_rw radio
-    ioprio rt 4
-
-service cmmb /system/bin/cmmbsp
-    class main
-    user system
-    group system audio camera graphics inet net_bt net_bt_admin net_bw_acct media
+    group camera graphics media sdcard_rw radio sdcard_r media_rw
     ioprio rt 4
 
 service matv /system/bin/matv
@@ -1166,6 +1399,10 @@ service bootanim /system/bin/bootanimation
     disabled
     oneshot
 
+service enableswap /system/bin/sh /enableswap.sh
+    class core
+    oneshot
+
 service dbus /system/bin/dbus-daemon --system --nofork
     class main
     socket dbus stream 660 bluetooth bluetooth
@@ -1185,7 +1422,7 @@ service mtkbt /system/bin/mtkbt
 	socket bt.int.adp dgram 660 bluetooth net_bt
 	socket bt.a2dp.stream dgram 660 bluetooth net_bt
 	user bluetooth
-	group net_bt bluetooth net_bt_admin sdcard_rw inet net_admin nvram net_raw
+	group system net_bt bluetooth net_bt_admin sdcard_rw inet net_admin nvram net_raw vpn net_bt_stack media_rw sdcard_r
 	oneshot
 
 
@@ -1207,7 +1444,7 @@ service flash_recovery /system/etc/install-recovery.sh
     class main
     oneshot
 
-service sbchk /system/bin/sbchk
+service sbchk /sbchk/sec_chk.sh
     user nvram
     group system
     oneshot
@@ -1247,16 +1484,18 @@ service dumpstate /system/bin/dumpstate -s
 service agpsd /system/bin/mtk_agpsd
     class main
     socket agpsd stream 660 gps system
+    socket agpsd2 stream 660 gps system
+    socket agpsd3 stream 660 gps system
     user gps
-    group gps ccci inet sdcard_rw misc
+    group gps ccci inet sdcard_r sdcard_rw misc
 
 service mnld /system/xbin/mnld
     user gps
-    group nvram gps inet misc sdcard_rw
+    group nvram gps inet misc sdcard_rw sdcard_r media_rw
     socket mnld stream 660 gps system
     disabled
 
-service ipod /system/bin/logwrapper /system/bin/ipod
+service ipod /system/bin/ipod
     user root
     group root
     socket ipohctl stream 0660 root root
@@ -1264,8 +1503,8 @@ service ipod /system/bin/logwrapper /system/bin/ipod
 
 service extmdlogger /system/bin/extmdlogger
     class main
-    user root
-    group root radio
+    user shell
+    group shell system radio sdcard_rw inet sdcard_r media_rw ccci
 
 service GoogleOtaAgent /system/bin/GoogleOtaBinder
     user system
@@ -1274,14 +1513,14 @@ service GoogleOtaAgent /system/bin/GoogleOtaBinder
 service mdlogger /system/bin/mdlogger
     class main
     user shell
-    group shell system radio sdcard_rw inet ccci
+    group shell system radio sdcard_rw inet sdcard_r media_rw ccci
     disabled
     oneshot
 
 service dualmdlogger /system/bin/dualmdlogger
     class main
     user shell
-    group shell system radio sdcard_rw inet ccci
+    group shell system radio sdcard_rw inet sdcard_r media_rw ccci
     disabled
     oneshot
 
@@ -1293,7 +1532,7 @@ service dualmdlogger /system/bin/dualmdlogger
 service msensord /system/bin/msensord
     oneshot
 
-service ami304d /system/bin/logwrapper /system/bin/ami304d
+service ami304d /system/bin/ami304d
     user system
     group system
     disabled
@@ -1346,8 +1585,20 @@ service geomagneticd /system/bin/geomagneticd
 #
 #emsvr service (start)
 #
+on property:ro.build.type=eng
+    start emsvr
+
+on property:ro.build.type=user
+    start emsvr_user
+
+service emsvr_user /system/bin/em_svr
+    disabled
+    user nvram
+    group system nvram
+
 service emsvr /system/bin/em_svr
-		user root
+    disabled
+    user root
 
 service afmsvr /system/bin/afm_server
 		user root
@@ -1356,14 +1607,14 @@ service afmsvr /system/bin/afm_server
 #emsvr service (end)
 #
 
-service shutdown /system/bin/logwrapper /system/bin/shutdown
+service shutdown /system/bin/shutdown
     user root
     group root
     disabled
 
 service NvRAMAgent /system/bin/nvram_agent_binder
-		user system
-		group system nvram
+		user root
+		group root
 
 service thermal_manager /system/bin/thermal_manager
 		user root
@@ -1414,6 +1665,12 @@ service backuprestore /system/bin/br_app_data_service
 	socket backuprestore stream 0660 root sdcard_rw
 	user root
 
+#add for power-off alarm
+service poad /system/bin/poad
+    user system
+    group system
+    oneshot
+
 #Open NFC server
 service server_open_nfc /system/bin/server_open_nfc
     class main
@@ -1430,3 +1687,8 @@ service BGW /system/xbin/BGW
 	user system
 	group gps system ccci
 	class main
+service MtkCodecService /system/bin/MtkCodecService
+    class main
+    user root
+    group audio media sdcard_r
+

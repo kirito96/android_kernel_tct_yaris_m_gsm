@@ -10,9 +10,17 @@ on post-fs
 
     # Modem related device nodes
     mkdir /data/nvram/md  0770 root nvram
+    
+# add by xieyi for ser_ro biuld
+    symlink /custpack/raw /data/nvram/md/CONFIG
+    mkdir /data/nvram/md/s 0600 system system
+    mount ext4 /emmc@sec_ro /data/nvram/md/s wait noauto_da_alloc
+    mount ext4 /emmc@sec_ro /data/nvram/md/s ro remount wait 
 
-    insmod /system/lib/modules/ccci_plat.ko
-    insmod /system/lib/modules/ccci.ko
+#  Build-in Modified - S
+#   insmod /system/lib/modules/ccci_plat.ko
+#   insmod /system/lib/modules/ccci.ko
+#  Build-in Modified - E
 #   chown ccci ccci /sys/class/BOOT/BOOT/boot/md
     chown ccci ccci /sys/kernel/ccci/boot
 	
@@ -28,4 +36,5 @@ service ccci_mdinit /system/bin/ccci_mdinit 0
     group ccci system
 #   class core
     oneshot
+
 

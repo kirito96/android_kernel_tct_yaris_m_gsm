@@ -43,7 +43,7 @@ static void mau_enable_interrupt(const int larb)
 {
     M4U_WriteReg32(gLarbBaseAddr[larb], SMI_LARB_CON_SET, F_SMI_LARB_CON_MAU_IRQ_EN(1));
 }
-
+#if 0
 /*****************************************************************************
  * FUNCTION
  *    mau_disable_interrupt
@@ -59,7 +59,7 @@ static void mau_disable_interrupt(const int larb)
 {
     M4U_WriteReg32(gLarbBaseAddr[larb], SMI_LARB_CON_CLR, F_SMI_LARB_CON_MAU_IRQ_EN(1));
 }
-
+#endif
 /*****************************************************************************
  * FUNCTION
  *    mau_isr

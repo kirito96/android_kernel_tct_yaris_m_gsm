@@ -98,11 +98,12 @@ on fs_property:ro.mount.fs=EXT4
 
 on fs_property:ro.mount.fs=UBIFS
     write /proc/bootprof "INIT:NAND:Mount_START"
-    mount ubifs ubi@system /system
+    mount ubifs ubi@system /system wait
     chmod 0750 /system/etc/partition_permission.sh
     mount ubifs ubi@system /system ro remount sync
-    mount ubifs ubi@userdata /data nosuid nodev sync
-    mount ubifs ubi@cache /cache nosuid nodev sync
+    mount ubifs ubi@userdata /data nosuid nodev sync wait
+#    mount ubifs ubi@cache /cache nosuid nodev wait
+    mount yaffs2 mtd@cache /cache nosuid nodev
     write /proc/bootprof "INIT:NAND:Mount_END"
 # mount different fs end
 on post-fs
@@ -173,16 +174,9 @@ on post-fs
     chown dhcp dhcp /data/misc/dhcp
 
     # device info interface
-    insmod /system/lib/modules/devinfo.ko
     mknod /dev/devmap c 196 0;
     chmod 0444 /dev/devmap
-    chown root media /dev/devmap
-
-    # load driver base driver
-    insmod /system/lib/modules/mtk_drvb_75.ko
-    mknod /dev/drvb c 176 0
-    chmod 0666 /dev/drvb
-
+    chown root system /dev/devmap
 
     #change partition permission
     exec /system/etc/partition_permission.sh
@@ -203,14 +197,15 @@ on post-fs
 
     # STP, WMT, GPS, FM and BT Driver
 #   insmod /system/lib/modules/mtk_hif_sdio.ko
-    insmod /system/lib/modules/mtk_stp_wmt.ko
+#   insmod /system/lib/modules/mtk_stp_wmt.ko
 #   insmod /system/lib/modules/mtk_stp_uart.ko
-    insmod /system/lib/modules/mtk_stp_gps.ko
-    insmod /system/lib/modules/mtk_stp_bt.ko
-    insmod /system/lib/modules/mtk_fm_drv.ko
+#   insmod /system/lib/modules/mtk_stp_gps.ko
+#   insmod /system/lib/modules/mtk_stp_bt.ko
+#   insmod /system/lib/modules/mtk_fm_drv.ko
     #insmod /system/lib/modules/mtk_fm_priv.ko
-    insmod /system/lib/modules/mtk_wmt_wifi.ko
-
+#   insmod /system/lib/modules/mtk_wmt_wifi.ko
+    insmod /system/lib/modules/mtk_wmt_detect.ko
+    
     # Create char device file for WMT, GPS, BT, FM, WIFI
     mknod /dev/stpwmt c 190 0;
     mknod /dev/stpgps c 191 0;
@@ -218,14 +213,15 @@ on post-fs
     mknod /dev/fm     c 193 0;
     chmod 0660 /dev/stpwmt
     chown system system /dev/stpwmt
- 
+    chmod 0660 /dev/wmtdetect
+ 		chown system system /dev/wmtdetect
+ 		
     mknod /dev/wmtWifi c 153 0
     chmod 0666 /dev/wmtWifi
 
-    # BT
+# BT
     chmod 0660 /dev/stpbt
     chown bluetooth radio /dev/stpbt
-
     # FM Radio device, FIXME: this is not a proper way to set permissions
     chmod 0666 /dev/fm
     # GPS
@@ -267,8 +263,16 @@ on post-fs
     mkdir /data/nvram/md  0770 root nvram
     mkdir /data/nvram/md2 0770 root nvram
 
-    insmod /system/lib/modules/ccci_plat.ko
-    insmod /system/lib/modules/ccci.ko
+# add by xieyi for ser_ro biuld
+    symlink /custpack/raw /data/nvram/md/CONFIG
+    mkdir /data/nvram/md/s 0600 system system
+    mount ext4 /emmc@sec_ro /data/nvram/md/s wait noauto_da_alloc
+    mount ext4 /emmc@sec_ro /data/nvram/md/s ro remount wait 
+
+#  Build-in Modified - S
+#   insmod /system/lib/modules/ccci_plat.ko
+#   insmod /system/lib/modules/ccci.ko
+#  Build-in Modified - E
 #   chown ccci ccci /sys/class/BOOT/BOOT/boot/md
     chown ccci ccci /sys/kernel/ccci/boot
 
@@ -285,20 +289,19 @@ on post-fs
     chmod 0666 /dev/alsps
 
     #VideoCodec
-    insmod /system/lib/modules/vcodec_kernel_driver.ko
+    #insmod /system/lib/modules/vcodec_kernel_driver.ko
     mknod /dev/Vcodec c 189 0
     chmod 0666 /dev/Vcodec
 
 
     mkdir /data/amit/
 
-    # GPIO
-    chmod 0666 /dev/mtgpio
-
-    chmod 0666 /dev/uio0
+    chmod 0666 /dev/exm0
 ## Custom pos_fs area (END) 
 
 on boot
+    start drvbd
+
 # basic network init
     ifup lo
     hostname localhost
@@ -307,8 +310,6 @@ on boot
 # Define RIL properties
     setprop rild.nw.operlist /system/etc/ril/oper.lis
 
-# set comob chipid 6572
-		setprop persist.mtk.wcn.combo.chipid 0x6572
 
 # Start default class, this line is very important!!
    class_start default
@@ -339,6 +340,11 @@ on property:ro.debuggable=1
 # adbd is controlled via property triggers in init.<platform>.usb.rc
 service adbd /sbin/adbd
     class core
+
+service drvbd /system/bin/drvbd
+    class main
+    user system
+    group system
 
 ## Custom service area (START)
 # Please add custom service below
@@ -392,6 +398,12 @@ service factory_with_image /system/bin/logwrapper /sbin/factory
 #
 # Connectivity related services (Begin)
 #
+
+service wmtLoader /system/bin/logwrapper /system/bin/wmt_loader
+    user root
+    group root
+    oneshot
+    
 service conn_launcher /system/bin/logwrapper /system/bin/6620_launcher -p /system/etc/firmware/
     user system
     group system

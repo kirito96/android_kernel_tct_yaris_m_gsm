@@ -1,3 +1,12 @@
+/*******************************************************************************
+** Copyright (c) 2006 MediaTek Inc.
+**
+** All rights reserved. Copying, compilation, modification, distribution
+** or any other use whatsoever of this material is strictly prohibited
+** except in accordance with a Software License Agreement with
+** MediaTek Inc.
+********************************************************************************
+*/
 
 #include <sys/types.h>
 #include <sys/ioctl.h>

@@ -177,7 +177,7 @@ extern void //mt_cirq_mask(unsigned int cirq_num);
 extern spinlock_t spm_lock;
 extern u32 En_SPM_MCDI;
 
-static struct mtk_irq_mask MCDI_cpu_irq_mask;
+//static struct mtk_irq_mask MCDI_cpu_irq_mask;
 
 //TODO: need check
 #if SPM_MCDI_BYPASS_SYSPWREQ    
@@ -220,7 +220,7 @@ SPM_PCM_CONFIG pcm_config_mcdi={
     .dbg_wfi_cnt=0,
     .wakesta_idx=0
 	 };
-
+#if 0
 static void spm_go_to_MCDI(void)
 {
     unsigned long flags;
@@ -283,14 +283,14 @@ static u32 spm_leave_MCDI(void)
     local_irq_restore(flags);
     return 0;
 }
-
+#endif
 
 //extern u32 cpu_pdn_cnt;
 void spm_mcdi_wfi(void)
 {   
         volatile u32 core_id;
         //u32 clc_counter;
-        unsigned long flags;  
+        //unsigned long flags;  
         //u32 temp_address;
 
         core_id = (u32)smp_processor_id();
@@ -426,7 +426,7 @@ bool spm_is_sodi_user_en(void)
 {
     return pcm_config_mcdi.sodi_en;
 }
-
+#if 0
 static int spm_mcdi_probe(struct platform_device *pdev)
 {
     int hibboot = 0;
@@ -625,7 +625,7 @@ static int __init spm_mcdi_init(void)
     return 0;
 
 }
-
+#endif
 static void __exit spm_mcdi_exit(void)
 {
     clc_notice("Exit SPM-MCDI\n\r");

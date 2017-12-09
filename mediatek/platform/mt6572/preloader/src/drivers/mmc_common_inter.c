@@ -1,3 +1,39 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ *
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #include "msdc_cfg.h" //Include msdc_cfg.h for defining MMC_MSDC_DRV_PRELOADER
 
@@ -14,8 +50,17 @@
 
 #define BUF_BLK_NUM                 4   /* 4 * 512bytes = 2KB */
 
+/**************************************************************************
+*  DEBUG CONTROL
+**************************************************************************/
 
+/**************************************************************************
+*  MACRO DEFINITION
+**************************************************************************/
 
+/**************************************************************************
+*  EXTERNAL DECLARATION
+**************************************************************************/
 #ifdef FEATURE_MMC_ADDR_TRANS
 #include "addr_trans.h"
 static addr_trans_info_t g_emmc_addr_trans[EMMC_PART_NUM];
@@ -323,30 +368,24 @@ u32 mmc_get_device_id(u8 *id, u32 len,u32 *fw_len)
     u8 buf[16]; /* CID = 128 bits */
     struct mmc_card *card;
 	u8 buf_sanid[512];
+    u32 i=0;
+	u8 *bptr=buf;
 
     if (0 != mmc_init_device())
         return -1;
 
     card = mmc_get_card(MMC_HOST_ID);
 
-    buf[0] = (card->raw_cid[0] >> 24) & 0xFF; /* Manufacturer ID */
-    buf[1] = (card->raw_cid[0] >> 16) & 0xFF; /* Reserved(6)+Card/BGA(2) */
-    buf[2] = (card->raw_cid[0] >> 8 ) & 0xFF; /* OEM/Application ID */
-    buf[3] = (card->raw_cid[0] >> 0 ) & 0xFF; /* Product name [0] */
-    buf[4] = (card->raw_cid[1] >> 24) & 0xFF; /* Product name [1] */
-    buf[5] = (card->raw_cid[1] >> 16) & 0xFF; /* Product name [2] */
-    buf[6] = (card->raw_cid[1] >> 8 ) & 0xFF; /* Product name [3] */
-    buf[7] = (card->raw_cid[1] >> 0 ) & 0xFF; /* Product name [4] */
-    buf[8] = (card->raw_cid[2] >> 24) & 0xFF; /* Product name [5] */
-    buf[9] = (card->raw_cid[2] >> 16) & 0xFF; /* Product revision */
-	buf[10] =(card->raw_cid[2] >> 8 ) & 0xFF; /* Serial Number [0] */
-	buf[11] =(card->raw_cid[2] >> 0 ) & 0xFF; /* Serial Number [1] */
-	buf[12] =(card->raw_cid[3] >> 24) & 0xFF; /* Serial Number [2] */
-	buf[13] =(card->raw_cid[3] >> 16) & 0xFF; /* Serial Number [3] */
-	buf[14] =(card->raw_cid[3] >> 8 ) & 0xFF; /* Manufacturer date */
-	buf[15] =(card->raw_cid[3] >> 0 ) & 0xFF; /* CRC7 + stuff bit*/
+    do {
+        *bptr = (card->raw_cid[i] >> 24) & 0xFF; bptr++;
+        *bptr = (card->raw_cid[i] >> 16) & 0xFF; bptr++;
+        *bptr = (card->raw_cid[i] >> 8) & 0xFF; bptr++;
+        *bptr = (card->raw_cid[i] >> 0) & 0xFF; bptr++;
+        i++;
+    } while(i<4 );
+
 	*fw_len = 1;
-	if(buf[0] == 0x45){
+	if( (buf[0] == 0x45) && (card->raw_ext_csd[EXT_CSD_REV]<=5) ) {
 		if (0 == mmc_get_sandisk_fwid(MMC_HOST_ID,buf_sanid)){
 			*fw_len = 6;
 		}
@@ -502,33 +541,32 @@ static block_dev_desc_t sd_dev[MSDC_MAX_NUM];
 static int boot_dev_found = 0;
 static part_dev_t boot_dev;
 
-unsigned long mmc_wrap_bread(int dev_num, unsigned long blknr, u32 blkcnt, unsigned long *dst)
+unsigned long mmc_wrap_bread(int dev_num, unsigned long blknr, lbaint_t blkcnt, void *dst)
 {
-    u32 err;
-    MSG(OPS_MMC, "[SD%d] Block Read Virtual Addr: %xh\n", dev_num, blknr);
+    MSG(OPS_MMC, "[SD%d] Block Read Virtual Addr: %xh\n", dev_num, (unsigned int)blknr);
 
     #if defined(FEATURE_MMC_MEM_PRESERVE_MODE)
     if (dev_num==0)
     #endif
     {
-        mmc_virt_switch(blknr, &blknr); //Referred from 6589 mmc_block_read()
+        mmc_virt_switch(blknr, (u32 *)&blknr);
     }
 
-    return mmc_block_read(dev_num, blknr, blkcnt, dst) == MMC_ERR_NONE ? blkcnt : (unsigned long) -1;
+    return mmc_block_read(dev_num, blknr, blkcnt, (unsigned long *)dst) == MMC_ERR_NONE ? blkcnt : (unsigned long) -1;
 }
 
-unsigned long mmc_wrap_bwrite(int dev_num, unsigned long blknr, u32 blkcnt, unsigned long *src)
+unsigned long mmc_wrap_bwrite(int dev_num, unsigned long blknr, lbaint_t blkcnt, const void *src)
 {
-    MSG(OPS_MMC, "[SD%d] Block Write Virtual Addr: %xh\n", dev_num, blknr);
+    MSG(OPS_MMC, "[SD%d] Block Write Virtual Addr: %xh\n", dev_num, (unsigned int)blknr);
 
     #if defined(FEATURE_MMC_MEM_PRESERVE_MODE)
     if (dev_num==0)
     #endif
     {
-        mmc_virt_switch(blknr, &blknr); //Referred from 6589 mmc_block_write()
+        mmc_virt_switch(blknr, (u32 *)&blknr);
     }
 
-    return mmc_block_write(dev_num, blknr, blkcnt, src) == MMC_ERR_NONE ? blkcnt : (unsigned long) -1;
+    return mmc_block_write(dev_num, blknr, blkcnt, (unsigned long *)src) == MMC_ERR_NONE ? blkcnt : (unsigned long) -1;
 }
 
 int mmc_legacy_init(int verbose)
@@ -541,7 +579,7 @@ int mmc_legacy_init(int verbose)
 
     bdev = &sd_dev[id];
 
-    msdc_hard_reset();
+    //msdc_hard_reset();
 
     err=mmc_init(id, MSDC_MODE_DEFAULT);
 
@@ -553,11 +591,7 @@ int mmc_legacy_init(int verbose)
         mmc_addr_trans_tbl_init(card);
         #endif
 
-        bdev->if_type     = IF_TYPE_MMC;
-        bdev->part_type   = PART_TYPE_DOS;
         bdev->dev         = id;
-        bdev->lun         = 0;
-        bdev->removable   = 1;
         bdev->blksz       = MMC_BLOCK_SIZE;
         bdev->lba         = card->nblks * card->blklen / MMC_BLOCK_SIZE;
         bdev->block_read  = mmc_wrap_bread;
@@ -574,8 +608,6 @@ int mmc_legacy_init(int verbose)
 
         /* FIXME. only one RAW_BOOT dev */
         if (host->boot_type == RAW_BOOT) {
-            bdev->part_type = PART_TYPE_UNKNOWN;
-            bdev->removable = 0;
             boot_dev.id = id;
             boot_dev.init = 1;
             boot_dev.blkdev = bdev;
@@ -600,7 +632,6 @@ int mmc_legacy_init(int verbose)
 // ==========================================================
 // MMC Common Interface - Erase
 // ==========================================================
-//New function found in 6572 CBr
 #if defined(MMC_MSDC_DRV_LK) || defined(MMC_MSDC_DRV_CTP)
 static int __mmc_do_erase(struct mmc_host *host,struct mmc_card *card,u64 start_addr,u64 len)
 {
@@ -628,7 +659,6 @@ out:
 	return err;
 }
 
-//New function found in 6572 CBr
 int mmc_do_erase(int dev_num,u64 start_addr,u64 len)
 {
 	struct mmc_host *host = mmc_get_host(dev_num);
@@ -638,8 +668,8 @@ int mmc_do_erase(int dev_num,u64 start_addr,u64 len)
 	u32 e_blknr = 0;
 	u32 s_pid,s_pid_o,e_pid;
 	u32 err;
-	if ((!card) || (!host) ){
-		printf("[mmc_do_erase] card<0x%x> host<0x%x>  mmc_do_erase\n",card,host);
+	if ( (!card) || (!host) ){
+		printf("[mmc_do_erase] card<0x%x> host<0x%x>  mmc_do_erase\n", (unsigned int)card, (unsigned int)host);
 		return MMC_ERR_INVALID;
 	}
 	if (!len ){
@@ -668,7 +698,7 @@ int mmc_do_erase(int dev_num,u64 start_addr,u64 len)
 	erase_part[s_pid].blkcnt = (s_pid == e_pid) ? (len/card->blklen):(g_emmc_addr_trans[s_pid].len - s_blknr);
 	s_pid++;
 
-	for(s_pid; s_pid < e_pid; s_pid++){
+	for( ; s_pid < e_pid; s_pid++){
 		erase_part[s_pid].id = s_pid;
 		erase_part[s_pid].start_blk = 0;
 		erase_part[s_pid].blkcnt = g_emmc_addr_trans[s_pid].len;
@@ -686,7 +716,7 @@ int mmc_do_erase(int dev_num,u64 start_addr,u64 len)
 			return err;
 		}
 		printf("[MSDC%d] mmc erase part<%d> <0x%llx - 0x%llx>start....\n",host->id,s_pid,(u64)(erase_part[s_pid].start_blk * card->blklen),(u64)(erase_part[s_pid].start_blk + erase_part[s_pid].blkcnt) * card->blklen);
-		if (err =  __mmc_do_erase(host,card,(u64)(erase_part[s_pid].start_blk * card->blklen),(u64)((erase_part[s_pid].blkcnt) * card->blklen ))){
+		if ( (err =  __mmc_do_erase(host,card,(u64)(erase_part[s_pid].start_blk * card->blklen),(u64)((erase_part[s_pid].blkcnt) * card->blklen )))!=0 ) {
 			printf("[MSDC%d] mmc erase failed. part<%d> error <%d> \n",host->id,s_pid,err);
 			return err;
 		}

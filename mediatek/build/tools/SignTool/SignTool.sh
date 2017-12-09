@@ -1,4 +1,11 @@
 #!/bin/sh
+
+
+##############################################################
+# Program:
+#	SIGN TOOL
+#
+
 CUR_DIR=`pwd`
 
 if [ "$3" = "" ]; then
@@ -11,8 +18,8 @@ if [ "$3" = "" ]; then
     exit 1;
 fi
 echo [Dependency] $0
-cd mediatek/build/tools/SignTool
-make
+#cd mediatek/build/tools/SignTool
+#make
 cd $CUR_DIR
 
 ##############################################################

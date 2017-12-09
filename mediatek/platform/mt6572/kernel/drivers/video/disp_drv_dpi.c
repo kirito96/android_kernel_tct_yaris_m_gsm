@@ -1,10 +1,7 @@
-#ifdef BUILD_UBOOT
-#include <asm/arch/disp_drv_platform.h>
-#else
-
 #include <linux/kernel.h>
 #include <linux/string.h>
 #include <linux/semaphore.h>
+#include <mach/m4u.h>
 
 #include "disp_drv.h"
 #include "disp_drv_platform.h"
@@ -15,7 +12,7 @@
 #include "dsi_drv.h"
 
 #include "lcm_drv.h"
-#endif
+#include "disp_hal.h"
 // ---------------------------------------------------------------------------
 //  Private Variables
 // ---------------------------------------------------------------------------
@@ -23,8 +20,9 @@
 extern LCM_DRIVER *lcm_drv;
 extern LCM_PARAMS *lcm_params;
 extern unsigned int is_video_mode_running;
-extern BOOL DDMS_capturing;
+extern BOOL DISP_IsDecoupleMode(void);
 
+static BOOL DDMS_capturing = FALSE;
 static DPI_FB_FORMAT dpiTmpBufFormat = DPI_FB_FORMAT_RGB888;
 static LCD_FB_FORMAT lcdTmpBufFormat = LCD_FB_FORMAT_RGB888;
 static UINT32 dpiTmpBufBpp = 0;
@@ -108,10 +106,6 @@ static void init_intermediate_buffers(UINT32 fbPhysAddr)
     {
         TempBuffer *b = &s_tmpBuffers[i];
         
-#ifdef BUILD_UBOOT
-        // clean the intermediate buffers as black to prevent from noise display
-        memset(tmpFbStartPA, 0, tmpFbSizeInBytes);
-#endif
         b->pitchInBytes = tmpFbPitchInBytes;
         b->pa = tmpFbStartPA;
         ASSERT((tmpFbStartPA & 0x7) == 0);  // check if 8-byte-aligned
@@ -226,6 +220,8 @@ static void init_dpi(BOOL isDpiPoweredOn)
 
 static DISP_STATUS dpi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
 {
+    unsigned long irq_mask;
+    
     if (!disp_drv_dpi_init_context()) 
         return DISP_STATUS_NOT_IMPLEMENTED;
 
@@ -250,7 +246,14 @@ static DISP_STATUS dpi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
     {
         struct disp_path_config_struct config = {0};
         
-        config.srcModule = DISP_MODULE_OVL;
+        if (DISP_IsDecoupleMode()) 
+        {
+            config.srcModule = DISP_MODULE_RDMA0;
+        } 
+        else 
+        {
+            config.srcModule = DISP_MODULE_OVL;
+        }
 
         config.bgROI.x = 0;
         config.bgROI.y = 0;
@@ -258,14 +261,14 @@ static DISP_STATUS dpi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
         config.bgROI.height = DISP_GetScreenHeight();
         config.bgColor = 0x0;  // background color
 
-        config.pitch = DISP_GetScreenWidth()*2;
+        config.pitch = ALIGN_TO(lcm_params->width, MTK_FB_ALIGNMENT)*2;
         config.srcROI.x = 0;config.srcROI.y = 0;
         config.srcROI.height= DISP_GetScreenHeight();config.srcROI.width= DISP_GetScreenWidth();
         config.ovl_config.source = OVL_LAYER_SOURCE_MEM; 
 
         config.ovl_config.layer = FB_LAYER;
         config.ovl_config.layer_en = 1;
-        config.ovl_config.fmt = OVL_INPUT_FORMAT_RGB565;
+        config.ovl_config.fmt = eRGB565;
         config.ovl_config.addr = fbPA;
         config.ovl_config.source = OVL_LAYER_SOURCE_MEM;
         config.ovl_config.src_x = 0;
@@ -276,7 +279,7 @@ static DISP_STATUS dpi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
         config.ovl_config.dst_y = 0;
         config.ovl_config.dst_w = DISP_GetScreenWidth();
         config.ovl_config.dst_h = DISP_GetScreenHeight();
-        config.ovl_config.src_pitch = ALIGN_TO(DISP_GetScreenWidth(),32)*2; //pixel number
+        config.ovl_config.src_pitch = ALIGN_TO(lcm_params->width, MTK_FB_ALIGNMENT)*2; //pixel number
         config.ovl_config.keyEn = 0;
         config.ovl_config.key = 0xFF;	   // color key
         config.ovl_config.aen = 0;			  // alpha enable
@@ -289,68 +292,33 @@ static DISP_STATUS dpi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
         LCD_LayerSetFormat(FB_LAYER, LCD_LAYER_FORMAT_RGB565);
         LCD_LayerSetOffset(FB_LAYER, 0, 0);
         LCD_LayerSetSize(FB_LAYER,DISP_GetScreenWidth(),DISP_GetScreenHeight());
-        LCD_LayerSetPitch(FB_LAYER, ALIGN_TO(DISP_GetScreenWidth(),32) * 2);
+        LCD_LayerSetPitch(FB_LAYER, ALIGN_TO(lcm_params->width, MTK_FB_ALIGNMENT) * 2);
         LCD_LayerEnable(FB_LAYER, TRUE);
 
+        DPI_DisableClk();
+        local_irq_save(irq_mask);
+        disp_path_get_mutex();
+        
+        disp_path_config(&config);
+        
+        // Config FB_Layer port to be physical.
         {
-            #define TIMECNT  1000000
-            unsigned int reg1 = 0, reg2 = 0, reg3 = 0;
-            unsigned int timeout_cnt = 0;
-            unsigned int irq_mask;
-
-            // dump before modification
-            printk("[DISP] pa:0x%x, va:0x%x \n", fbPA, fbVA);		
+            M4U_PORT_STRUCT portStruct;
             
-            // enable frame done interrupt
-            disp_path_get_mutex();
-            OVLEnableIrq(0x2);
-            disp_path_release_mutex();
-            
-            while (timeout_cnt < TIMECNT)
-            {
-                reg1 = DISP_REG_GET(DISP_REG_OVL_INTSTA);
-                reg2 = DISP_REG_GET(DISP_REG_OVL_STA);
-                // frame done interrupt
-                if (((reg1 & 0x2) == 0x2) && ((reg2 & 0x1) == 0x0))
-                {
-                    DISP_REG_SET(DISP_REG_OVL_INTSTA, ~reg1);     
-
-                    local_irq_save(irq_mask);
-                    disp_path_get_mutex();
-                    disp_path_config(&config);
-                    disp_path_release_mutex();
-
-                    #if 1  // defined(MTK_M4U_SUPPORT)
-                    {
-                        M4U_PORT_STRUCT portStruct;
-                        
-                        portStruct.ePortID = M4U_PORT_LCD_OVL;		   //hardware port ID, defined in M4U_PORT_ID_ENUM
-                        portStruct.Virtuality = 1;
-                        portStruct.Security = 0;
-                        portStruct.domain = 3;			  //domain : 0 1 2 3
-                        portStruct.Distance = 1;
-                        portStruct.Direction = 0;
-                        m4u_config_port(&portStruct);
-                    }
-                    // hook m4u debug callback function
-                    m4u_set_tf_callback(M4U_CLNTMOD_DISP, &disp_m4u_dump_reg);
-                    #endif
-                    local_irq_restore(irq_mask);
-
-                    break;
-                }
-                timeout_cnt++;
-            }
-            // sw timeout
-            if (timeout_cnt >= TIMECNT)
-            {
-                printk("[DISP] timeout:%d \n", timeout_cnt);		
-                ASSERT(0);
-            }
-            // dump after modification
-            printk("[DISP] cnt:%d \n", timeout_cnt);		
+            portStruct.ePortID = M4U_PORT_LCD_OVL;		   //hardware port ID, defined in M4U_PORT_ID_ENUM
+            portStruct.Virtuality = 1;
+            portStruct.Security = 0;
+            portStruct.domain = 3;			  //domain : 0 1 2 3
+            portStruct.Distance = 1;
+            portStruct.Direction = 0;
+            m4u_config_port(&portStruct);
         }
+        
+        disp_path_release_mutex();
+        DPI_EnableClk();
+        local_irq_restore(irq_mask);
     }
+
 #endif
 
     return DISP_STATUS_OK;
@@ -367,12 +335,15 @@ static DISP_STATUS dpi_enable_power(BOOL enable)
         DPI_mipi_switch(TRUE, lcm_params); 
 
         // enable MMSYS CG
-        init_io_pad();
         LCD_CHECK_RET(LCD_PowerOn());
         DPI_CHECK_RET(DPI_PowerOn());
 
-        // restore dpi register
-        DSI_CHECK_RET(DPI_RestoreRegisters());
+        init_io_pad();
+        init_io_driving_current();
+
+        // restore dbi & dpi register
+        LCD_CHECK_RET(LCD_RestoreRegisters());
+        DPI_CHECK_RET(DPI_RestoreRegisters());
 
         // enable interrupt
         DPI_EnableIrq();
@@ -381,8 +352,9 @@ static DISP_STATUS dpi_enable_power(BOOL enable)
     {
         is_video_mode_running = false;
 
-        // backup dpi regsiter
+        // backup dbi & dpi regsiter
         DPI_CHECK_RET(DPI_BackupRegisters());
+        LCD_CHECK_RET(LCD_BackupRegisters());
 
         // disable interrupt
         DPI_DisableIrq();
@@ -472,8 +444,9 @@ DISP_STATUS dpi_capture_framebuffer(UINT32 pvbuf, UINT32 bpp)
     return DISP_STATUS_OK;	
 }
 
-
+#ifndef MIN
 #define MIN(x,y) ((x)>(y)?(y):(x))
+#endif
 
 
 static UINT32 dpi_get_dithering_bpp(void)
@@ -482,9 +455,9 @@ static UINT32 dpi_get_dithering_bpp(void)
 }
 
 
-const DISP_DRIVER *DISP_GetDriverDPI()
+const DISP_IF_DRIVER *DISP_GetDriverDPI(void)
 {
-    static const DISP_DRIVER DPI_DISP_DRV =
+    static const DISP_IF_DRIVER DPI_DISP_DRV =
     {
         .init                   = dpi_init,
         .enable_power           = dpi_enable_power,

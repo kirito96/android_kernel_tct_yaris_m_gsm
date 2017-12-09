@@ -166,13 +166,14 @@ DRIVER_ATTR(track_vsram, 0644, track_vsram_show, track_vsram_store);
 
 static ssize_t ptp_od_show(struct device_driver *driver, char *buf)
 {
-    volatile u32 *clc_temp_p;
+    //volatile u32 *clc_temp_p;
     u32 val;
 
-    clc_temp_p = (volatile u32 *)0;
+    //clc_temp_p = (volatile u32 *)PTP_INIT_01_API();
 
     /* only need bit 31 ~ bit 16 of the read data*/
-    val = clc_temp_p[0];
+    //val = clc_temp_p[0];
+    val = 0;
     val >>= 16;
     val &= 0x0000FFFF;
 

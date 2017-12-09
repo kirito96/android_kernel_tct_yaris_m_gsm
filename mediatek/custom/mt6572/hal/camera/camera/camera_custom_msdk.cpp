@@ -1,4 +1,3 @@
-
 // seanlin test \mediatek\custom\common\hal\camera\camera\camera_custom_msdk.cpp
 //#include "MediaLog.h"
 #include "camera_custom_msdk.h"
@@ -44,12 +43,18 @@ void GETCameraDeviceSupportInfo(PDEVICE_INFO_STRUCT pDeviceSupportInfo)
 } /* GETCameraDeviceSupportInfo() */
 #endif
 
+/*******************************************************************************
+*
+********************************************************************************/
 MUINT32 cameraCustomInit()
 {
     GetSensorInitFuncList(&pstSensorInitFunc);
     return 0;
 }
 
+/*******************************************************************************
+*
+********************************************************************************/
 void GetCameraDefaultPara(MUINT32 SensorId,
 						  PNVRAM_CAMERA_ISP_PARAM_STRUCT pCameraISPDefault,
 						  PNVRAM_CAMERA_3A_STRUCT pCamera3ADefault,
@@ -127,12 +132,18 @@ MUINT32 GetCameraCalData(MUINT32 SensorId, MUINT32* pGetSensorCalData)
     return result;
 }
 
+/*******************************************************************************
+*
+********************************************************************************/
 MUINT32 LensCustomInit()
 {
     GetLensInitFuncList(&LensInitFunc[0]);
     return 0;
 }
 
+/*******************************************************************************
+*
+********************************************************************************/
 void GetLensDefaultPara(PNVRAM_LENS_PARA_STRUCT pLensParaDefault)
 {
 	MUINT32 i;
@@ -160,6 +171,9 @@ void GetLensDefaultPara(PNVRAM_LENS_PARA_STRUCT pLensParaDefault)
 
 }
 
+/*******************************************************************************
+*
+********************************************************************************/
 MUINT32 LensCustomSetIndex(MUINT32 a_u4CurrIdx)
 {
     gMainLensIdx = a_u4CurrIdx;
@@ -167,6 +181,9 @@ MUINT32 LensCustomSetIndex(MUINT32 a_u4CurrIdx)
     return 0;
 }
 
+/*******************************************************************************
+*
+********************************************************************************/
 MUINT32 LensCustomGetInitFunc(MSDK_LENS_INIT_FUNCTION_STRUCT *a_pLensInitFunc)
 {
     if (a_pLensInitFunc != NULL) {

@@ -120,15 +120,6 @@
 #define STK_FLG_IR_RDY_MASK		0x02
 #define STK_FLG_NF_MASK			0x01
 
-/*----------------------------------------------------------------------------*/
-#define SKT3X1X_STATE_VAL   0x0   //.state_val = 0x0,		/* disable all */
-#define SKT3X1X_PSCTRL_VAL   0x71   //.psctrl_val = 0x71, 	/* ps_persistance=4, ps_gain=64X, PS_IT=0.391ms */
-#define SKT3X1X_ALSTRL_VAL   0x38   //.alsctrl_val = 0x38,	/* als_persistance=1, als_gain=64X, ALS_IT=50ms */
-#define SKT3X1X_LEDCTRL_VAL   0xFF   //.ledctrl_val = 0xFF,	/* 100mA IRDR, 64/64 LED duty */
-#define SKT3X1X_WAIT_VAL     0x9   //.wait_val = 0x9,		/* 50 ms */
-
-/*----------------------------------------------------------------------------*/
-
 /* misc define */
 #define ALS_MIN_DELAY   100
 #define PS_MIN_DELAY    10

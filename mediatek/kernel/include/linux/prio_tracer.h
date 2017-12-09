@@ -5,6 +5,10 @@
 
 #define PTS_DEFAULT_PRIO (-101)
 
+#define PTS_USER 0
+#define PTS_KRNL 1
+#define PTS_BNDR 2
+
 extern void create_prio_tracer(pid_t tid);
 extern void delete_prio_tracer(pid_t tid);
 

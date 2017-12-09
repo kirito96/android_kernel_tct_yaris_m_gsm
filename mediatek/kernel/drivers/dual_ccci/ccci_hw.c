@@ -2,9 +2,7 @@
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/sched.h>
-#include <ccci.h>
 #include <linux/delay.h>
-#include <ccif.h>
 #include <ccci_common.h>
 
 
@@ -55,11 +53,11 @@ static int __ccif_v1_dump_reg(ccif_t* ccif, unsigned int buf[], int len)
 					CCIF_CON(ccif->m_reg_base), ccci_read32(CCIF_CON(ccif->m_reg_base)),
 					CCIF_BUSY(ccif->m_reg_base), ccci_read32(CCIF_BUSY(ccif->m_reg_base)),
 					CCIF_START(ccif->m_reg_base), ccci_read32(CCIF_START(ccif->m_reg_base)),
-					MD_CCIF_RCHNUM(ccif->m_reg_base), ccci_read32(MD_CCIF_RCHNUM(ccif->m_reg_base)));
+					MD_CCIF_RCHNUM(ccif->m_md_reg_base), ccci_read32(MD_CCIF_RCHNUM(ccif->m_md_reg_base)));
 	CCCI_DBG_MSG(ccif->m_md_id, "cci", "MCON(%lx)=%08X, MBUSY(%lx)=%08x, MSTART(%lx)=%08x, RCHNUM(%lx)=%08x\n", 
-					MD_CCIF_CON(ccif->m_reg_base), ccci_read32(MD_CCIF_CON(ccif->m_reg_base)),
-					MD_CCIF_BUSY(ccif->m_reg_base), ccci_read32(MD_CCIF_BUSY(ccif->m_reg_base)),
-					MD_CCIF_START(ccif->m_reg_base), ccci_read32(MD_CCIF_START(ccif->m_reg_base)),
+					MD_CCIF_CON(ccif->m_md_reg_base), ccci_read32(MD_CCIF_CON(ccif->m_md_reg_base)),
+					MD_CCIF_BUSY(ccif->m_md_reg_base), ccci_read32(MD_CCIF_BUSY(ccif->m_md_reg_base)),
+					MD_CCIF_START(ccif->m_md_reg_base), ccci_read32(MD_CCIF_START(ccif->m_md_reg_base)),
 					CCIF_RCHNUM(ccif->m_reg_base), ccci_read32(CCIF_RCHNUM(ccif->m_reg_base)));
 
 	for(i=0; i<16; i++){
@@ -164,6 +162,9 @@ static int  __ccif_v1_write_phy_ch_data(ccif_t* ccif, unsigned int buf[], int re
 
 static int  __ccif_v1_get_rx_ch(ccif_t* ccif)
 {
+	while (CCIF_CON_ARB != ccci_read32(CCIF_CON(ccif->m_reg_base))){
+		ccci_write32(CCIF_CON(ccif->m_reg_base), CCIF_CON_ARB);
+	}
 	return ccci_read32(CCIF_RCHNUM(ccif->m_reg_base));
 }
 
@@ -333,12 +334,15 @@ static int __ccif_v1_intr_handler(ccif_t *ccif)
 
 	CCCI_FUNC_ENTRY(md_id);
 	set_bit(CCIF_TOP_HALF_RUNNING,&ccif->m_status);
+							
+	//CCCI_DBG_MSG(md_id, "cci", "ISR\n");
+							
 	if(ccif->isr_notify)
 		ccif->isr_notify(md_id);
 
 	rx_ch = ccif->m_rx_idx;
 
-	while( (r_ch_val = ccci_read32(CCIF_RCHNUM(ccif->m_reg_base))) && (re_enter_cnt<CCIF_INTR_MAX_RE_ENTER_CNT) )
+	while( (r_ch_val = ccif->ccif_get_rx_ch(ccif)) && (re_enter_cnt<CCIF_INTR_MAX_RE_ENTER_CNT) )
 	{
 		for(i=0; i<CCIF_STD_V1_MAX_CH_NUM; i++)
 		{
@@ -450,6 +454,7 @@ ccif_t* ccif_create_instance(ccif_hw_info_t *info, void* ctl_b, int md_id)
 			ccif->m_ccif_type = info->type;
 			ccif->m_irq_id = info->irq_id;
 			ccif->m_reg_base = info->reg_base;
+			ccif->m_md_reg_base = info->md_reg_base;
 			ccif->m_irq_attr = info->irq_attr;
 			ccif->m_status = 0;
 			ccif->m_rx_idx = 0;

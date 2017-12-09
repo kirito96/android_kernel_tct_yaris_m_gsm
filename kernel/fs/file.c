@@ -54,7 +54,7 @@ static void *alloc_fdmem(size_t size)
 	 * vmalloc() if the allocation size will be considered "large" by the VM.
 	 */
 	if (size <= (PAGE_SIZE << PAGE_ALLOC_COSTLY_ORDER)) {
-		void *data = kmalloc(size, GFP_KERNEL|__GFP_NOWARN);
+		void *data = kmalloc(size, GFP_KERNEL|__GFP_NOWARN|__GFP_NORETRY);
 		if (data != NULL)
 			return data;
 	}
@@ -460,8 +460,9 @@ long get_file_name_from_fd(struct files_struct *files, int fd, int procid, struc
         spin_unlock(&files->file_lock);     
         return (long)NULL;
 	}  
-	memcpy(&path, &file->f_path, sizeof(struct path)); 
-	path_get(&file->f_path); 
+	path_get(&file->f_path);
+	path = file->f_path;
+	fput(file);
 	spin_unlock(&files->file_lock);  
 	tmp = (char *)__get_free_page(GFP_TEMPORARY);  
 	if (!tmp) {     
@@ -517,7 +518,7 @@ static void fd_delete(unsigned int hash)
 	radix_tree_delete(&over_fd_tree, hash);
 }
 
-inline void fd_show_open_files(pid_t pid, struct files_struct *files, struct fdtable *fdt)
+void fd_show_open_files(pid_t pid, struct files_struct *files, struct fdtable *fdt)
 {
     int i=0;
 	struct over_fd_entry *lentry;

@@ -1,17 +1,42 @@
+/*
+ * (C) Copyright 2008
+ * MediaTek <www.mediatek.com>
+ * Infinity Chen <infinity.chen@mediatek.com>
+ *
+ * See file CREDITS for list of people who contributed to this
+ * project.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of
+ * the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	 See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston,
+ * MA 02111-1307 USA
+ */
 
 //#include <common.h>
 //#include <asm/io.h>
 #include <platform/mt_reg_base.h>
 #include <platform/mt_typedefs.h>
 #include <platform/mtk_wdt.h>
+#include <platform/mt_gpt.h>
 #include <platform/boot_mode.h>
-
-
+#include <printf.h>
 
 #if ENABLE_WDT_MODULE
 
 static unsigned int timeout;
 static unsigned int is_rgu_trigger_rst = 0;
+void mtk_wdt_set_time_out_value(UINT32 value);
+void mtk_wdt_restart(void);
 
 void mtk_wdt_disable(void)
 {
@@ -32,9 +57,9 @@ static void mtk_wdt_reset(char mode)
     wdt_mode_val = DRV_Reg32(MTK_WDT_MODE);
     /* clear autorestart bit: autoretart: 1, bypass power key, 0: not bypass power key */
     wdt_mode_val &=(~MTK_WDT_MODE_AUTO_RESTART);
-		/* make sure WDT mode is hw reboot mode, can not config isr mode  */
-		wdt_mode_val &=(~(MTK_WDT_MODE_IRQ|MTK_WDT_MODE_ENABLE | MTK_WDT_MODE_DUAL_MODE));
-		
+	/* make sure WDT mode is hw reboot mode, can not config isr mode  */
+	wdt_mode_val &=(~(MTK_WDT_MODE_IRQ|MTK_WDT_MODE_ENABLE | MTK_WDT_MODE_DUAL_MODE));
+
 		wdt_mode_val &= ~MTK_WDT_MODE_DDRRSV_MODE;
 
     if(mode){ /* mode != 0 means by pass power key reboot, We using auto_restart bit as by pass power key flag */
@@ -185,6 +210,26 @@ void mtk_wdt_presrv_mode_config(unsigned int ddr_resrv_en, unsigned int mcu_latc
 		tmp |= MTK_WDT_MODE_DDRRSV_MODE;
     DRV_WriteReg32(MTK_WDT_MODE,tmp);
 
+/*
+    // if normal boot, clear rg_dramc_sref
+    // else do nothing for this bit
+    tmp = DRV_Reg32(MTK_WDT_DRAMC_CTL);
+    tmp |= MTK_WDT_DRAMC_CTL_KEY;
+	if(0 == ddr_resrv_en)
+   		tmp &= ~MTK_WDT_MCU_RG_DRAMC_SREF;
+
+    DRV_WriteReg32(MTK_WDT_DRAMC_CTL,tmp);
+*/
+/*
+    // default is on, do not set/clear it
+    tmp = DRV_Reg32(MTK_WDT_DRAMC_CTL);
+    tmp |= MTK_WDT_DRAMC_CTL_KEY;
+	if(0 == mcu_latch_en)
+   		tmp &= ~MTK_WDT_MCU_LATCH_ENABLE;
+	else
+   		tmp |= MTK_WDT_MCU_LATCH_ENABLE;
+    DRV_WriteReg32(MTK_WDT_DRAMC_CTL,tmp);
+*/
 
 //#define CA7_CACHE_CONFIG			0x10200000
 //#define EMI_GENA							0x10004070
@@ -264,11 +309,25 @@ static void mtk_wdt_hw_reset(void)
     while(1);
 }
 
+/**
+ * For Power off and power on reset, the INTERVAL default value is 0x7FF.
+ * We set Interval[1:0] to different value to distinguish different stage.
+ * Enter pre-loader, we will set it to 0x0
+ * Enter u-boot, we will set it to 0x1
+ * Enter kernel, we will set it to 0x2
+ * And the default value is 0x3 which means reset from a power off and power on reset
+ */
 #define POWER_OFF_ON_MAGIC	(0x3)
 #define PRE_LOADER_MAGIC	(0x0)
 #define U_BOOT_MAGIC		(0x1)
 #define KERNEL_MAGIC		(0x2)
 #define MAGIC_NUM_MASK		(0x3)
+/**
+ * If the reset is trigger by RGU(Time out or SW trigger), we hope the system can boot up directly;
+ * we DO NOT hope we must press power key to reboot system after reset.
+ * This message should tell pre-loader and u-boot, and we use Interval[2] to store this information.
+ * And this information will be cleared when enter kernel.
+ */
 #define IS_POWER_ON_RESET	(0x1<<2)
 #define RGU_TRIGGER_RESET_MASK	(0x1<<2)
 void mtk_wdt_init(void)

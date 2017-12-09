@@ -1,5 +1,3 @@
-
-
 #ifndef _CAMERA_INFO_H
 #define _CAMERA_INFO_H
 

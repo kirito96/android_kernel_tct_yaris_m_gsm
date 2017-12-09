@@ -1,6 +1,8 @@
 #ifndef __DDP_BLS_H__
 #define __DDP_BLS_H__
 
+#include <mach/mt_typedefs.h>
+
 #include "ddp_drv.h"
 
 

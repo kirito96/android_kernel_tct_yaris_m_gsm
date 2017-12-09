@@ -14,16 +14,17 @@ typedef enum {
 	AEE_FIQ_STEP_WDT_IRQ_SMP_STOP,
 	AEE_FIQ_STEP_WDT_IRQ_STACK,
 	AEE_FIQ_STEP_WDT_IRQ_TIME,
+	AEE_FIQ_STEP_WDT_IRQ_GIC,
 	AEE_FIQ_STEP_WDT_IRQ_LOCALTIMER,
+	AEE_FIQ_STEP_WDT_IRQ_IDLE,
 	AEE_FIQ_STEP_WDT_IRQ_SCHED,
 	AEE_FIQ_STEP_WDT_IRQ_DONE,
-	AEE_FIQ_STEP_KE_WDT_INFO = 16,
+	AEE_FIQ_STEP_KE_WDT_INFO = 20,
 	AEE_FIQ_STEP_KE_WDT_PERCPU,
 	AEE_FIQ_STEP_KE_WDT_LOG,
 	AEE_FIQ_STEP_KE_SCHED_DEBUG,
-	AEE_FIQ_STEP_KE_IDLE,
 	AEE_FIQ_STEP_KE_WDT_DONE,
-	AEE_FIQ_STEP_KE_IPANIC_START,
+	AEE_FIQ_STEP_KE_IPANIC_START = 32,
 	AEE_FIQ_STEP_KE_IPANIC_OOP_HEADER,
 	AEE_FIQ_STEP_KE_IPANIC_DETAIL,
 	AEE_FIQ_STEP_KE_IPANIC_CONSOLE,
@@ -32,6 +33,7 @@ typedef enum {
 	AEE_FIQ_STEP_KE_IPANIC_MMPROFILE,
 	AEE_FIQ_STEP_KE_IPANIC_HEADER,
 	AEE_FIQ_STEP_KE_IPANIC_DONE,
+	AEE_FIQ_STEP_KE_NESTED_PANIC = 64,
 } AEE_FIQ_STEP_NUM;
 
 #ifdef CONFIG_MTK_RAM_CONSOLE
@@ -48,6 +50,10 @@ extern void aee_sram_fiq_log(const char *msg);
 extern void ram_console_write(struct console *console, const char *s, unsigned int count);
 extern void aee_sram_fiq_save_bin(const char *buffer, size_t len);
 
+#ifdef MTK_EMMC_SUPPORT
+extern void last_kmsg_store_to_emmc(void);
+#endif
+
 #else
 
 static inline void aee_rr_rec_fiq_step(u8 i) {}
@@ -62,6 +68,9 @@ static inline void aee_sram_fiq_log(const char *msg) {}
 static inline void ram_console_write(struct console *console, const char *s, unsigned int count){}
 static inline void aee_sram_fiq_save_bin(unsigned char *buffer, size_t len) {}
 
+#ifdef MTK_EMMC_SUPPORT
+static inline void last_kmsg_store_to_emmc(void){}
+#endif
 
 #endif
 

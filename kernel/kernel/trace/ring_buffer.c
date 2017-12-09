@@ -23,7 +23,7 @@
 #include <asm/local.h>
 #include "trace.h"
 
-#ifdef MTK_USE_RESERVED_EXT_MEM
+#if defined (MTK_USE_RESERVED_EXT_MEM) && defined (CONFIG_MT_ENG_BUILD)
 extern void* extmem_malloc_page_align(size_t bytes);
 extern void extmem_free(void* mem);
 #endif
@@ -393,17 +393,13 @@ size_t ring_buffer_page_len(void *page)
  */
 static void free_buffer_page(struct buffer_page *bpage)
 {
+#if defined (MTK_USE_RESERVED_EXT_MEM) && defined (CONFIG_MT_ENG_BUILD)
+	extmem_free((void*) bpage->page);	 
+#else
 	free_page((unsigned long)bpage->page);
-	kfree(bpage);
-}
-
-#ifdef MTK_USE_RESERVED_EXT_MEM
-static void mtk_free_buffer_page(struct buffer_page *bpage)
-{
-	extmem_free((void*) bpage->page);    
-	kfree(bpage);
-}
 #endif
+	kfree(bpage);
+}
 
 /*
  * We need to fit the time_stamp delta into 27 bits.
@@ -984,7 +980,9 @@ static int __rb_allocate_pages(int nr_pages, struct list_head *pages, int cpu)
 	struct buffer_page *bpage, *tmp;
 
 	for (i = 0; i < nr_pages; i++) {
+#if !defined (MTK_USE_RESERVED_EXT_MEM) || !defined (CONFIG_MT_ENG_BUILD)
 		struct page *page;
+#endif
 		/*
 		 * __GFP_NORETRY flag makes sure that the allocation fails
 		 * gracefully without invoking oom-killer and the system is
@@ -997,16 +995,16 @@ static int __rb_allocate_pages(int nr_pages, struct list_head *pages, int cpu)
 			goto free_pages;
 
 		list_add(&bpage->list, pages);
-#ifdef MTK_USE_RESERVED_EXT_MEM
+#if defined (MTK_USE_RESERVED_EXT_MEM) && defined (CONFIG_MT_ENG_BUILD)
 		bpage->page = extmem_malloc_page_align(PAGE_SIZE);
-		if(bpage->page == NULL)
-		    goto free_pages;
+    		if(bpage->page == NULL)
+    			goto free_pages;
 #else
-		page = alloc_pages_node(cpu_to_node(cpu),
-					GFP_KERNEL | __GFP_NORETRY, 0);
-		if (!page)
-			goto free_pages;
-		bpage->page = page_address(page);
+    		page = alloc_pages_node(cpu_to_node(cpu),
+    				GFP_KERNEL | __GFP_NORETRY, 0);
+    		if (!page)
+    			goto free_pages;
+    		bpage->page = page_address(page);
 #endif	
 		rb_init_page(bpage->page);
 	}
@@ -1016,11 +1014,7 @@ static int __rb_allocate_pages(int nr_pages, struct list_head *pages, int cpu)
 free_pages:
 	list_for_each_entry_safe(bpage, tmp, pages, list) {
 		list_del_init(&bpage->list);
-#ifdef MTK_USE_RESERVED_EXT_MEM
-		mtk_free_buffer_page(bpage);
-#else
 		free_buffer_page(bpage);
-#endif
 	}
 
 	return -ENOMEM;
@@ -1056,7 +1050,9 @@ rb_allocate_cpu_buffer(struct ring_buffer *buffer, int nr_pages, int cpu)
 {
 	struct ring_buffer_per_cpu *cpu_buffer;
 	struct buffer_page *bpage;
+#if !defined (MTK_USE_RESERVED_EXT_MEM) || !defined (CONFIG_MT_ENG_BUILD)
 	struct page *page;
+#endif
 	int ret;
 
 	cpu_buffer = kzalloc_node(ALIGN(sizeof(*cpu_buffer), cache_line_size()),
@@ -1079,7 +1075,7 @@ rb_allocate_cpu_buffer(struct ring_buffer *buffer, int nr_pages, int cpu)
 
 	cpu_buffer->reader_page = bpage;
 	
-#ifdef MTK_USE_RESERVED_EXT_MEM
+#if defined (MTK_USE_RESERVED_EXT_MEM) && defined (CONFIG_MT_ENG_BUILD)
 	bpage->page = extmem_malloc_page_align(PAGE_SIZE);
 	if(bpage->page == NULL)
 	    goto fail_free_reader;
@@ -1106,11 +1102,7 @@ rb_allocate_cpu_buffer(struct ring_buffer *buffer, int nr_pages, int cpu)
 	return cpu_buffer;
 
  fail_free_reader:
-#ifdef MTK_USE_RESERVED_EXT_MEM
-	mtk_free_buffer_page(cpu_buffer->reader_page);
-#else
 	free_buffer_page(cpu_buffer->reader_page);
-#endif
 
  fail_free_buffer:
 	kfree(cpu_buffer);
@@ -1122,28 +1114,17 @@ static void rb_free_cpu_buffer(struct ring_buffer_per_cpu *cpu_buffer)
 	struct list_head *head = cpu_buffer->pages;
 	struct buffer_page *bpage, *tmp;
 
-#ifdef MTK_USE_RESERVED_EXT_MEM
-	mtk_free_buffer_page(cpu_buffer->reader_page);
-#else
 	free_buffer_page(cpu_buffer->reader_page);
-#endif
+
 	rb_head_page_deactivate(cpu_buffer);
 
 	if (head) {
 		list_for_each_entry_safe(bpage, tmp, head, list) {
 			list_del_init(&bpage->list);
-#ifdef MTK_USE_RESERVED_EXT_MEM
-			mtk_free_buffer_page(bpage);
-#else          
 			free_buffer_page(bpage);
-#endif
 		}
 		bpage = list_entry(head, struct buffer_page, list);
-#ifdef MTK_USE_RESERVED_EXT_MEM
-		mtk_free_buffer_page(bpage);
-#else                  
 		free_buffer_page(bpage);
-#endif
 	}
 
 	kfree(cpu_buffer);
@@ -1294,11 +1275,7 @@ rb_remove_pages(struct ring_buffer_per_cpu *cpu_buffer, unsigned nr_pages)
 		p = cpu_buffer->pages->next;
 		bpage = list_entry(p, struct buffer_page, list);
 		list_del_init(&bpage->list);
-#ifdef MTK_USE_RESERVED_EXT_MEM
-		mtk_free_buffer_page(bpage);
-#else         
 		free_buffer_page(bpage);
-#endif
 	}
 	if (RB_WARN_ON(cpu_buffer, list_empty(cpu_buffer->pages)))
 		goto out;
@@ -1455,11 +1432,7 @@ int ring_buffer_resize(struct ring_buffer *buffer, unsigned long size,
 		list_for_each_entry_safe(bpage, tmp, &cpu_buffer->new_pages,
 					list) {
 			list_del_init(&bpage->list);
-#ifdef MTK_USE_RESERVED_EXT_MEM
-			mtk_free_buffer_page(bpage);
-#else            
 			free_buffer_page(bpage);
-#endif
 		}
 	}
 	put_online_cpus();
@@ -1604,12 +1577,6 @@ rb_set_commit_to_write(struct ring_buffer_per_cpu *cpu_buffer)
 	 */
 	if (unlikely(cpu_buffer->commit_page != cpu_buffer->tail_page))
 		goto again;
-}
-
-static void rb_reset_reader_page(struct ring_buffer_per_cpu *cpu_buffer)
-{
-	cpu_buffer->read_stamp = cpu_buffer->reader_page->page->time_stamp;
-	cpu_buffer->reader_page->read = 0;
 }
 
 static void rb_inc_iter(struct ring_buffer_iter *iter)
@@ -2064,6 +2031,13 @@ __rb_reserve_next(struct ring_buffer_per_cpu *cpu_buffer,
 	/* set write to only the index of the write */
 	write &= RB_WRITE_MASK;
 	tail = write - length;
+
+	/*
+	 * If this is the first commit on the page, then it has the same
+	 * timestamp as the page itself.
+	 */
+	if (!tail)
+		delta = 0;
 
 	/* See if we shot pass the end of this buffer page */
 	if (unlikely(write > BUF_PAGE_SIZE))
@@ -2765,7 +2739,7 @@ unsigned long ring_buffer_oldest_event_ts(struct ring_buffer *buffer, int cpu)
 	unsigned long flags;
 	struct ring_buffer_per_cpu *cpu_buffer;
 	struct buffer_page *bpage;
-	unsigned long ret;
+	unsigned long ret = 0;
 
 	if (!cpumask_test_cpu(cpu, buffer->cpumask))
 		return 0;
@@ -2780,7 +2754,8 @@ unsigned long ring_buffer_oldest_event_ts(struct ring_buffer *buffer, int cpu)
 		bpage = cpu_buffer->reader_page;
 	else
 		bpage = rb_set_head_page(cpu_buffer);
-	ret = bpage->page->time_stamp;
+	if (bpage)
+		ret = bpage->page->time_stamp;
 	raw_spin_unlock_irqrestore(&cpu_buffer->reader_lock, flags);
 
 	return ret;
@@ -3087,6 +3062,8 @@ rb_get_reader_page(struct ring_buffer_per_cpu *cpu_buffer)
 	 * Splice the empty reader page into the list around the head.
 	 */
 	reader = rb_set_head_page(cpu_buffer);
+	if (!reader)
+		goto out;
 	cpu_buffer->reader_page->list.next = rb_list_head(reader->list.next);
 	cpu_buffer->reader_page->list.prev = reader->list.prev;
 
@@ -3141,7 +3118,7 @@ rb_get_reader_page(struct ring_buffer_per_cpu *cpu_buffer)
 
 	/* Finally update the reader page to the new head */
 	cpu_buffer->reader_page = reader;
-	rb_reset_reader_page(cpu_buffer);
+	cpu_buffer->reader_page->read = 0;
 
 	if (overwrite != cpu_buffer->last_overrun) {
 		cpu_buffer->lost_events = overwrite - cpu_buffer->last_overrun;
@@ -3151,6 +3128,10 @@ rb_get_reader_page(struct ring_buffer_per_cpu *cpu_buffer)
 	goto again;
 
  out:
+	/* Update the read_stamp on the first event */
+	if (reader && reader->read == 0)
+		cpu_buffer->read_stamp = reader->page->time_stamp;
+
 	arch_spin_unlock(&cpu_buffer->lock);
 	local_irq_restore(flags);
 

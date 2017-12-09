@@ -1,5 +1,111 @@
+/*****************************************************************************
+*  Copyright Statement:
+*  --------------------
+*  This software is protected by Copyright and the information contained
+*  herein is confidential. The software may not be copied and the information
+*  contained herein may not be used or disclosed except with the written
+*  permission of MediaTek Inc. (C) 2008
+*
+*  BY OPENING THIS FILE, BUYER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+*  THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+*  RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO BUYER ON
+*  AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+*  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+*  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+*  NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+*  SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+*  SUPPLIED WITH THE MEDIATEK SOFTWARE, AND BUYER AGREES TO LOOK ONLY TO SUCH
+*  THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. MEDIATEK SHALL ALSO
+*  NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE RELEASES MADE TO BUYER'S
+*  SPECIFICATION OR TO CONFORM TO A PARTICULAR STANDARD OR OPEN FORUM.
+*
+*  BUYER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND CUMULATIVE
+*  LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+*  AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+*  OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY BUYER TO
+*  MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+*
+*  THE TRANSACTION CONTEMPLATED HEREUNDER SHALL BE CONSTRUED IN ACCORDANCE
+*  WITH THE LAWS OF THE STATE OF CALIFORNIA, USA, EXCLUDING ITS CONFLICT OF
+*  LAWS PRINCIPLES.  ANY DISPUTES, CONTROVERSIES OR CLAIMS ARISING THEREOF AND
+*  RELATED THERETO SHALL BE SETTLED BY ARBITRATION IN SAN FRANCISCO, CA, UNDER
+*  THE RULES OF THE INTERNATIONAL CHAMBER OF COMMERCE (ICC).
+*
+*****************************************************************************/
 
 
+/*******************************************************************************
+ *
+ * Filename:
+ * ---------
+ *   tst_main.c
+ *
+ * Project:
+ * --------
+ *   YUSU
+ *
+ * Description:
+ * ------------
+ *    driver main function
+ *
+ * Author:
+ * -------
+ *   Lu.Zhang (MTK80251) 09/11/2009
+ *
+ *------------------------------------------------------------------------------
+ * $Revision:$
+ * $Modtime:$
+ * $Log:$
+ *
+ * 09 05 2010 siyang.miao
+ * [ALPS00003981] Add reboot feature in meta
+ * .
+ *
+ * 09 02 2010 sean.cheng
+ * [ALPS00003477] [Need Patch] [Volunteer Patch] ALPS.W10.34 migrate camera function from 2.1 to 2.2
+ * .Turn the CCAP / CCT Meta function
+ *
+ * 08 28 2010 qiuhuan.zhao
+ * [ALPS00123522] [GPS] Android 2.2 porting
+ * GPS META and FM porting.
+ *
+ * 08 28 2010 chunhui.li
+ * [ALPS00123709] [Bluetooth] meta mode check in
+ * for META mode check in.
+ *
+ * 08 14 2010 chipeng.chang
+ * [ALPS00003297] [Need Patch] [Volunteer Patch] android 2.2 migration
+ * add audio meta ft main.
+ *
+ * 07 16 2010 siyang.miao
+ * [ALPS00122025]TST/FT for G-Sensor calibration
+ * .
+ *
+ * 05 11 2010 lu.zhang
+ * [ALPS00005327]CCAP
+ * .
+ *
+ * 03 18 2010 lu.zhang
+ * [ALPS00004362]CCAP APIs
+ * for CCAP APIs
+ *
+ * 03 09 2010 ch.yeh
+ * [ALPS00001276][BT]Migration to Android 2.1
+ * [BT][meta]enable Bluetooth META function.
+ *
+ * 02 26 2010 lu.zhang
+ * [ALPS00004332]Create META
+ * .
+ *
+ * 01 20 2010 lu.zhang
+ * [ALPS00004332]Create META
+ * .
+ *
+ *
+ *
+ *
+ *
+ *******************************************************************************/
 
 #include "ft_main.h"
 #include "meta.h"
@@ -7,6 +113,7 @@
 #include "FT_Public.h"
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <DfoDefines.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,21 +127,175 @@ int g_fdUsbComPort = -1;
 
 void FTMuxPrimitiveData(META_RX_DATA *pMuxBuf);
 
+int FT_GetModemType(int * active_modem_id, int * modem_type)
+{
+	int modem_number =0;	
+	bool isactive = false;
+	if(active_modem_id == NULL)
+	{
+		META_LOG("Invalid parameter active_modem_id");
+		return -1;
+	}
+
+	if(modem_type == NULL)
+	{
+		META_LOG("Invalid parameter modem_type");
+		return -1;	
+	}
+
+	*active_modem_id = 0;
+	*modem_type = 0;
+
+	if(MTK_ENABLE_MD1)
+	{
+		*modem_type |= 0x01;	
+		modem_number++;
+		if(!isactive)
+		{
+			*active_modem_id = 1;
+			isactive = true;
+		}
+		META_LOG("MTK_ENABLE_MD1 is true");
+	}
+
+	if(MTK_ENABLE_MD2)
+	{
+		*modem_type |= 0x02;
+		modem_number++;
+		if(!isactive)
+		{
+			*active_modem_id = 2;
+			isactive = true;
+		}
+		META_LOG("MTK_ENABLE_MD2 is true");
+	}
+
+	if(MTK_ENABLE_MD5)//MTK_ENABLE_MD5
+	{
+		*modem_type |= 0x10;	
+		modem_number++;
+		if(!isactive)
+		{
+			*active_modem_id = 5;
+			isactive = true;
+		}
+		META_LOG("MTK_ENABLE_MD5 is true");
+	}
+
+	META_LOG("modem_type: %d", *modem_type);
+	META_LOG("modem_number: %d", modem_number);
+	META_LOG("active_modem_id: %d", *active_modem_id);
+	
+	return modem_number;		
+}
+
+int FT_GetModemCapability(MODEM_CAPABILITY_LIST * modem_capa)
+{
+
+	int modem_type = 0;
+	int active_modem_id = 0;
+	int mode_mnumber = 0;
+	
+	mode_mnumber = FT_GetModemType(&active_modem_id,&modem_type);
+
+	if((modem_type & 0x01) == 0x01)
+	{
+		modem_capa->modem_cap[0].md_service = FT_MODEM_SRV_TST;
+		modem_capa->modem_cap[0].ch_type = FT_MODEM_CH_NATIVE_TST;	
+	}
+
+
+	if((modem_type & 0x02) == 0x02)
+	{
+		modem_capa->modem_cap[1].md_service = FT_MODEM_SRV_TST;
+		modem_capa->modem_cap[1].ch_type = FT_MODEM_CH_NATIVE_TST;	
+	}
+
+	if((modem_type & 0x10) == 0x10)
+	{
+	#ifdef MTK_LTE_SUPPORT
+		modem_capa->modem_cap[4].md_service = FT_MODEM_SRV_DHL;
+		modem_capa->modem_cap[4].ch_type = FT_MODEM_CH_TUNNELING;
+	#else
+		modem_capa->modem_cap[4].md_service = FT_MODEM_SRV_TST;
+		modem_capa->modem_cap[4].ch_type = FT_MODEM_CH_NATIVE_TST;
+	#endif
+	META_LOG("modem_cap[4]%d,%d",modem_capa->modem_cap[4].md_service,modem_capa->modem_cap[4].ch_type);
+	}
+
+	return 1;
+}
+
+/********************************************************************************
+//FUNCTION:
+//		WriteDataToPC
+//DESCRIPTION:
+//		this function is called to init ft module when ft is loaded by device.exe. it will create ft task to recieve
+//		data from tst, or recieve data from module and then send to test. it will init ft module too.
+//
+//PARAMETERS:
+//		None
+//
+//RETURN VALUE:
+//		TRUE is success, otherwise is fail
+//
+//DEPENDENCY:
+//		None
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 
 int FTT_Init(int dwContext)
 {
-    FT_Module_Init();
     g_fdUsbComPort = dwContext;
     FT_LOG("[FTT_Drv:] FT Init... ");
     return 1;
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FTT_Deinit
+//DESCRIPTION:
+//		this function is called to deint ft module
+//
+//PARAMETERS:
+//		None
+//RETURN VALUE:
+//		TRUE is success, otherwise is fail
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 int FTT_Deinit(int hDeviceContext)
 {
     FT_Module_Deinit();
     return 1;
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_DispatchMessage
+//DESCRIPTION:
+//		this function is called to switch the testcase, del the header of peer buf.
+//
+//PARAMETERS:
+//		Local_buf:	[IN]	local buf (cnf cmd)
+//		Local_len: 	[IN]	local buf size
+//		pPeerBuf		[IN]	peer buff
+//		Peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		TRUE is success, otherwise is fail
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_DispatchMessage(void *pLocalBuf, void *pPeerBuf, int local_len, int peer_len)
 {
     FT_H  *ft_header;
@@ -147,9 +408,6 @@ void FT_DispatchMessage(void *pLocalBuf, void *pPeerBuf, int local_len, int peer
         case FT_GSENSOR_REQ_ID:
             FT_GSENSOR_OP((GS_REQ *)pLocalBuf, (char *)pft_PeerBuf, ft_peer_len);
             break;
-        case FT_META_MODE_LOCK_REQ_ID:
-            FT_META_MODE_LOCK((FT_META_MODE_LOCK_REQ *)pLocalBuf);
-            break;
         case FT_MATV_CMD_REQ_ID:
         #ifdef FT_MATV_FEATURE		
             FT_MATV_OP((FT_MATV_REQ *)pLocalBuf, (char *)pft_PeerBuf, ft_peer_len);
@@ -218,7 +476,7 @@ void FT_DispatchMessage(void *pLocalBuf, void *pPeerBuf, int local_len, int peer
 		case FT_DFO_REQ_ID:
 			FT_DFO_OP((FT_DFO_REQ *)pLocalBuf,(char *)pft_PeerBuf, ft_peer_len);
 			break;
-                case FT_ADC_REQ_ID:
+		case FT_ADC_REQ_ID:
 			FT_ADC_OP((ADC_REQ *)pLocalBuf, (char *)pft_PeerBuf, ft_peer_len);
 			break;
         default:
@@ -228,6 +486,24 @@ void FT_DispatchMessage(void *pLocalBuf, void *pPeerBuf, int local_len, int peer
     }
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FTMuxPrimitiveData
+//DESCRIPTION:
+//		this function is called to add the header and add the escape for ap side before sending to PC
+//
+//PARAMETERS:
+//		pMuxBuf: 	[IN]		data buffer including tst header
+//
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		None
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FTMuxPrimitiveData(META_RX_DATA *pMuxBuf)
 {
     /* This primitive is logged by TST */
@@ -380,6 +656,28 @@ void FTMuxPrimitiveData(META_RX_DATA *pMuxBuf)
 #endif
 
 
+/********************************************************************************
+//FUNCTION:
+//		WriteDataToPC
+//DESCRIPTION:
+//		this function is called to send cnf data to PC side. the local_len + Peer Len must less than 2031 bytes
+//		and peer len must less than 2000. so when it do not meet, module should divide the packet to
+//		many small packet to sent.
+//
+//PARAMETERS:
+//		Local_buf:	[IN]	local buf (cnf cmd)
+//		Local_len: 	[IN]	local buf size
+//		Peer_buf		[IN]	peer buff
+//		Peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		TRUE is success, otherwise is fail
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 int WriteDataToPC(void *Local_buf,unsigned short Local_len,void *Peer_buf,unsigned short Peer_len)
 {
     META_RX_DATA sTempRxbuf ;

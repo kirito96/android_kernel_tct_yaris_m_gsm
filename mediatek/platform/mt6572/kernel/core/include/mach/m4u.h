@@ -2,8 +2,9 @@
 #define __M4U_H__
 #include <linux/ioctl.h>
 #include <linux/fs.h>
+#include <linux/scatterlist.h>
 
-#define MTK_M4U_EXT_PAGE_TABLE
+//#define MTK_M4U_EXT_PAGE_TABLE  // Can't enable it!!!
 
 #define M4U_PAGE_SIZE    0x1000                                  //4KB
 
@@ -247,19 +248,16 @@ typedef struct _M4U_PERF_COUNT
 #define MTK_M4U_T_DUMP_PAGETABLE      _IOW(MTK_M4U_MAGICNO, 21, int)
 #define MTK_M4U_T_REGISTER_BUFFER     _IOW(MTK_M4U_MAGICNO, 22, int)
 #define MTK_M4U_T_CACHE_FLUSH_ALL     _IOW(MTK_M4U_MAGICNO, 23, int)
-#define MTK_M4U_T_REG_SET             _IOW(MTK_M4U_MAGICNO, 24, int)
-#define MTK_M4U_T_REG_GET             _IOW(MTK_M4U_MAGICNO, 25, int)
-
 
 
 
 // for kernel direct call --------------------------------------------
-int m4u_dump_reg();
-int m4u_dump_info();
+int m4u_dump_reg(void);
+int m4u_dump_info(void);
 void m4u_dump_pagetable(const M4U_MODULE_ID_ENUM eModuleID);
 void m4u_dump_pagetable_nearby(const M4U_MODULE_ID_ENUM eModuleID, const unsigned int mva_addr);
-int m4u_power_on();
-int m4u_power_off();
+int m4u_power_on(void);
+int m4u_power_off(void);
 
 #ifdef MTK_M4U_EXT_PAGE_TABLE
 int m4u_fill_linear_pagetable(unsigned int pa, unsigned int size);
@@ -273,10 +271,24 @@ int m4u_alloc_mva(const M4U_MODULE_ID_ENUM eModuleID,
                       const int cache_coherent,
                       unsigned int *pRetMVABuf);
 
+int m4u_alloc_mva_sg(M4U_MODULE_ID_ENUM eModuleID, 
+                      struct sg_table *sg_table, 
+                      const unsigned int BufSize, 
+                      int security,
+                      int cache_coherent,
+                      unsigned int *pRetMVABuf);
+
+
 int m4u_dealloc_mva(M4U_MODULE_ID_ENUM eModuleID, 
                     const unsigned int BufAddr, 
                     const unsigned int BufSize,
                     const unsigned int MVA);	
+
+int m4u_dealloc_mva_sg(M4U_MODULE_ID_ENUM eModuleID, 
+                      struct sg_table* sg_table,
+                      const unsigned int BufSize, 
+                      const unsigned int MVA);
+
 
 int m4u_insert_wrapped_range(const M4U_MODULE_ID_ENUM eModuleID, 
                              const M4U_PORT_ID_ENUM portID, 
@@ -295,7 +307,6 @@ int m4u_insert_seq_range(const M4U_MODULE_ID_ENUM eModuleID,
                       
 int m4u_invalid_seq_range(const M4U_MODULE_ID_ENUM eModuleID, const unsigned int MVAStart, const unsigned int MVAEnd);
                     
-void m4u_invalid_tlb_all();
 int m4u_manual_insert_entry(M4U_PORT_ID_ENUM eModuleID,
                             unsigned int EntryMVA, 
                             int secure_pagetable,
@@ -316,8 +327,12 @@ int m4u_reset_mva_release_tlb(M4U_MODULE_ID_ENUM eModuleID);
 //int m4u_mau_check_pagetable(unsigned int start_addr, unsigned int end_addr);
 int m4u_mau_get_physical_port(unsigned int* engineMask);								  
 
-typedef void (*PFN_TF_T) ();
+typedef void (*PFN_TF_T) (void);
 void m4u_set_tf_callback(const M4U_MODULE_ID_ENUM eModuleID, PFN_TF_T ptf);
+
+int m4u_mva_map_kernel(unsigned int mva, unsigned int size, int sec,
+                        unsigned int* map_va, unsigned int* map_size);
+int m4u_mva_unmap_kernel(unsigned int mva, unsigned int size, unsigned int va);
 
 #endif
 

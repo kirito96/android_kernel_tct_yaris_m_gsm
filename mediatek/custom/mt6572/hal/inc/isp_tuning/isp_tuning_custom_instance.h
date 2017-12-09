@@ -1,4 +1,3 @@
-
 #ifndef _ISP_TUNING_CUSTOM_INSTANCE_H_
 #define _ISP_TUNING_CUSTOM_INSTANCE_H_
 
@@ -6,6 +5,9 @@
 namespace NSIspTuning
 {
 
+/*******************************************************************************
+*
+*******************************************************************************/
 template <ESensorDev_T const eSensorDev>
 class CTIspTuningCustom : public IspTuningCustom
 {
@@ -46,7 +48,14 @@ protected:  ////    Data Members.
 };
 
 
+/*******************************************************************************
+* Customers can specialize CTIspTuningCustom<xxx>
+* and then override default behaviors if needed.
+*******************************************************************************/
 #if 0
+/*
+    ps: where ESensorDev_xxx = ESensorDev_Main/ESensorDev_MainSecond/ESensorDev_Sub
+*/
 template <>
 class CTIspTuningCustom< ESensorDev_Main > : public IspTuningCustom
 {
@@ -67,6 +76,9 @@ public:     ////    Overrided Interfaces.
 #endif
 
 
+/*******************************************************************************
+*
+*******************************************************************************/
 
 #define INSTANTIATE(_dev_id) \
     case _dev_id: return  CTIspTuningCustom<_dev_id>::getInstance(u4SensorID)

@@ -3,8 +3,6 @@
 #include <linux/xlog.h>
 #include <linux/types.h>
 #include <linux/kobject.h>
-
-
 #include "mach/mtk_thermal_monitor.h"
 #include <mach/system.h>
 
@@ -14,7 +12,9 @@
 #define MTK_COOLER_SHUTDOWN_SIGNAL
 
 #if defined(MTK_COOLER_SHUTDOWN_SIGNAL)
+#include <linux/version.h>
 #include <linux/proc_fs.h>
+#include <linux/seq_file.h>
 #include <asm/uaccess.h>
 #include <linux/pid.h>
 #include <linux/signal.h>
@@ -41,7 +41,7 @@ static unsigned int mtk_cl_sd_rst = 0;
 static struct task_struct g_task;
 static struct task_struct *pg_task = &g_task;
 
-static ssize_t _mtk_cl_sd_rst_write( struct file *filp, const char __user *buf, unsigned long len, void *data )
+static ssize_t _mtk_cl_sd_rst_write(struct file *filp, const char __user *buf, size_t len, loff_t *data)
 {
 	int ret = 0;
 	char tmp[MAX_LEN] = {0};
@@ -70,7 +70,30 @@ static ssize_t _mtk_cl_sd_rst_write( struct file *filp, const char __user *buf, 
 	return len;
 }
 
-static ssize_t _mtk_cl_sd_pid_write( struct file *filp, const char __user *buf, unsigned long len, void *data )
+int _mtk_cl_sd_rst_read(struct seq_file *m, void *v)
+{
+	return 0;
+}
+
+static int _mtk_cl_sd_rst_open(struct inode *inode, struct file *file)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0)
+    return single_open(file, _mtk_cl_sd_rst_read, PDE_DATA(inode));
+#else
+    return single_open(file, _mtk_cl_sd_rst_read, PDE(inode)->data);
+#endif
+}
+
+static const struct file_operations _cl_sd_rst_fops = {
+    .owner = THIS_MODULE,
+    .open = _mtk_cl_sd_rst_open,
+    .read = seq_read,
+    .llseek = seq_lseek,
+    .write = _mtk_cl_sd_rst_write,
+    .release = single_release,
+};
+
+static ssize_t _mtk_cl_sd_pid_write(struct file *filp, const char __user *buf, size_t len, loff_t *data)
 {
 	int ret = 0;
 	char tmp[MAX_LEN] = {0};
@@ -89,20 +112,31 @@ static ssize_t _mtk_cl_sd_pid_write( struct file *filp, const char __user *buf, 
 	return len;
 }
 
-static int _mtk_cl_sd_pid_read( char *buf, char **start, off_t offset , int count, int *eof, void *data )
+static int _mtk_cl_sd_pid_read(struct seq_file *m, void *v)
 {
-	int ret;
-	char tmp[MAX_LEN] = {0};
+	seq_printf(m, "%d\n", tm_input_pid);
+    mtk_cooler_shutdown_dprintk("[%s] %d\n", __func__, tm_input_pid);
 
-	sprintf(tmp, "%d", tm_input_pid);
-	ret = strlen(tmp);
-
-	memcpy(buf, tmp, ret*sizeof(char));
-
-	mtk_cooler_shutdown_dprintk("[%s] %s = %d\n", __func__, buf, tm_input_pid);
-
-	return ret;
+	return 0;
 }
+
+static int _mtk_cl_sd_pid_open(struct inode *inode, struct file *file)
+{
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0)
+    return single_open(file, _mtk_cl_sd_pid_read, PDE_DATA(inode));
+#else
+    return single_open(file, _mtk_cl_sd_pid_read, PDE(inode)->data);
+#endif
+}
+
+static const struct file_operations _cl_sd_pid_fops = {
+    .owner = THIS_MODULE,
+    .open = _mtk_cl_sd_pid_open,
+    .read = seq_read,
+    .llseek = seq_lseek,
+    .write = _mtk_cl_sd_pid_write,
+    .release = single_release,
+};
 
 static int _mtk_cl_sd_send_signal(void)
 {
@@ -249,23 +283,54 @@ static int __init mtk_cooler_shutdown_init(void)
 #if defined(MTK_COOLER_SHUTDOWN_SIGNAL)
     {
         struct proc_dir_entry *entry;
-        
+
+#if 0
         entry = create_proc_entry("driver/mtk_cl_sd_pid", S_IRUGO | S_IWUSR, NULL);
         if (NULL != entry)
         {
             entry->read_proc = _mtk_cl_sd_pid_read;
             entry->write_proc = _mtk_cl_sd_pid_write;
         }
+#endif
+
+        entry = proc_create("driver/mtk_cl_sd_pid", S_IRUGO | S_IWUSR | S_IWGRP, NULL, &_cl_sd_pid_fops);
+        if (!entry)
+        {
+            xlog_printk(ANDROID_LOG_DEBUG, "thermal/cooler/shutdown", "mtk_cooler_shutdown_init driver/mtk_cl_sd_pid creation failed\n");
+        }
+        else
+        {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0)
+            proc_set_user(entry, 0, 1000);
+#else
+            entry->gid = 1000;
+#endif
+        }
     }
     
     {
         struct proc_dir_entry *entry;
-        
+
+#if 0
         entry = create_proc_entry("driver/mtk_cl_sd_rst", S_IRUGO | S_IWUSR | S_IWGRP, NULL);
         if (NULL != entry)
         {
             entry->write_proc = _mtk_cl_sd_rst_write;
             entry->gid = 1000;
+        }
+#endif
+        entry = proc_create("driver/mtk_cl_sd_rst", S_IRUGO | S_IWUSR | S_IWGRP, NULL, &_cl_sd_rst_fops);
+        if (!entry)
+        {
+            xlog_printk(ANDROID_LOG_DEBUG, "thermal/cooler/shutdown", "mtk_cooler_shutdown_init driver/mtk_cl_sd_rst creation failed\n");
+        }
+        else
+        {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0)
+            proc_set_user(entry, 0, 1000);
+#else
+            entry->gid = 1000;
+#endif
         }
     }
 #endif

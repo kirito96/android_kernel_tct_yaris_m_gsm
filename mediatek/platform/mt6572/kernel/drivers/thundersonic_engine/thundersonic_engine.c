@@ -68,6 +68,7 @@ static void setSPKGain(void) {
 	lockspk = true;
 }
 
+
 static ssize_t hplgain_reg_show(struct kobject *kobj, struct kobj_attribute *attr, char *buf)
 {
 	uint32 currentVol;
@@ -141,6 +142,7 @@ static struct kobj_attribute hprgain_attribute =
 	__ATTR(hpr_gain,
 		0666,
 		hprgain_reg_show, hprgain_reg_store);
+
 
 static struct kobj_attribute spkgain_attribute =
 	__ATTR(spk_gain,

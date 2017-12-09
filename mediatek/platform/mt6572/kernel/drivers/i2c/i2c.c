@@ -1,3 +1,25 @@
+/*
+ *
+ * (C) Copyright 2011
+ * MediaTek <www.mediatek.com>
+ * Infinity Chen <infinity.chen@mediatek.com>
+ *
+ * mt8320 I2C Bus Controller
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -117,12 +139,12 @@ inline void i2c_writew(struct mt_i2c *i2c, u8 offset, u16 value)
 
 	//dev_err(i2c->dev, "before i2c_writew base=%x,offset=%x\n",i2c->base,offset);
 	//__raw_writew(value, (i2c->base) + (offset));
-	mt65xx_reg_sync_writew(value, (i2c->base) + (offset));
+	mt65xx_reg_sync_writew(value, (void *)(i2c->base + offset));
 }
 
 inline u16 i2c_readw(struct mt_i2c * i2c, u8 offset)
 {
-	return __raw_readw((i2c->base) + (offset));
+	return __raw_readw((void *)(i2c->base + offset));
 }
 
 
@@ -696,32 +718,35 @@ static int mt_i2c_start_xfer(struct mt_i2c *i2c, struct i2c_msg *msg)
 
 	/*Prepare buffer data to start transfer*/
 	if(i2c->dma_en) {
+		/* reset I2C DMA status */
+		mt65xx_reg_sync_writel(0x0001, (void *)(i2c->pdmabase_tx + OFFSET_RST));
+		mt65xx_reg_sync_writel(0x0001, (void *)(i2c->pdmabase_rx + OFFSET_RST));
 		if (I2C_MASTER_RD == i2c->op) {
-			mt65xx_reg_sync_writel(0x0000, i2c->pdmabase_rx + OFFSET_INT_FLAG);
-			mt65xx_reg_sync_writel(0x0001, i2c->pdmabase_rx + OFFSET_CON);
-			mt65xx_reg_sync_writel((u32)msg->buf, i2c->pdmabase_rx + OFFSET_MEM_ADDR);
-			mt65xx_reg_sync_writel(data_size, i2c->pdmabase_rx + OFFSET_LEN);
+			mt65xx_reg_sync_writel(0x0000, (void *)(i2c->pdmabase_rx + OFFSET_INT_FLAG));
+			mt65xx_reg_sync_writel(0x0001, (void *)(i2c->pdmabase_rx + OFFSET_CON));
+			mt65xx_reg_sync_writel((u32)msg->buf, (void *)(i2c->pdmabase_rx + OFFSET_MEM_ADDR));
+			mt65xx_reg_sync_writel(data_size, (void *)(i2c->pdmabase_rx + OFFSET_LEN));
 			mb();
-			mt65xx_reg_sync_writel(0x0001, i2c->pdmabase_rx + OFFSET_EN);
+			mt65xx_reg_sync_writel(0x0001, (void *)(i2c->pdmabase_rx + OFFSET_EN));
 		} else if (I2C_MASTER_WR == i2c->op) {
-			mt65xx_reg_sync_writel(0x0000, i2c->pdmabase_tx + OFFSET_INT_FLAG);
-			mt65xx_reg_sync_writel(0x0000, i2c->pdmabase_tx + OFFSET_CON);
-			mt65xx_reg_sync_writel((u32)msg->buf, i2c->pdmabase_tx + OFFSET_MEM_ADDR);
-			mt65xx_reg_sync_writel(data_size, i2c->pdmabase_tx + OFFSET_LEN);
+			mt65xx_reg_sync_writel(0x0000, (void *)(i2c->pdmabase_tx + OFFSET_INT_FLAG));
+			mt65xx_reg_sync_writel(0x0000, (void *)(i2c->pdmabase_tx + OFFSET_CON));
+			mt65xx_reg_sync_writel((u32)msg->buf, (void *)(i2c->pdmabase_tx + OFFSET_MEM_ADDR));
+			mt65xx_reg_sync_writel(data_size, (void *)(i2c->pdmabase_tx + OFFSET_LEN));
 			mb();
-			mt65xx_reg_sync_writel(0x0001, i2c->pdmabase_tx + OFFSET_EN);
+			mt65xx_reg_sync_writel(0x0001, (void *)(i2c->pdmabase_tx + OFFSET_EN));
 		} else {
-			mt65xx_reg_sync_writel(0x0000, i2c->pdmabase_tx + OFFSET_INT_FLAG);
-			mt65xx_reg_sync_writel(0x0001, i2c->pdmabase_tx + OFFSET_INT_EN);
-			mt65xx_reg_sync_writel(0x0000, i2c->pdmabase_rx + OFFSET_INT_FLAG);
-			mt65xx_reg_sync_writel(0x0000, i2c->pdmabase_tx + OFFSET_CON);
-			mt65xx_reg_sync_writel(0x0001, i2c->pdmabase_rx + OFFSET_CON);
-			mt65xx_reg_sync_writel((u32)msg->buf, i2c->pdmabase_tx + OFFSET_MEM_ADDR);
-			mt65xx_reg_sync_writel((u32)msg->buf, i2c->pdmabase_rx + OFFSET_MEM_ADDR);
-			mt65xx_reg_sync_writel(trans_len, i2c->pdmabase_tx + OFFSET_LEN);
-			mt65xx_reg_sync_writel(trans_auxlen, i2c->pdmabase_rx + OFFSET_LEN);
+			mt65xx_reg_sync_writel(0x0000, (void *)(i2c->pdmabase_tx + OFFSET_INT_FLAG));
+			mt65xx_reg_sync_writel(0x0001, (void *)(i2c->pdmabase_tx + OFFSET_INT_EN));
+			mt65xx_reg_sync_writel(0x0000, (void *)(i2c->pdmabase_rx + OFFSET_INT_FLAG));
+			mt65xx_reg_sync_writel(0x0000, (void *)(i2c->pdmabase_tx + OFFSET_CON));
+			mt65xx_reg_sync_writel(0x0001, (void *)(i2c->pdmabase_rx + OFFSET_CON));
+			mt65xx_reg_sync_writel((u32)msg->buf, (void *)(i2c->pdmabase_tx + OFFSET_MEM_ADDR));
+			mt65xx_reg_sync_writel((u32)msg->buf, (void *)(i2c->pdmabase_rx + OFFSET_MEM_ADDR));
+			mt65xx_reg_sync_writel(trans_len, (void *)(i2c->pdmabase_tx + OFFSET_LEN));
+			mt65xx_reg_sync_writel(trans_auxlen, (void *)(i2c->pdmabase_rx + OFFSET_LEN));
 			mb();
-			mt65xx_reg_sync_writel(0x0001, i2c->pdmabase_tx + OFFSET_EN);
+			mt65xx_reg_sync_writel(0x0001, (void *)(i2c->pdmabase_tx + OFFSET_EN));
 		}
 
 		I2C_INFO(i2c, I2C_T_DMA, "addr %.2x dma %.2X byte\n", addr, data_size);
@@ -816,8 +841,8 @@ static irqreturn_t mt_i2c_dma_irq(int irqno, void *dev_id)
 {
 	struct mt_i2c *i2c = (struct mt_i2c *)dev_id;
 
-	mt65xx_reg_sync_writel(0x0000, i2c->pdmabase_tx + OFFSET_INT_FLAG);
-	mt65xx_reg_sync_writel(0x0001, i2c->pdmabase_rx + OFFSET_EN);
+	mt65xx_reg_sync_writel(0x0000, (void *)(i2c->pdmabase_tx + OFFSET_INT_FLAG));
+	mt65xx_reg_sync_writel(0x0001, (void *)(i2c->pdmabase_rx + OFFSET_EN));
 	I2C_INFO(i2c, I2C_T_TRANSFERFLOW, "i2c TX DMA interrupt finished\n");
 
 	return IRQ_HANDLED;

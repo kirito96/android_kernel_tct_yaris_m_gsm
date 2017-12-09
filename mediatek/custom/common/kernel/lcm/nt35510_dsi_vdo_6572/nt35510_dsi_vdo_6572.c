@@ -1,4 +1,5 @@
 #ifdef BUILD_LK
+    #include <string.h>
 #else
     #include <linux/string.h>
     #if defined(BUILD_UBOOT)
@@ -24,7 +25,7 @@
 //  Local Variables
 // ---------------------------------------------------------------------------
 
-static LCM_UTIL_FUNCS lcm_util = {0};
+static LCM_UTIL_FUNCS lcm_util;
 
 #define SET_RESET_PIN(v)    (lcm_util.set_reset_pin((v)))
 
@@ -150,7 +151,7 @@ static void lcm_get_params(LCM_PARAMS *params)
 
     params->dsi.vertical_sync_active				= 3;
     params->dsi.vertical_backporch					= 20;
-    params->dsi.vertical_frontporch					= 20;	
+    params->dsi.vertical_frontporch					= 20;
     params->dsi.vertical_active_line				= FRAME_HEIGHT;
     
     params->dsi.horizontal_sync_active				= 10;
@@ -159,7 +160,8 @@ static void lcm_get_params(LCM_PARAMS *params)
     params->dsi.horizontal_blanking_pixel				= 60;
     params->dsi.horizontal_active_pixel				= FRAME_WIDTH;
     params->dsi.compatibility_for_nvk = 0;		// this parameter would be set to 1 if DriverIC is NTK's and when force match DSI clock for NTK's
-
+    
+    // Bit rate calculation
     params->dsi.PLL_CLOCK = 208; //dsi clock customization: should config clock value directly
 }
 

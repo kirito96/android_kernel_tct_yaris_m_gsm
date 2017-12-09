@@ -31,17 +31,13 @@
 #include <linux/delay.h>
 #include <linux/wait.h>
 #include <linux/dma-mapping.h>
-#include <linux/timer.h>
-#include <asm/bitops.h>
 #include <asm/dma-mapping.h>
-#include <ccci.h>
-#include <ccci_tty.h>
-#include <ccci_common.h>
+#include <asm/bitops.h>
+#include <linux/timer.h>
 #include <mach/mt_typedefs.h>
-
-#include "ccmni_pfp.h"
-#include <ccci_err_no.h>
-#include <ccmni_net.h>
+#include <ccmni_pfp.h>
+#include <ccci_tty.h>
+#include <ccci.h>
 
 #define  CCMNI_TX_QUEUE         1000
 #define  CCMNI_UART_OFFSET      2
@@ -154,14 +150,21 @@ static void ccmni_notifier_call(MD_CALL_BACK_QUEUE *notifier, unsigned long val)
 					stop_ccmni_instance(instance);
 			}
 			break;
-
+		case CCCI_MD_STOP:
+			for(i=0;i<CCMNI_V1_PORT_NUM;i++)
+			{
+				instance = ctl_b->ccmni_instance[i];
+				if (instance) { 
+					stop_ccmni_instance(instance);
+				}
+			}
+			break;
 		case CCCI_MD_RESET     :
 			ctl_b->ccci_is_ready=0;
 				for(i=0;i<CCMNI_V1_PORT_NUM;i++)
 				{
 					instance = ctl_b->ccmni_instance[i];
 					if (instance) { 
-						stop_ccmni_instance(instance);
 						reset_ccmni_instance_buffer(instance);
 					}
 				}

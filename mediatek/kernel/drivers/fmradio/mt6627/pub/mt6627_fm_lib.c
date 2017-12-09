@@ -21,11 +21,7 @@
 #include "mt6627_fm_lib.h"
 #include "mt6627_fm_cmd.h"
 #include "mt6627_fm_cust_cfg.h"
-//#define MTK_MT6572V1_PHONE_POWER_REWORK
-#ifdef MTK_MT6572V1_PHONE_POWER_REWORK
-//mediatek\platform\mt6572\kernel\core\include\mach\mt_pm_ldo.h
-#include "mach/mt_pm_ldo.h"
-#endif
+//#include "mach/mt_gpio.h"
 extern fm_cust_cfg mt6627_fm_config;
 
 //#define MT6627_FM_PATCH_PATH "/etc/firmware/mt6627/mt6627_fm_patch.bin"
@@ -49,12 +45,6 @@ static struct fm_hw_info mt6627_hw_info = {
     .reserve = 0x00000000,
 };
 
-static struct fm_i2s_info mt6627_i2s_inf = {
-    .status = 0,    //i2s off
-    .mode = 0,      //slave mode
-    .rate = 48000,  //48000 sample rate
-};
-
 #define PATCH_SEG_LEN 512
 
 static fm_u8 *cmd_buf = NULL;
@@ -70,6 +60,8 @@ static struct fm_res_ctx *mt6627_res = NULL;
 static struct fm_fifo *cqi_fifo = NULL;
 #endif
 static fm_s32 mt6627_is_dese_chan(fm_u16 freq);
+static fm_bool mt6627_I2S_hopping_check(fm_u16 freq);
+
 #if 0
 static fm_s32 mt6627_mcu_dese(fm_u16 freq, void *arg);
 static fm_s32 mt6627_gps_dese(fm_u16 freq, void *arg);
@@ -77,6 +69,7 @@ static fm_s32 mt6627_I2s_Setting(fm_s32 onoff, fm_s32 mode, fm_s32 sample);
 #endif
 static fm_u16 mt6627_chan_para_get(fm_u16 freq);
 static fm_s32 mt6627_desense_check(fm_u16 freq,fm_s32 rssi);
+static fm_bool mt6627_TDD_chan_check(fm_u16 freq);
 static fm_s32 mt6627_soft_mute_tune(fm_u16 freq,fm_s32 *rssi,fm_bool *valid);
 static fm_s32 mt6627_pwron(fm_s32 data)
 {
@@ -252,7 +245,21 @@ static fm_s32 mt6627_host_write(fm_u32 addr, fm_u32 val)
 
     return ret;
 }
-
+/*static fm_s32 mt6627_DSP_write(fm_u16 addr, fm_u16 val)
+{
+    mt6627_write(0xE2, addr);
+    mt6627_write(0xE3, val);
+    mt6627_write(0xE1, 0x0002);
+    return 0;
+}
+static fm_s32 mt6627_DSP_read(fm_u16 addr, fm_u16 *val)
+{
+    fm_s32 ret=-1;
+    mt6627_write(0xE2, addr);
+    mt6627_write(0xE1, 0x0001);
+    ret = mt6627_read(0xE4, val);
+    return ret;
+}*/
 static fm_u16 mt6627_get_chipid(void)
 {
     return 0x6627;
@@ -299,7 +306,8 @@ static fm_s32 mt6627_Mute(fm_bool mute)
     fm_u16 dataRead;
 
     WCN_DBG(FM_DBG | CHIP, "set %s\n", mute ? "mute" : "unmute");
-    mt6627_read(FM_MAIN_CTRL, &dataRead);
+    //mt6627_read(FM_MAIN_CTRL, &dataRead);
+    mt6627_read(0x9C, &dataRead);
 
 	//mt6627_top_write(0x0050,0x00000007);
 	if (mute == 1) 
@@ -604,10 +612,7 @@ static fm_s32 mt6627_PowerUp(fm_u16 *chip_id, fm_u16 *device_id)
     FMR_ASSERT(device_id);
 
     WCN_DBG(FM_DBG | CHIP, "pwr on seq......\n");
-#ifdef MTK_MT6572V1_PHONE_POWER_REWORK
-    tmp_reg = hwPowerOn(MT6323_POWER_LDO_VGP2,VOL_2800,"fmr");
-    WCN_DBG(FM_NTC | CHIP, " LDO on=%d\n",tmp_reg);
-#endif
+
     //Wholechip FM Power Up: step 1, set common SPI parameter
     ret = mt6627_host_write(0x8013000C, 0x0000801F);
     if (ret) {
@@ -633,12 +638,14 @@ static fm_s32 mt6627_PowerUp(fm_u16 *chip_id, fm_u16 *device_id)
 
     //Wholechip FM Power Up: step 2, read HW version
     mt6627_read(0x62, &tmp_reg);
-    *chip_id = tmp_reg;
+    //*chip_id = tmp_reg;
+	if((tmp_reg == 0x6625) || (tmp_reg == 0x6627))
+		*chip_id = 0x6627;
     *device_id = tmp_reg;
     mt6627_hw_info.chip_id = (fm_s32)tmp_reg;
     WCN_DBG(FM_NTC | CHIP, "chip_id:0x%04x\n", tmp_reg);
 
-    if (mt6627_hw_info.chip_id != 0x6627) {
+    if ((mt6627_hw_info.chip_id != 0x6627)&&(mt6627_hw_info.chip_id != 0x6625)) {
         WCN_DBG(FM_NTC | CHIP, "fm sys error, reset hw\n");
         return (-FM_EFW);
     }
@@ -743,6 +750,7 @@ static fm_s32 mt6627_PowerDown(void)
     fm_s32 ret = 0;
     fm_u16 pkt_size;
     fm_u16 dataRead;
+    fm_u32 tem;
 
     WCN_DBG(FM_DBG | CHIP, "pwr down seq\n");
     /*SW work around for MCUFA issue.
@@ -760,6 +768,11 @@ static fm_s32 mt6627_PowerDown(void)
 //#ifdef FM_DIGITAL_INPUT
 //    mt6627_I2s_Setting(MT6627_I2S_OFF, MT6627_I2S_SLAVE, MT6627_I2S_44K);
 //#endif
+	//pwer up sequence 0425
+	//A0:set audio output I2X Rx mode:
+    mt6627_host_read(0x80101054,&tem);
+	tem = tem & 0xFFFF9FFF;
+    mt6627_host_write(0x80101054,tem);
 
     if (FM_LOCK(cmd_buf_lock)) return (-FM_ELOCK);
     pkt_size = mt6627_pwrdown(cmd_buf, TX_BUF_SIZE);
@@ -773,13 +786,9 @@ static fm_s32 mt6627_PowerDown(void)
 
     //FIX_ME, disable ext interrupt
     mt6627_write(FM_MAIN_EXTINTRMASK, 0x00);
-#ifdef MTK_MT6572V1_PHONE_POWER_REWORK
-    dataRead = hwPowerDown(MT6323_POWER_LDO_VGP2,"fmr");
-    WCN_DBG(FM_NTC | CHIP, " LDO off=%d\n",dataRead);
-#endif
 
 //    rssi_th_set = fm_false;
-    return 0;
+    return ret;
 }
 //just for dgb
 #if 0
@@ -802,6 +811,8 @@ static fm_bool mt6627_SetFreq(fm_u16 freq)
     fm_s32 ret = 0;
     fm_u16 pkt_size;
     fm_u16 chan_para = 0;
+	fm_u32 reg_val = 0;
+	fm_u16 freq_reg = 0;
 
     fm_cb_op->cur_freq_set(freq);
 
@@ -825,14 +836,47 @@ static fm_bool mt6627_SetFreq(fm_u16 freq)
     //pwer up sequence 0425
     mt6627_top_write(0x0050,0x00000007);
     mt6627_set_bits(0x0F,0x0455,0xF800);
+	
+	if(mt6627_TDD_chan_check(freq))
+		mt6627_set_bits(0x30, 0x0008, 0xFFF3);	//use TDD solution
+	else
+		mt6627_set_bits(0x30, 0x0000, 0xFFF3);	//default use FDD solution
     mt6627_top_write(0x0050,0x0000000F);
-    if (FM_LOCK(cmd_buf_lock)) return fm_false;
 
 //    if (fm_cb_op->chan_para_get) {
     chan_para = mt6627_chan_para_get(freq);
     WCN_DBG(FM_DBG | CHIP, "%d chan para = %d\n", (fm_s32)freq, (fm_s32)chan_para);
 //    }
 
+	freq_reg = freq;
+    if (0 == fm_get_channel_space(freq_reg)) {
+        freq_reg *= 10;
+    }    
+    freq_reg = (freq_reg - 6400) * 2 / 10;
+    mt6627_set_bits(0x65,freq_reg,0xFC00);
+    mt6627_set_bits(0x65,(chan_para << 12),0x0FFF);
+
+	if((mt6627_hw_info.chip_id == 0x6625) && (mtk_wcn_wmt_chipid_query() == 0x6592))
+	{
+		if(mt6627_I2S_hopping_check(freq))
+		{
+			//set i2s TX desense mode
+			mt6627_set_bits(0x9C,0x80,0xFFFF);
+			//set i2s RX desense mode
+			mt6627_host_read(0x80101054, &reg_val);
+			reg_val |= 0x8000;
+			mt6627_host_write(0x80101054,reg_val);
+		}
+		else
+		{
+			mt6627_set_bits(0x9C,0x0,0xFF7F);
+			mt6627_host_read(0x80101054, &reg_val);
+			reg_val &= 0x7FFF;
+			mt6627_host_write(0x80101054,reg_val);
+		}
+	}
+
+    if (FM_LOCK(cmd_buf_lock)) return fm_false;
     pkt_size = mt6627_tune(cmd_buf, TX_BUF_SIZE, freq, chan_para);
     ret = fm_cmd_tx(cmd_buf, pkt_size, FLAG_TUNE | FLAG_TUNE_DONE, SW_RETRY_CNT, TUNE_TIMEOUT, NULL);
     FM_UNLOCK(cmd_buf_lock);
@@ -1339,9 +1383,10 @@ static fm_s32 mt6627_dump_reg(void)
     return 0;
 }
 
+/*0:mono, 1:stereo*/
 static fm_bool mt6627_GetMonoStereo(fm_u16 *pMonoStereo)
 {
-#define FM_BF_STEREO 0x1000
+    #define FM_BF_STEREO 0x1000
     fm_u16 TmpReg;
 
     if (pMonoStereo) {
@@ -1352,25 +1397,27 @@ static fm_bool mt6627_GetMonoStereo(fm_u16 *pMonoStereo)
         return fm_false;
     }
 
-    WCN_DBG(FM_DBG | CHIP, "MonoStero:0x%04x\n", *pMonoStereo);
+    FM_LOG_NTC(CHIP, "Get MonoStero:0x%04x\n", *pMonoStereo);
     return fm_true;
 }
 
 static fm_s32 mt6627_SetMonoStereo(fm_s32 MonoStereo)
 {
     fm_s32 ret = 0;
-#define FM_FORCE_MS 0x0008
 
-    WCN_DBG(FM_DBG | CHIP, "set to %s\n", MonoStereo ? "mono" : "auto");
+    FM_LOG_NTC(CHIP, "set to %s\n", MonoStereo ? "mono" : "auto");
+    mt6627_top_write(0x50, 0x0007);
 
-    mt6627_write(0x60, 0x3007);
-
-    if (MonoStereo) {
-        ret = mt6627_set_bits(0x75, FM_FORCE_MS, ~FM_FORCE_MS);
-    } else {
-        ret = mt6627_set_bits(0x75, 0x0000, ~FM_FORCE_MS);
+    if (MonoStereo) /*mono*/
+    {
+        ret = mt6627_set_bits(0x75, 0x0008, ~0x0008);
+    } 
+    else /*auto switch*/ 
+    {
+        ret = mt6627_set_bits(0x75, 0x0000, ~0x0008);
     }
 
+    mt6627_top_write(0x50, 0x000F);
     return ret;
 }
 
@@ -1431,91 +1478,23 @@ static fm_bool mt6627_GetCurPamd(fm_u16 *pPamdLevl)
     return fm_true;
 }
 
-#if 0
-/*
- * mt6627_I2s_Setting - set the I2S state on MT6627
- * @onoff - I2S on/off
- * @mode - I2S mode: Master or Slave
- *
- * Return:0, if success; error code, if failed
- */
-static fm_s32 mt6627_I2s_Setting(fm_s32 onoff, fm_s32 mode, fm_s32 sample)
-{
-    fm_u16 tmp_state = 0;
-    fm_u16 tmp_mode = 0;
-    fm_u16 tmp_sample = 0;
-    fm_s32 ret = 0;
-
-    if (onoff == MT6627_I2S_ON) {
-        tmp_state = 0x0080; //I2S Frequency tracking on, 0x61 D7=1
-        mt6627_i2s_inf.status = 1;
-    } else if (onoff == MT6627_I2S_OFF) {
-        tmp_state = 0x0000; //I2S Frequency tracking off, 0x61 D7=0
-        mt6627_i2s_inf.status = 0;
-    } else {
-        WCN_DBG(FM_ERR | CHIP, "%s():[onoff=%d]\n", __func__, onoff);
-        ret = -FM_EPARA;
-        goto out;
-    }
-
-    if (mode == MT6627_I2S_MASTER) {
-        tmp_mode = 0x0000; //6620 as I2S master, set 0x9B D3=0
-        mt6627_i2s_inf.mode = 1;
-    } else if (mode == MT6627_I2S_SLAVE) {
-        tmp_mode = 0x0008; //6620 as I2S slave, set 0x9B D3=1
-        mt6627_i2s_inf.mode = 0;
-    } else {
-        WCN_DBG(FM_ERR | CHIP, "%s():[mode=%d]\n", __func__, mode);
-        ret = -FM_EPARA;
-        goto out;
-    }
-
-    if (sample == MT6627_I2S_32K) {
-        tmp_sample = 0x0000; //6620 I2S 32KHz sample rate, 0x5F D11~12
-        mt6627_i2s_inf.rate = 32000;
-    } else if (sample == MT6627_I2S_44K) {
-        tmp_sample = 0x0800; //6620 I2S 44.1KHz sample rate
-        mt6627_i2s_inf.rate = 44100;
-    } else if (sample == MT6627_I2S_48K) {
-        tmp_sample = 0x1000; //6620 I2S 48KHz sample rate
-        mt6627_i2s_inf.rate = 48000;
-    } else {
-        WCN_DBG(FM_ERR | CHIP, "%s():[sample=%d]\n", __func__, sample);
-        ret = -FM_EPARA;
-        goto out;
-    }
-
-    if ((ret = mt6627_set_bits(0x5F, tmp_sample, 0xE7FF)))
-        goto out;
-
-    if ((ret = mt6627_set_bits(0x9B, tmp_mode, 0xFFF7)))
-        goto out;
-
-    if ((ret = mt6627_set_bits(0x61, tmp_state, 0xFF7F)))
-        goto out;
-
-    WCN_DBG(FM_NTC | CHIP, "[onoff=%s][mode=%s][sample=%d](0)33KHz,(1)44.1KHz,(2)48KHz\n",
-            (onoff == MT6627_I2S_ON) ? "On" : "Off",
-            (mode == MT6627_I2S_MASTER) ? "Master" : "Slave",
-            sample);
-out:
-    return ret;
-}
-#endif
-
 static fm_s32 mt6627_i2s_info_get(fm_s32 *ponoff, fm_s32 *pmode, fm_s32 *psample)
 {
     FMR_ASSERT(ponoff);
     FMR_ASSERT(pmode);
     FMR_ASSERT(psample);
 
-    *ponoff = mt6627_i2s_inf.status;
-    *pmode = mt6627_i2s_inf.mode;
-    *psample = mt6627_i2s_inf.rate;
+    *ponoff = mt6627_fm_config.aud_cfg.i2s_info.status;
+    *pmode = mt6627_fm_config.aud_cfg.i2s_info.mode;
+    *psample = mt6627_fm_config.aud_cfg.i2s_info.rate;
 
     return 0;
 }
-
+static fm_s32 mt6627fm_get_audio_info(fm_audio_info_t *data)
+{
+    memcpy(data,&mt6627_fm_config.aud_cfg,sizeof(fm_audio_info_t));
+    return 0;
+}
 
 static fm_s32 mt6627_hw_info_get(struct fm_hw_info *req)
 {
@@ -1535,6 +1514,7 @@ static fm_s32 mt6627_pre_search(void)
     mt6627_host_write(0x80101054,0x00000000);
     //disable audio output I2S Tx mode
     mt6627_write(0x9B,0x0000);
+    FM_LOG_NTC(FM_NTC | CHIP, "search threshold: RSSI=%d,de-RSSI=%d,smg=%d %d\n", mt6627_fm_config.rx_cfg.long_ana_rssi_th,mt6627_fm_config.rx_cfg.desene_rssi_th,mt6627_fm_config.rx_cfg.smg_th);
     return 0;
 }
 static fm_s32 mt6627_restore_search(void)
@@ -1645,6 +1625,38 @@ static fm_bool mt6627_em_test(fm_u16 group_idx, fm_u16 item_idx, fm_u32 item_val
     return fm_true;
 }
 
+/*
+parm: 
+	parm.th_type: 0, RSSI. 1,desense RSSI. 2,SMG.
+    parm.th_val: threshold value
+*/
+static fm_s32 mt6627_set_search_th(fm_s32 idx,fm_s32 val,fm_s32 reserve)
+{
+    switch (idx)
+    {
+        case 0:
+        {
+            mt6627_fm_config.rx_cfg.long_ana_rssi_th = val;
+            WCN_DBG(FM_NTC | CHIP, "set rssi th =%d\n",val);
+            break;
+        }
+        case 1:
+        {
+            mt6627_fm_config.rx_cfg.desene_rssi_th = val;
+            WCN_DBG(FM_NTC | CHIP, "set desense rssi th =%d\n",val);
+            break;
+        }
+        case 2:
+        {
+            mt6627_fm_config.rx_cfg.smg_th = val;
+            WCN_DBG(FM_NTC | CHIP, "set smg th =%d\n",val);
+            break;
+        }
+        default:
+            break;
+    }
+    return 0;
+}
 static fm_s32 MT6627fm_low_power_wa_default(fm_s32 fmon)
 {
     return 0;
@@ -1678,6 +1690,7 @@ fm_s32 MT6627fm_low_ops_register(struct fm_lowlevel_ops *ops)
     ops->bi.pwrdownseq = mt6627_PowerDown;
     ops->bi.setfreq = mt6627_SetFreq;
     ops->bi.low_pwr_wa = MT6627fm_low_power_wa_default;
+    ops->bi.get_aud_info = mt6627fm_get_audio_info;
 #if 0     
     ops->bi.seek = mt6627_Seek;
     ops->bi.seekstop = mt6627_SeekStop;
@@ -1709,6 +1722,7 @@ fm_s32 MT6627fm_low_ops_register(struct fm_lowlevel_ops *ops)
 	ops->bi.cqi_log = mt6627_full_cqi_get;
     ops->bi.pre_search = mt6627_pre_search;
     ops->bi.restore_search = mt6627_restore_search;
+    ops->bi.set_search_th = mt6627_set_search_th;
 
     cmd_buf_lock = fm_lock_create("27_cmd");
     ret = fm_lock_get(cmd_buf_lock);
@@ -1811,7 +1825,65 @@ static const fm_s8 mt6627_chan_para_map[] = {
 
 static const fm_u16 mt6627_scan_dese_list[] = 
 {
-    6910, 7680, 7800, 9100, 9210, 9220, 9230, 9600, 9980, 9990, 10400, 10750, 10760
+    6910, 7680, 7800, 9210, 9220, 9230, 9600, 9980, 9990, 10400, 10750, 10760
+};
+
+static const fm_u16 mt6627_I2S_hopping_list[] = 
+{    
+	6550, 6760, 6960, 6970, 7170, 7370, 7580, 7780, 7990, 8810, 9210, 9220, 10240
+};
+
+static const fm_u16 mt6627_TDD_list[] = 
+{
+	0x0000, 0x0000, 0x0000, 0x0000, 0x0000,	 //6500~6595
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //6600~6695
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //6700~6795
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //6800~6895
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //6900~6995
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //7000~7095
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //7100~7195
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //7200~7295
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //7300~7395
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //7400~7495
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //7500~7595
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //7600~7695
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //7700~7795
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //7800~7895
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //7900~7995
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //8000~8095
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //8100~8195
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //8200~8295
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //8300~8395
+    0x0101, 0x0000, 0x0000, 0x0000, 0x0000,  //8400~8495
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //8500~8595
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //8600~8695
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //8700~8795
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //8800~8895
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //8900~8995
+    0x0000, 0x0000, 0x0101, 0x0101, 0x0101,  //9000~9095
+    0x0101, 0x0000, 0x0000, 0x0000, 0x0000,  //9100~9195
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //9200~9295
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //9300~9395
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //9400~9495
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //9500~9595
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //9600~9695
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0100,  //9700~9795
+    0x0101, 0x0101, 0x0101, 0x0101, 0x0101,  //9800~9895
+    0x0101, 0x0101, 0x0001, 0x0000, 0x0000,  //9900~9995
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //10000~10095
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //10100~10195
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //10200~10295
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //10300~10395
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //10400~10495
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0000,  //10500~10595
+    0x0000, 0x0000, 0x0000, 0x0000, 0x0100,  //10600~10695
+    0x0101, 0x0101, 0x0101, 0x0101, 0x0101,  //10700~10795
+    0x0001   //10800
+};
+
+static const fm_u16 mt6627_TDD_Mask[] = 
+{
+	0x0001, 0x0010, 0x0100, 0x1000
 };
 
 // return value: 0, not a de-sense channel; 1, this is a de-sense channel; else error no
@@ -1819,6 +1891,7 @@ static fm_s32 mt6627_is_dese_chan(fm_u16 freq)
 {
     fm_s32 size;
 
+    //return 0;//HQA only :skip desense channel check.
     size = sizeof(mt6627_scan_dese_list) / sizeof(mt6627_scan_dese_list[0]);
 
     if (0 == fm_get_channel_space(freq)) {
@@ -1851,91 +1924,38 @@ static fm_s32 mt6627_desense_check(fm_u16 freq,fm_s32 rssi)
     return 0;
 }
 
-#if 0
-// return value: 0, mcu dese disable; 1, enable; else error no
-static fm_s32 mt6627_mcu_dese(fm_u16 freq, void *arg)
+static fm_bool mt6627_TDD_chan_check(fm_u16 freq)
 {
-    fm_mcu_desense_t state = FM_MCU_DESE_DISABLE;
-    fm_s32 len = 0;
-    fm_s32 indx = 0;
+	fm_u32 i = 0;
+	fm_u16 freq_tmp = freq;
+	fm_s32 ret = 0;
 
-    if (0 == fm_get_channel_space(freq)) {
-        freq *= 10;
-    }
-    
-    WCN_DBG(FM_DBG | CHIP, "%s, [freq=%d]\n", __func__, (int)freq);
-
-    len = sizeof(mt6627_mcu_dese_list) / sizeof(mt6627_mcu_dese_list[0]);
-    indx = 0;
-
-    while ((indx < len) && (state != FM_MCU_DESE_ENABLE)) {
-        if (mt6627_mcu_dese_list[indx] == freq) {
-            state = FM_MCU_DESE_ENABLE;
-        }
-
-        indx++;
-    }
-
-    // request 6627 MCU change clk
-    if (state == FM_MCU_DESE_DISABLE) {
-        if (!mtk_wcn_wmt_dsns_ctrl(WMTDSNS_FM_DISABLE)) {
-            return -1;
-        }
-        return 0;
-    } else {
-        if (!mtk_wcn_wmt_dsns_ctrl(WMTDSNS_FM_ENABLE)) {
-            return -1;
-        }
-        return 1;
-    }
+	ret = fm_get_channel_space(freq_tmp);
+    if (0 == ret) {
+        freq_tmp *= 10;
+    }    
+	else if(-1 == ret)
+		return fm_false;
+	
+	i = (freq_tmp - 6500)/5;
+	
+	WCN_DBG(FM_NTC | CHIP, "Freq %d is 0x%4x, mask is 0x%4x\n", freq,(mt6627_TDD_list[i/4]),mt6627_TDD_Mask[i%4]);
+	if(mt6627_TDD_list[i/4] & mt6627_TDD_Mask[i%4])
+	{
+		WCN_DBG(FM_NTC | CHIP, "Freq %d use TDD solution\n", freq);
+		return fm_true;
+	}
+	else
+    	return fm_false;
 }
 
-
-
-// return value: 0,mcu dese disable; 1, enable; else error no
-static fm_s32 mt6627_gps_dese(fm_u16 freq, void *arg)
-{
-    fm_gps_desense_t state = FM_GPS_DESE_DISABLE;
-    fm_s32 len = 0;
-    fm_s32 indx = 0;
-
-    if (0 == fm_get_channel_space(freq)) {
-        freq *= 10;
-    }
-    
-    WCN_DBG(FM_DBG | CHIP, "%s, [freq=%d]\n", __func__, (int)freq);
-
-    len = sizeof(mt6627_gps_dese_list) / sizeof(mt6627_gps_dese_list[0]);
-    indx = 0;
-
-    while ((indx < len) && (state != FM_GPS_DESE_ENABLE)) {
-        if (mt6627_gps_dese_list[indx] == freq) {
-            state = FM_GPS_DESE_ENABLE;
-        }
-
-        indx++;
-    }
-
-    // request 6627 GPS change clk
-    if (state == FM_GPS_DESE_DISABLE) {
-        if  (!mtk_wcn_wmt_dsns_ctrl(WMTDSNS_FM_GPS_DISABLE))  {
-            return -1;
-        }
-        return 0;
-    } else {
-        if (!mtk_wcn_wmt_dsns_ctrl(WMTDSNS_FM_GPS_ENABLE)) {
-            return -1;
-        }
-        return 1;
-    }
-}
-#endif
 
 //get channel parameter, HL side/ FA / ATJ
 static fm_u16 mt6627_chan_para_get(fm_u16 freq)
 {
     fm_s32 pos, size;
 
+    //return 0;//for HQA only: skip FA/HL/ATJ
     if (0 == fm_get_channel_space(freq)) {
         freq *= 10;
     }
@@ -1953,3 +1973,23 @@ static fm_u16 mt6627_chan_para_get(fm_u16 freq)
     return mt6627_chan_para_map[pos];
 }
 
+static fm_bool mt6627_I2S_hopping_check(fm_u16 freq)
+{    
+	fm_s32 size;    
+	
+	size = sizeof(mt6627_I2S_hopping_list) / sizeof(mt6627_I2S_hopping_list[0]); 
+	
+	if (0 == fm_get_channel_space(freq)) 
+	{	   
+		freq *= 10;   
+	}    
+	
+	while (size) 
+	{        
+		if (mt6627_I2S_hopping_list[size -1] == freq)            
+			return 1;        
+		size--;    
+	}    
+	
+	return 0;
+}

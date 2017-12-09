@@ -1,3 +1,24 @@
+/* alps
+ *
+ * (C) Copyright 2009 
+ * MediaTek <www.MediaTek.com>
+ *
+ * MT6516 Sensor IOCTL & data structure
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 
 #ifndef __HWMSENSOR_H__
 #define __HWMSENSOR_H__
@@ -54,6 +75,12 @@
 #define HWM_SENSOR_DEV                  "/dev/hwmsensor"
 #define C_MAX_HWMSEN_EVENT_NUM          4 
 /*----------------------------------------------------------------------------*/
+#define ACC_PL_DEV_NAME                 "m_acc_pl"
+#define ACC_INPUTDEV_NAME               "m_acc_input"
+#define ACC_MISC_DEV_NAME               "m_acc_misc"
+#define MAG_PL_DEV_NAME                 "m_mag_pl"
+#define MAG_INPUTDEV_NAME               "m_mag_input"
+#define MAG_MISC_DEV_NAME               "m_mag_misc"
 
 #define EVENT_TYPE_SENSOR				0x01
 #define EVENT_SENSOR_ACCELERATION		SENSOR_ACCELEROMETER

@@ -1,5 +1,6 @@
 #include <platform/bmt.h>
-
+#include <string.h>
+#include <printf.h>
 typedef struct
 {
     char signature[3];
@@ -48,7 +49,7 @@ static int bmt_block_count;     // bmt table size
 static int page_per_block;      // page per count
 static u32 bmt_block_index;     // bmt block index
 static bmt_struct bmt;          // dynamic created global bmt table
-static u8 dat_buf[MAX_DAT_SIZE];
+__attribute__((aligned(64))) static u8 dat_buf[MAX_DAT_SIZE];
 static u8 oob_buf[MAX_OOB_SIZE];
 static bool pool_erased;
 
@@ -119,7 +120,7 @@ static bool match_bmt_signature(u8 * dat, u8 * oob)
 
 static u8 cal_bmt_checksum(phys_bmt_struct * phys_table, int bmt_size)
 {
-    int i;
+    u32 i;
     u8 checksum = 0;
     u8 *dat = (u8 *) phys_table;
 
@@ -269,7 +270,7 @@ static int load_bmt_data(int start, int pool_size)
 static int find_available_block(bool start_from_end)
 {
     int i;                      // , j;
-    int block = system_block_count;
+    u32 block = system_block_count;
     int direction;
     MSG(INIT, "Try to find_available_block, pool_erase: %d\n", pool_erased);
     if (!pool_erased)
@@ -358,7 +359,7 @@ void set_bad_index_to_oob(u8 * oob, u16 index)
 static int migrate_from_bad(int offset, u8 * write_dat, u8 * write_oob)
 {
     int page;
-    int error_block = offset / BLOCK_SIZE_BMT;
+    u32 error_block = offset / BLOCK_SIZE_BMT;
     int error_page = (offset / PAGE_SIZE_BMT) % page_per_block;
     int to_index;
 
@@ -602,7 +603,7 @@ bool update_bmt(u32 offset, update_reason_t reason, u8 * dat, u8 * oob)
     int map_index;
     int orig_bad_block = -1;
     int i;
-    int bad_index = offset / BLOCK_SIZE_BMT;
+    u32 bad_index = offset / BLOCK_SIZE_BMT;
 
     if (reason == UPDATE_WRITE_FAIL)
     {
@@ -666,8 +667,8 @@ bool update_bmt(u32 offset, update_reason_t reason, u8 * dat, u8 * oob)
 *******************************************************************/
 u16 get_mapping_block_index(int index)
 {
-    int i;
-    if (index > system_block_count)
+    u32 i;
+    if (index > (int)system_block_count)
     {
         MSG(INIT, "Given index exceed: 0x%x > 0x%x\n", index, system_block_count);
         return index;

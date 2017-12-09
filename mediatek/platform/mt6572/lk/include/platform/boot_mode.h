@@ -2,6 +2,8 @@
 #define _MT_BOOT_MODE_H_
 
 #include <platform/mt_typedefs.h>
+#include <mt_partition.h>
+#include <mt_rtc.h>
 
 /******************************************************************************
  * FORBIDEN MODE
@@ -50,6 +52,9 @@ typedef enum {
     BR_WDT,
     BR_WDT_BY_PASS_PWK,
     BR_TOOL_BY_PASS_PWK,
+#ifdef RTC_2SEC_REBOOT_ENABLE
+    BR_2SEC_REBOOT,
+#endif
     BR_UNKNOWN
 } boot_reason_t;
 
@@ -68,21 +73,26 @@ typedef struct{
 } da_info_t;
 
 typedef struct {
-  unsigned int maggic_number;
+  u32      maggic_number;
   BOOTMODE boot_mode;
-  unsigned int  e_flag;
-  unsigned int  log_port;
-  unsigned int  log_baudrate;
-  unsigned char log_enable;
-  unsigned char reserved[3];
-  unsigned int dram_rank_num;
-  unsigned int dram_rank_size[4];
-  unsigned int boot_reason;
+  u32      e_flag;
+  u32      log_port;
+  u32      log_baudrate;
+  u8       log_enable;
+  u8       part_num;
+  u8       reserved[2];
+  u32      dram_rank_num;
+  u32      dram_rank_size[4];
+  u32      boot_reason;
   META_COM_TYPE meta_com_type;
-  unsigned int meta_com_id;
-  unsigned int boot_time;
+  u32      meta_com_id;
+  u32      boot_time;
   da_info_t da_info;
   SEC_LIMIT sec_limit;
+  part_hdr_t *part_info;
+  u8 md_type[4];
+  u32  ddr_reserve_enable;    
+  u32  ddr_reserve_success;
 } BOOT_ARGUMENT;
 
 typedef enum /* TO BE REMOVED */

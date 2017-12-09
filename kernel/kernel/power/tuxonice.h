@@ -26,6 +26,7 @@
 #define MY_BOOT_KERNEL_DATA_VERSION 3
 
 #define HIB_TOI_DEBUG 0
+extern bool console_suspend_enabled; // from printk.c
 #define _TAG_HIB_M "HIB/TOI"
 #if (HIB_TOI_DEBUG)
 #undef hib_log

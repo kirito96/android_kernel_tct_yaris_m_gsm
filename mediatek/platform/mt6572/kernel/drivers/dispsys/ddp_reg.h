@@ -4,6 +4,7 @@
 #include <mach/mt_reg_base.h>
 #include <mach/sync_write.h>
 
+
 //TDODO: get base reg addr from system header
 #define DDP_REG_BASE_MMSYS_CONFIG  0xf4000000
 #define DDP_REG_BASE_DISP_OVL	   0xf4007000  

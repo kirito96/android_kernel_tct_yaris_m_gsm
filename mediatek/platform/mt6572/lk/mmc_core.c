@@ -1,8 +1,43 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ *
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 /*=======================================================================*/
 /* HEADER FILES                              */
 /*=======================================================================*/
-//#include <string.h> //need by CTP?
 #include "msdc.h"
 
 #define NR_MMC              (MSDC_MAX_NUM)
@@ -130,7 +165,7 @@ u32 mmc_select_voltage(struct mmc_host *host, u32 ocr)
     int bit;
 
     ocr &= host->ocr_avail;
-    
+
     bit = uffs(ocr);
     if (bit) {
         bit -= 1;
@@ -345,6 +380,46 @@ static int mmc_send_app_op_cond(struct mmc_host *host, u32 ocr, u32 *rocr)
     return err;
 }
 
+#if defined(FEATURE_MMC_SDIO)
+int mmc_send_io_op_cond(struct mmc_host *host, u32 ocr, u32 *rocr)
+{
+    struct mmc_command cmd;
+    int i, err = 0;
+
+    BUG_ON(!host);
+
+    memset(&cmd, 0, sizeof(struct mmc_command));
+
+    cmd.opcode = SD_IO_SEND_OP_COND;
+    cmd.arg    = ocr;
+    cmd.rsptyp = RESP_R4;
+    cmd.retries = CMD_RETRIES;
+    cmd.timeout = CMD_TIMEOUT;
+
+    for (i = 100; i; i--) {
+        err = mmc_cmd(host, &cmd);
+        if (err)
+            break;
+
+        /* if we're just probing, do a single pass */
+        if (ocr == 0)
+            break;
+
+        if (cmd.resp[0] & MMC_CARD_BUSY)
+            break;
+
+        err = MMC_ERR_TIMEOUT;
+
+        mdelay(10);
+    }
+
+    if (rocr)
+        *rocr = cmd.resp[0];
+
+    return err;
+}
+#endif
+
 static int mmc_all_send_cid(struct mmc_host *host, u32 *cid)
 {
     int err;
@@ -370,63 +445,64 @@ static int mmc_all_send_cid(struct mmc_host *host, u32 *cid)
 /* code size add 1KB*/
 static void mmc_decode_cid(struct mmc_card *card)
 {
+    //Attention!: The sequence of unstuff_bits are reordered to avoid License Issue
     u32 *resp = card->raw_cid;
 
     memset(&card->cid, 0, sizeof(struct mmc_cid));
 
-    card->cid.prod_name[0]  = unstuff_bits(resp, 96, 8);
-    card->cid.prod_name[1]  = unstuff_bits(resp, 88, 8);
-    card->cid.prod_name[2]  = unstuff_bits(resp, 80, 8);
-    card->cid.prod_name[3]  = unstuff_bits(resp, 72, 8);
     card->cid.prod_name[4]  = unstuff_bits(resp, 64, 8);
+    card->cid.prod_name[3]  = unstuff_bits(resp, 72, 8);
+    card->cid.prod_name[2]  = unstuff_bits(resp, 80, 8);
+    card->cid.prod_name[1]  = unstuff_bits(resp, 88, 8);
+    card->cid.prod_name[0]  = unstuff_bits(resp, 96, 8);
 
-    if (mmc_card_sd(card)) {
-        /*
-         * SD doesn't currently have a version field so we will
-         * have to assume we can parse this.
-         */
-        card->cid.manfid        = unstuff_bits(resp, 120, 8);
-        card->cid.oemid         = unstuff_bits(resp, 104, 16);
-        card->cid.hwrev         = unstuff_bits(resp, 60, 4);
-        card->cid.fwrev         = unstuff_bits(resp, 56, 4);
-        card->cid.serial        = unstuff_bits(resp, 24, 32);
-        card->cid.year          = unstuff_bits(resp, 12, 8);
-        card->cid.month         = unstuff_bits(resp, 8, 4);
-
-        card->cid.year += 2000; /* SD cards year offset */
-    } else {
+    if (mmc_card_mmc(card)) {
         /*
          * The selection of the format here is based upon published
          * specs from sandisk and from what people have reported.
          */
-        card->cid.prod_name[5]  = unstuff_bits(resp, 56, 8);
-        card->cid.month         = unstuff_bits(resp, 12, 4);
         card->cid.year          = unstuff_bits(resp, 8, 4) + 1997;
+        card->cid.month         = unstuff_bits(resp, 12, 4);
+        card->cid.prod_name[5]  = unstuff_bits(resp, 56, 8);
 
         switch (card->csd.mmca_vsn) {
-            case 0: /* MMC v1.0 - v1.2 */
-            case 1: /* MMC v1.4 */
-                card->cid.manfid        = unstuff_bits(resp, 104, 24);
-                card->cid.prod_name[6]  = unstuff_bits(resp, 48, 8);
-                card->cid.hwrev         = unstuff_bits(resp, 44, 4);
-                card->cid.fwrev         = unstuff_bits(resp, 40, 4);
-                card->cid.serial        = unstuff_bits(resp, 16, 24);
+            case 4: /* MMC v4 */
+            case 3: /* MMC v3.1 - v3.3 */
+            case 2: /* MMC v2.0 - v2.2 */
+                card->cid.serial        = unstuff_bits(resp, 16, 32);
+                card->cid.oemid         = unstuff_bits(resp, 104, 16);
+                //card->cid.cbx           = unstuff_bits(resp, 112, 2);
+                card->cid.manfid        = unstuff_bits(resp, 120, 8);
                 break;
 
-            case 2: /* MMC v2.0 - v2.2 */
-            case 3: /* MMC v3.1 - v3.3 */
-            case 4: /* MMC v4 */
-                card->cid.manfid        = unstuff_bits(resp, 120, 8);
-                //card->cid.cbx       = unstuff_bits(resp, 112, 2);
-                card->cid.oemid         = unstuff_bits(resp, 104, 16);
-                card->cid.serial        = unstuff_bits(resp, 16, 32);
+            case 1: /* MMC v1.4 */
+            case 0: /* MMC v1.0 - v1.2 */
+                card->cid.serial        = unstuff_bits(resp, 16, 24);
+                card->cid.fwrev         = unstuff_bits(resp, 40, 4);
+                card->cid.hwrev         = unstuff_bits(resp, 44, 4);
+                card->cid.prod_name[6]  = unstuff_bits(resp, 48, 8);
+                card->cid.manfid        = unstuff_bits(resp, 104, 24);
                 break;
 
             default:
                 printf("[SD%d] Unknown MMCA version %d\n",
-                mmc_card_id(card), card->csd.mmca_vsn);
+                    mmc_card_id(card), card->csd.mmca_vsn);
                 break;
         }
+    } else {
+        /*
+         * SD doesn't currently have a version field so we will
+         * have to assume we can parse this.
+         */
+        card->cid.month         = unstuff_bits(resp, 8, 4);
+        card->cid.year          = unstuff_bits(resp, 12, 8);
+        card->cid.serial        = unstuff_bits(resp, 24, 32);
+        card->cid.fwrev         = unstuff_bits(resp, 56, 4);
+        card->cid.hwrev         = unstuff_bits(resp, 60, 4);
+        card->cid.oemid         = unstuff_bits(resp, 104, 16);
+        card->cid.manfid        = unstuff_bits(resp, 120, 8);
+
+        card->cid.year += 2000; /* SD cards year offset */
     }
 }
 
@@ -548,7 +624,7 @@ static void mmc_decode_ext_csd(struct mmc_card *card)
         ext_csd[EXT_CSD_SEC_CNT + 3] << 24;
 
     card->ext_csd.rev = ext_csd[EXT_CSD_REV];
-#if !defined(FEATURE_MMC_STRIPPED)
+#if defined(FEATURE_MMC_STRIPPED)
     card->ext_csd.hc_erase_grp_sz = ext_csd[EXT_CSD_HC_ERASE_GRP_SIZE] * 512 * 1024;
     card->ext_csd.hc_wp_grp_sz = ext_csd[EXT_CSD_HC_WP_GPR_SIZE] * ext_csd[EXT_CSD_HC_ERASE_GRP_SIZE] * 512 * 1024;
     card->ext_csd.trim_tmo_ms = ext_csd[EXT_CSD_TRIM_MULT] * 300;
@@ -574,13 +650,16 @@ static void mmc_decode_ext_csd(struct mmc_card *card)
     if (card->ext_csd.sectors)
         mmc_card_set_blockaddr(card);
 
+#ifdef FEATURE_MMC_UHS1
     if ((ext_csd[EXT_CSD_CARD_TYPE] & EXT_CSD_CARD_TYPE_HS200_1_2V) ||
         (ext_csd[EXT_CSD_CARD_TYPE] & EXT_CSD_CARD_TYPE_HS200_1_8V)) {
         card->ext_csd.hs_max_dtr = 200000000;
-    } else if ((ext_csd[EXT_CSD_CARD_TYPE] & EXT_CSD_CARD_TYPE_DDR_52_1_2V) ||
+    } else
+#endif
+    if ((ext_csd[EXT_CSD_CARD_TYPE] & EXT_CSD_CARD_TYPE_DDR_52_1_2V) ||
         (ext_csd[EXT_CSD_CARD_TYPE] & EXT_CSD_CARD_TYPE_DDR_52)) {
         card->ext_csd.ddr_support = 1;
-        card->ext_csd.hs_max_dtr = 52000000; 
+        card->ext_csd.hs_max_dtr = 52000000;
     } else if (ext_csd[EXT_CSD_CARD_TYPE] & EXT_CSD_CARD_TYPE_52) {
         card->ext_csd.hs_max_dtr = 52000000;
     } else if ((ext_csd[EXT_CSD_CARD_TYPE] & EXT_CSD_CARD_TYPE_26)) {
@@ -716,7 +795,6 @@ static int mmc_sd_switch(struct mmc_host *host,
     int result = 0;
     struct mmc_command cmd;
     u32 *sts = (u32 *)resp;
-    int retries;
 
     mode = !!mode;
     value &= 0xF;
@@ -731,8 +809,6 @@ static int mmc_sd_switch(struct mmc_host *host,
     cmd.timeout = 100;  /* 100ms */
 
 #if defined(FEATURE_MMC_RD_TUNING)
-    //Note: 1. 6589 CTP does not perform tuning
-
     msdc_reset_tune_counter(host);
     do{
 #endif
@@ -743,8 +819,6 @@ static int mmc_sd_switch(struct mmc_host *host,
 
         if (err != MMC_ERR_NONE)
             goto out;
-
-        retries = 50000;
 
         /* 512 bits = 64 bytes = 16 words */
         err = msdc_pio_read(host, sts, 64);
@@ -842,7 +916,7 @@ int mmc_switch_uhs1(struct mmc_host *host, struct mmc_card *card, unsigned int m
     } else {
         card->uhs_mode = mode;
         mmc_card_set_uhs1(card);
-        printf("[SD%d] Switch to UHS-1 %s mode!\n", host->id, smode[mode]);
+        printf("[SD%d] Switch to UHS-1 %s mode\n", host->id, smode[mode]);
         if (mode == MMC_SWITCH_MODE_DDR50) {
             mmc_card_set_ddr(card);
         }
@@ -954,7 +1028,7 @@ int mmc_switch_hs(struct mmc_host *host, struct mmc_card *card)
         printf("[SD%d] HS mode not supported!\n", host->id);
         err = MMC_ERR_FAILED;
     } else {
-        printf("[SD%d] Switch to HS mode!\n", host->id);
+        printf("[SD%d] Switch to HS mode\n", host->id);
         mmc_card_set_highspeed(card);
     }
 
@@ -963,12 +1037,11 @@ out:
 }
 #endif
 
-#if !defined(FEATURE_MMC_STRIPPED)
+#if defined(FEATURE_MMC_STRIPPED)
 static int mmc_read_scrs(struct mmc_host *host, struct mmc_card *card)
 {
     int err = MMC_ERR_NONE;
     int result;
-    int retries;
     struct mmc_command cmd;
     struct sd_scr *scr = &card->scr;
     u32 resp[4];
@@ -990,8 +1063,6 @@ static int mmc_read_scrs(struct mmc_host *host, struct mmc_card *card)
         mmc_app_cmd(host, &cmd, card->rca, CMD_RETRIES);
         if ((err != MMC_ERR_NONE) || !(cmd.resp[0] & R1_APP_CMD))
             return MMC_ERR_FAILED;
-
-        retries = 50000;
 
         /* 8 bytes = 2 words */
         err = msdc_pio_read(host, card->raw_scr, 8);
@@ -1162,11 +1233,7 @@ static int mmc_read_switch(struct mmc_host *host, struct mmc_card *card)
         printf("[SD%d] Support: HS/SDR25\n", host->id);
         card->sw_caps.hs_max_dtr = 50000000;  /* high-speed or sdr25 */
     }
-    if (status[13] & 0x10) {
-        printf("[SD%d] Support: DDR50\n", host->id);
-        card->sw_caps.hs_max_dtr = 50000000;  /* ddr50 */
-        card->sw_caps.ddr = 1;
-    }
+
 #ifdef FEATURE_MMC_UHS1
     if (status[13] & 0x04) {
         printf("[SD%d] Support: SDR50\n", host->id);
@@ -1176,6 +1243,12 @@ static int mmc_read_switch(struct mmc_host *host, struct mmc_card *card)
         printf("[SD%d] Support: SDR104\n", host->id);
         card->sw_caps.hs_max_dtr = 208000000; /* sdr104 */
     }
+    if (status[13] & 0x10) {
+        printf("[SD%d] Support: DDR50\n", host->id);
+        card->sw_caps.hs_max_dtr = 50000000;  /* ddr50 */
+        card->sw_caps.ddr = 1;
+    }
+
     if (status[9] & 0x01) {
         printf("[SD%d] Support: Type-B Drv\n", host->id);
     }
@@ -1261,7 +1334,7 @@ int mmc_set_blk_count(struct mmc_host *host, u32 blkcnt)
 int mmc_set_bus_width(struct mmc_host *host, struct mmc_card *card, int width)
 {
     int err = MMC_ERR_NONE;
-    u32 arg;
+    u32 arg = SD_BUS_WIDTH_4;
     struct mmc_command cmd;
 
     if (mmc_card_sd(card)) {
@@ -1640,9 +1713,9 @@ int mmc_dev_bread(struct mmc_card *card, unsigned long blknr, u32 blkcnt, u8 *ds
     unsigned long src;
 
     src = mmc_card_highcaps(card) ? blknr : blknr * blksz;
-        
-    MSG(OPS_MMC, "[SD%d] Block Read Cnt: %d, Physical Addr: %xh\n", host->id, blkcnt, blknr);
-    
+
+    MSG(OPS_MMC, "[SD%d] Block Read Cnt: %d, Physical Addr: %xh\n", host->id, blkcnt, (unsigned int)blknr);
+
     do {
         mmc_prof_start();
         if (!tune) {
@@ -1787,14 +1860,14 @@ static int mmc_dev_bwrite(struct mmc_card *card, unsigned long blknr, u32 blkcnt
         if (err == MMC_ERR_BADCRC || err == MMC_ERR_ACMD_RSPCRC || err == MMC_ERR_CMD_RSPCRC){
             if ( tune ) break;
             tune = 1;
-        } 
+        }
         #endif
         if(err == MMC_ERR_TIMEOUT ) {
             printf("[SD%d] mmc_dev_bwrite TIMEOUT\n", host->id);
             break;
         }
 
-    } while (1);
+    } while (retry);
 
     #endif
 
@@ -1812,7 +1885,6 @@ int mmc_block_read(int dev_num, unsigned long blknr, u32 blkcnt, unsigned long *
     //u32 xfercnt  = blkcnt / maxblks;
     //u32 leftblks = blkcnt % maxblks;
     u32 leftblks;
-    u32 i, id = host->id;
     u8 *buf = (u8*)dst;
     int ret;
 
@@ -1847,7 +1919,6 @@ int mmc_block_write(int dev_num, unsigned long blknr, u32 blkcnt, unsigned long 
     //u32 xfercnt  = blkcnt / maxblks;
     //u32 leftblks = blkcnt % maxblks;
     u32 leftblks;
-    u32 i, id = host->id;
     u8 *buf = (u8*)src;
     int ret;
 
@@ -1882,7 +1953,9 @@ int mmc_block_write(int dev_num, unsigned long blknr, u32 blkcnt, unsigned long 
 int mmc_init_mem_card(struct mmc_host *host, struct mmc_card *card, u32 ocr)
 {
     int err, id = host->id;
+#ifdef FEATURE_MMC_UHS1
     int s18a = 0;
+#endif
 
     #ifdef USE_2WAY_ACMD41_CMD1
     bool bSP_Way_ACMD41_CMD1=EFUSE_Query_SD_Card_Init_Flow();
@@ -1897,8 +1970,7 @@ int mmc_init_mem_card(struct mmc_host *host, struct mmc_card *card, u32 ocr)
      * support.
      */
     if (ocr & 0x7F) {
-        printf("card claims to support voltages "
-            "below the defined range. These will be ignored.\n");
+        printf("Ignore voltage below the defined range but claimed by card\n");
         ocr &= ~0x7F;
     }
 
@@ -1979,7 +2051,7 @@ alternative_mmc_init_mem_card_flow:
     mmc_decode_cid(card);
 
     if (mmc_card_mmc(card))
-    card->rca = 0x1; /* assign a rca */
+        card->rca = 0x1; /* assign a rca */
 
     /* set/send rca */
     err = mmc_send_relative_addr(host, card, &card->rca);
@@ -2012,7 +2084,7 @@ alternative_mmc_init_mem_card_flow:
     }
 
     if (mmc_card_sd(card)) {
-        #if !defined(FEATURE_MMC_STRIPPED)
+        #if defined(FEATURE_MMC_STRIPPED)
         /* send scr */
         err = mmc_read_scrs(host, card);
         if (err != MMC_ERR_NONE) {
@@ -2072,7 +2144,8 @@ alternative_mmc_init_mem_card_flow:
         /* compute bus speed. */
         card->maxhz = (unsigned int)-1;
 
-        if (mmc_card_highspeed(card) || mmc_card_uhs1(card)) {
+        if (mmc_card_highspeed(card) || mmc_card_uhs1(card))
+        {
             if (card->maxhz > card->sw_caps.hs_max_dtr)
                 card->maxhz = card->sw_caps.hs_max_dtr;
         } else if (card->maxhz > card->csd.max_dtr) {
@@ -2080,14 +2153,9 @@ alternative_mmc_init_mem_card_flow:
         }
 
     } else {
-        /* set bus width; Cool:if support HS200, needs to set 4 or 8 width first. */
-        mmc_set_bus_width(host, card, HOST_BUS_WIDTH_8);
-        
-        /*HS200 make sure host voltage support HS200*/
-        //if(!(host->ocr_avail & (MMC_VDD_17_18 | MMC_VDD_18_19))){
         if(!(host->ocr_avail & MMC_VDD_165_195)){ //Use definition reference from linux driver
             host->caps  = host->caps &(~MMC_CAP_EMMC_HS200);
-            printf("[SD%d] can not switch to HS200:Host voltage not support!\n",id);
+            MSG(INF, "[SD%d] can not switch to HS200:Host voltage not support!\n",id);
         }
 
         /* send ext csd */
@@ -2100,9 +2168,12 @@ alternative_mmc_init_mem_card_flow:
         #ifdef FEATURE_MMC_HS
         /* activate high speed (if supported) */
         if ((card->ext_csd.hs_max_dtr > 52000000) && (host->caps & MMC_CAP_EMMC_HS200)){
+            //For HS200 timing, bus width shall be set to 4/8 bit first
+            mmc_set_bus_width(host, card, HOST_BUS_WIDTH_8);
+
             err = mmc_switch(host, card, EXT_CSD_CMD_SET_NORMAL, EXT_CSD_HS_TIMING, 2);
             if (err == MMC_ERR_NONE) {
-                printf("[SD%d] Switch to HS200 mode!\n", host->id);
+                printf("[SD%d] Switch to HS200 mode\n", host->id);
                 mmc_card_set_hs200(card);
             }
         }
@@ -2110,20 +2181,23 @@ alternative_mmc_init_mem_card_flow:
             err = mmc_switch(host, card, EXT_CSD_CMD_SET_NORMAL, EXT_CSD_HS_TIMING, 1);
 
             if (err == MMC_ERR_NONE) {
-                printf("[SD%d] Switch to High-Speed mode!\n", host->id);
+                printf("[SD%d] Switch to HS mode\n", host->id);
                 mmc_card_set_highspeed(card);
             }
+
+            //For High speed, bus width shall be schanged after bus timing
+            mmc_set_bus_width(host, card, HOST_BUS_WIDTH_8); //Set to 8bit and DDR
         }
         #endif
 
         /* compute bus speed. */
         card->maxhz = (unsigned int)-1;
 
-        if (mmc_card_highspeed(card)){
+        if (mmc_card_highspeed(card)) {
             card->maxhz = 52000000;
         } else if ( mmc_card_hs200(card)) {
             if (card->maxhz > card->ext_csd.hs_max_dtr)
-            card->maxhz = card->ext_csd.hs_max_dtr;
+                card->maxhz = card->ext_csd.hs_max_dtr;
         } else if (card->maxhz > card->csd.max_dtr) {
             card->maxhz = card->csd.max_dtr;
         }
@@ -2249,7 +2323,11 @@ int mmc_init_card(struct mmc_host *host, struct mmc_card *card)
         goto out;
 
     /* change clock */
-    msdc_config_clock(host, mmc_card_ddr(card), card->maxhz);
+    if ( (host->caps & MMC_CAP_DDR) && card->ext_csd.ddr_support )
+        msdc_config_clock(host, 1, card->maxhz);
+    else
+        msdc_config_clock(host, 0, card->maxhz);
+
     /* 2012-02-25 lookup the ETT table */
     #if 0 //<--Yuchi said that LK/Preloader do not use it
     msdc_ett_offline(host, card);
@@ -2604,51 +2682,51 @@ int mmc_get_sandisk_fwid(int id, u8* buf)
             printf("[SD%d] Fail to send status %d\n", host->id, err);
             return err;
         }
-		state = R1_CURRENT_STATE(status);
-			printf("check card state<%d>\n", state);
-			if (state == 5 || state == 6) {
-				printf("state<%d> need cmd12 to stop\n", state); 
-				stop.opcode  = MMC_CMD_STOP_TRANSMISSION;
-       			stop.rsptyp  = RESP_R1B;
-        		stop.arg     = 0;
-        		stop.retries = CMD_RETRIES;
-        		stop.timeout = CMD_TIMEOUT;
-        		msdc_send_cmd(host, &stop);
-        		msdc_wait_rsp(host, &stop); // don't tuning
-			} else if (state == 7) {  // busy in programing 		
-				printf("state<%d> card is busy\n", state);	
-				mdelay(100);
-			} else if (state != 4) {
-				printf("state<%d> ??? \n", state);
-				return MMC_ERR_INVALID;		
-			}
-		}	
+        state = R1_CURRENT_STATE(status);
+            printf("check card state<%d>\n", state);
+            if (state == 5 || state == 6) {
+                printf("state<%d> need cmd12 to stop\n", state);
+                stop.opcode  = MMC_CMD_STOP_TRANSMISSION;
+                stop.rsptyp  = RESP_R1B;
+                stop.arg     = 0;
+                stop.retries = CMD_RETRIES;
+                stop.timeout = CMD_TIMEOUT;
+                msdc_send_cmd(host, &stop);
+                msdc_wait_rsp(host, &stop); // don't tuning
+            } else if (state == 7) {  // busy in programing
+                printf("state<%d> card is busy\n", state);
+                mdelay(100);
+            } else if (state != 4) {
+                printf("state<%d> ??? \n", state);
+                return MMC_ERR_INVALID;
+            }
+        }
 	mmc_stuff_buff(buf);
 #if defined(MSDC_USE_DMA_MODE)
-	err = msdc_dma_send_sandisk_fwid(host, buf,MMC_CMD50,1);
-	if (err) {
-		printf("[SD%d] Fail to send(CMD50) sandisk fwid %d\n", host->id, err);
-		return err;
-	}
+    err = msdc_dma_send_sandisk_fwid(host, buf,MMC_CMD50,1);
+    if (err) {
+        printf("[SD%d] Fail to %s sandisk fwid %d\n", host->id, "send(CMD50)", err);
+        return err;
+    }
 
-	err = msdc_dma_send_sandisk_fwid(host, buf,MMC_CMD21,1);
-	if (err) {
-		printf("[SD%d] Fail to get(CMD21) sandisk fwid %d\n", host->id, err);
-	    return err;
-	}
-	
+    err = msdc_dma_send_sandisk_fwid(host, buf,MMC_CMD21,1);
+    if (err) {
+        printf("[SD%d] Fail to %s sandisk fwid %d\n", host->id, "get(CMD21)", err);
+        return err;
+    }
+
 #else
-	err = msdc_pio_send_sandisk_fwid(host, buf);
-	if (err) {
-		printf("[SD%d] Fail to send(CMD50) sandisk fwid %d\n", host->id, err);
-		return err;
-	}
+    err = msdc_pio_send_sandisk_fwid(host, buf, MMC_CMD50);
+    if (err) {
+        printf("[SD%d] Fail to %s sandisk fwid %d\n", host->id, "send(CMD50)", err);
+        return err;
+    }
 
-	err = msdc_pio_get_sandisk_fwid(host, buf);
-	if (err) {
-		printf("[SD%d] Fail to get(CMD21) sandisk fwid %d\n", host->id, err);
-		return err;
-	}
+    err = msdc_pio_send_sandisk_fwid(host, buf, MMC_CMD21);
+    if (err) {
+        printf("[SD%d] Fail to %s sandisk fwid %d\n", host->id, "get(CMD21)", err);
+        return err;
+    }
 #endif
 	return err;
 }

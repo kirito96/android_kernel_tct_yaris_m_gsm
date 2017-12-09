@@ -29,11 +29,7 @@
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
 #include <asm/dma-mapping.h>
-
-#include "ccci.h"
-#include "ccci_fs.h"
-#include "ccci_common.h"
-
+#include <ccci.h>
 #define CCCI_FS_DEVNAME  "ccci_fs"
 
 extern unsigned long long lg_ch_tx_debug_enable[];
@@ -151,7 +147,7 @@ static int ccci_fs_send(int md_id, unsigned long arg)
 		return -EFAULT;
 	}
 
-	msg.data0 = ctl_b->fs_buffers_phys_addr + (sizeof(fs_stream_buffer_t) * message.index);
+	msg.data0 = ctl_b->fs_buffers_phys_addr - get_md2_ap_phy_addr_fixed() + (sizeof(fs_stream_buffer_t) * message.index);
 	msg.data1 = message.length + 4;
 	msg.channel = CCCI_FS_TX;
 	msg.reserved = message.index;
@@ -217,7 +213,7 @@ static int ccci_fs_mmap(struct file *file, struct vm_area_struct *vma)
 
 	off += start & PAGE_MASK;
 	vma->vm_pgoff  = off >> PAGE_SHIFT;
-	vma->vm_flags |= VM_RESERVED;
+	vma->vm_flags |= VM_IO;
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
     
 	CCCI_FS_MSG(md_id, "mmap--\n");
@@ -254,6 +250,21 @@ static long ccci_fs_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 	return ret;
 }
 
+// clear kfifo invalid data which may not be processed before close operation
+void ccci_fs_resetfifo(int md_id)
+{
+	fs_ctl_block_t *ctl_b = fs_ctl_block[md_id];
+	unsigned long   flag;
+
+	CCCI_MSG("ccci_fs_resetfifo\n");
+
+	// Reset FS KFIFO
+	spin_lock_irqsave(&ctl_b->fs_spinlock, flag);
+	kfifo_reset(&ctl_b->fs_fifo);
+	spin_unlock_irqrestore(&ctl_b->fs_spinlock, flag);
+
+	return;
+}
 
 static int ccci_fs_open(struct inode *inode, struct file *file)
 {
@@ -286,7 +297,7 @@ static int ccci_fs_release(struct inode *inode, struct file *file)
 	int				md_id;
 	int				major;
 	fs_ctl_block_t	*ctl_b;
-	unsigned long   flag;
+	// unsigned long   flag;
 
 	major = imajor(inode);
 	md_id = get_md_id_by_dev_major(major);
@@ -301,10 +312,11 @@ static int ccci_fs_release(struct inode *inode, struct file *file)
 	memset(ctl_b->fs_buffers, 0, ctl_b->fs_smem_size);
 	ccci_user_ready_to_reset(md_id, ctl_b->reset_handle);
 
+	// CR: 1260702
 	// clear kfifo invalid data which may not be processed before close operation
-	spin_lock_irqsave(&ctl_b->fs_spinlock,flag);
-	kfifo_reset(&ctl_b->fs_fifo);
-	spin_unlock_irqrestore(&ctl_b->fs_spinlock,flag);
+	// spin_lock_irqsave(&ctl_b->fs_spinlock,flag);
+	// kfifo_reset(&ctl_b->fs_fifo);
+	// spin_unlock_irqrestore(&ctl_b->fs_spinlock,flag);
 
 	return 0;
 }

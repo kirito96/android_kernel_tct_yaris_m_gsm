@@ -9,8 +9,7 @@
 #define STP_UART_FULL 0x01
 #define STP_UART_MAND 0x02
 #define STP_BTIF_FULL 0x03
-#define STP_BTIF_MAND 0x04
-#define STP_SDIO      0x05
+#define STP_SDIO      0x04
 
 #define CFG_WMT_DBG_SUPPORT 1 // support wmt_dbg or not
 #define CFG_WMT_PROC_FOR_AEE 1
@@ -22,6 +21,7 @@ extern INT32 wmt_dev_patch_get (UCHAR *pPatchName, osal_firmware **ppPatch,INT32
 extern INT32 wmt_dev_patch_put(osal_firmware **ppPatch);
 extern VOID wmt_dev_patch_info_free(VOID);
 extern VOID wmt_dev_send_cmd_to_daemon(UINT32 cmd);
+extern MTK_WCN_BOOL wmt_dev_get_early_suspend_state(VOID);
 
 #if CFG_WMT_DBG_SUPPORT
 typedef struct _COEX_BUF{

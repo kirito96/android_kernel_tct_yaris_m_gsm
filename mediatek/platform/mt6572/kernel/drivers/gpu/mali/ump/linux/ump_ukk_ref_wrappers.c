@@ -1,11 +1,11 @@
 /*
- * Copyright (C) 2010 ARM Limited. All rights reserved.
- * 
- * This program is free software and is provided to you under the terms of the GNU General Public License version 2
- * as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
- * 
- * A copy of the licence is included with the program, and can also be obtained from Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ * This confidential and proprietary software may be used only as
+ * authorised by a licensing agreement from ARM Limited
+ * (C) COPYRIGHT 2009-2010, 2013 ARM Limited
+ * ALL RIGHTS RESERVED
+ * The entire notice above must be reproduced on all authorised
+ * copies and copies may only be made to the extent permitted
+ * by a licensing agreement from ARM Limited.
  */
 
 /**
@@ -30,15 +30,13 @@ int ump_allocate_wrapper(u32 __user * argument, struct ump_session_data  * sessi
 	_mali_osk_errcode_t err;
 
 	/* Sanity check input parameters */
-	if (NULL == argument || NULL == session_data)
-	{
+	if (NULL == argument || NULL == session_data) {
 		MSG_ERR(("NULL parameter in ump_ioctl_allocate()\n"));
 		return -ENOTTY;
 	}
 
 	/* Copy the user space memory to kernel space (so we safely can read it) */
-	if (0 != copy_from_user(&user_interaction, argument, sizeof(user_interaction)))
-	{
+	if (0 != copy_from_user(&user_interaction, argument, sizeof(user_interaction))) {
 		MSG_ERR(("copy_from_user() in ump_ioctl_allocate()\n"));
 		return -EFAULT;
 	}
@@ -46,15 +44,13 @@ int ump_allocate_wrapper(u32 __user * argument, struct ump_session_data  * sessi
 	user_interaction.ctx = (void *) session_data;
 
 	err = _ump_ukk_allocate( &user_interaction );
-	if( _MALI_OSK_ERR_OK != err )
-	{
+	if( _MALI_OSK_ERR_OK != err ) {
 		DBG_MSG(1, ("_ump_ukk_allocate() failed in ump_ioctl_allocate()\n"));
 		return map_errcode(err);
 	}
 	user_interaction.ctx = NULL;
 
-	if (0 != copy_to_user(argument, &user_interaction, sizeof(user_interaction)))
-	{
+	if (0 != copy_to_user(argument, &user_interaction, sizeof(user_interaction))) {
 		/* If the copy fails then we should release the memory. We can use the IOCTL release to accomplish this */
 		_ump_uk_release_s release_args;
 
@@ -64,8 +60,7 @@ int ump_allocate_wrapper(u32 __user * argument, struct ump_session_data  * sessi
 		release_args.secure_id = user_interaction.secure_id;
 
 		err = _ump_ukk_release( &release_args );
-		if(_MALI_OSK_ERR_OK != err)
-		{
+		if(_MALI_OSK_ERR_OK != err) {
 			MSG_ERR(("_ump_ukk_release() also failed when trying to release newly allocated memory in ump_ioctl_allocate()\n"));
 		}
 

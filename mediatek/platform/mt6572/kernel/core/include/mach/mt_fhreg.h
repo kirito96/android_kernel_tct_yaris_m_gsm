@@ -1,8 +1,9 @@
 #ifndef __MT_FHREG_H__
-#define __MT_FHREG_H__ 
+#define __MT_FHREG_H__
 
 #include <mach/mt_reg_base.h>
-                            
+#include <mach/mt_clkmgr.h>
+
 ///////////////////////////////////////////////////////////////
 //- Register Definition
 
@@ -40,7 +41,7 @@
 
 #define FHCTL_RFx_CH(rFID)	(FHCTL_BASE + 0x0034 + (rFID * 4))
 
-//- FHCTL 
+//- FHCTL
 //- PLLx CTL
 #define FHCTL0_CFG 			(FHCTL_BASE + 0x0050)
 #define FHCTL0_UPDNLMT		(FHCTL_BASE + 0x0054)
@@ -77,11 +78,11 @@
 #define	FHDMA_BTBASE_DEFAULT			0x80000000
 #define	FHDMA_WFBASE_DEFAULT			0x80000000
 #define	FHDMA_FMBASE_DEFAULT			0x80000000
-//SRAM                                            
+//SRAM
 #define	FHSRAM_CON_DEFAULT				0x00000000
 #define	FHSRAM_WR_DEFAULT				0x00000000
 #define	FHSRAM_RO_DEFAULT				0x00000000
-//- Common Part                                    
+//- Common Part
 #define	FHCTL_CFG_DEFAULT				0x00000000
 #define FHCTL_CON_DEFAULT				0x06003C97
 #define	FHCTL_2G1_CH_DEFAULT			0x00000000
@@ -91,7 +92,7 @@
 #define	FHCTL_BT_CH_DEFAULT				0x00000000
 #define	FHCTL_WF_CH_DEFAULT				0x00000000
 #define	FHCTL_FM_CH_DEFAULT				0x00000000
-	//--- FHCTLx                                  
+	//--- FHCTLx
 #define FHCTLx_CFG_DEFAULT     			0x00000000
 #define FHCTLx_UPDNLMT_DEFAULT 			0x00000000
 #define FHCTLx_DDS_DEFAULT     			0x00000000
@@ -124,7 +125,7 @@
 #define RG_UPSRAM_RW_ADDR_MASK 		0xFF
 
 //- register FHCTL_CON
-#define RG_FHCTL_SFDT_BIT			24				
+#define RG_FHCTL_SFDT_BIT			24
 #define RG_FHCTL_SFDY_BIT			0
 
 #define RG_FHCTL_SFDT_MASK			0xFF
@@ -163,7 +164,7 @@
 #define RG_FHCTLx_SRHMODE_BIT			5
 #define RG_FHCTLx_PAUSE_BIT				8
 #define RG_FRDDSx_DTS_BIT				16
-#define RG_FRDDSx_DYS_BIT				20 
+#define RG_FRDDSx_DYS_BIT				20
 
 #define RG_FHCTLx_EN_MASK				0x1
 #define RG_FRDDSx_EN_MASK				0x1	//- free-run
@@ -172,14 +173,14 @@
 #define RG_FHCTLx_SRHMODE_MASK			0x1
 #define RG_FHCTLx_PAUSE	_MASK			0x1
 #define RG_FRDDSx_DTS_MASK				0xF
-#define RG_FRDDSx_DYS_MASK				0xF			
+#define RG_FRDDSx_DYS_MASK				0xF
 
 //- register FHCTLx_UPDNLMT
-#define RG_FRDDSx_DNLMT_BIT				16		
+#define RG_FRDDSx_DNLMT_BIT				16
 #define RG_FRDDSx_UPLMT_BIT				0
-				
-#define RG_FRDDSx_DNLMT_MASK			0xFFFF	
-#define RG_FRDDSx_UPLMT_MASK			0xFFFF	
+
+#define RG_FRDDSx_DNLMT_MASK			0xFFFF
+#define RG_FRDDSx_UPLMT_MASK			0xFFFF
 
 ///////////////////////////////////////////////////////////////
 //- SRAM Info
@@ -191,7 +192,7 @@
 #ifndef APMIXED_BASE
 #define APMIXED_BASE			0x10205000
 #endif
-
+#if 0
 #define PLL_HP_CON0 			(APMIXED_BASE + 0x0014)
 #define ARMPLL_CON0 			(APMIXED_BASE + 0x0100)
 #define ARMPLL_CON1 			(APMIXED_BASE + 0x0104)
@@ -199,7 +200,7 @@
 #define MAINPLL_CON0 			(APMIXED_BASE + 0x0120)
 #define MAINPLL_CON1 			(APMIXED_BASE + 0x0124)
 #define MAINPLL_CON2 			(APMIXED_BASE + 0x0128)
-
+#endif
 #define RG_ARMPLL_SDM_PCW_CHG_BIT		31
 #define RG_ARMPLL_POSDIV_BIT			24
 #define RG_ARMPLL_SDM_PCW				0

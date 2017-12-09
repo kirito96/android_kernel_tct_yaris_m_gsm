@@ -694,18 +694,30 @@ void usb_hcd_poll_rh_status(struct usb_hcd *hcd)
 	unsigned long	flags;
 	char		buffer[6];	/* Any root hubs with > 31 ports? */
 
-	if (unlikely(!hcd->rh_pollable))
-		return;
-	if (!hcd->uses_new_polling && !hcd->status_urb)
-		return;
+	MYDBG("");
 
+	if (unlikely(!hcd->rh_pollable))
+	{
+		MYDBG("");
+		return;
+	}
+	if (!hcd->uses_new_polling && !hcd->status_urb)
+	{
+		MYDBG("");
+		return;
+	}
+
+	MYDBG("");
 	length = hcd->driver->hub_status_data(hcd, buffer);
+	MYDBG("");
 	if (length > 0) {
+		MYDBG("");
 
 		/* try to complete the status urb */
 		spin_lock_irqsave(&hcd_root_hub_lock, flags);
 		urb = hcd->status_urb;
 		if (urb) {
+			MYDBG("");
 			clear_bit(HCD_FLAG_POLL_PENDING, &hcd->flags);
 			hcd->status_urb = NULL;
 			urb->actual_length = length;
@@ -716,11 +728,13 @@ void usb_hcd_poll_rh_status(struct usb_hcd *hcd)
 			usb_hcd_giveback_urb(hcd, urb, 0);
 			spin_lock(&hcd_root_hub_lock);
 		} else {
+			MYDBG("");
 			length = 0;
 			set_bit(HCD_FLAG_POLL_PENDING, &hcd->flags);
 		}
 		spin_unlock_irqrestore(&hcd_root_hub_lock, flags);
 	}
+	MYDBG("");
 
 	/* The USB 2.0 spec says 256 ms.  This is close enough and won't
 	 * exceed that limit if HZ is 100. The math is more clunky than
@@ -728,7 +742,10 @@ void usb_hcd_poll_rh_status(struct usb_hcd *hcd)
 	 * fire at the same time to give the CPU a break in between */
 	if (hcd->uses_new_polling ? HCD_POLL_RH(hcd) :
 			(length == 0 && hcd->status_urb != NULL))
+	{
+		MYDBG("");
 		mod_timer (&hcd->rh_timer, (jiffies/(HZ/4) + 1) * (HZ/4));
+	}
 }
 EXPORT_SYMBOL_GPL(usb_hcd_poll_rh_status);
 
@@ -1002,10 +1019,7 @@ static int register_root_hub(struct usb_hcd *hcd)
 	if (retval) {
 		dev_err (parent_dev, "can't register root hub for %s, %d\n",
 				dev_name(&usb_dev->dev), retval);
-	}
-	mutex_unlock(&usb_bus_list_lock);
-
-	if (retval == 0) {
+	} else {
 		spin_lock_irq (&hcd_root_hub_lock);
 		hcd->rh_registered = 1;
 		spin_unlock_irq (&hcd_root_hub_lock);
@@ -1014,6 +1028,7 @@ static int register_root_hub(struct usb_hcd *hcd)
 		if (HCD_DEAD(hcd))
 			usb_hc_died (hcd);	/* This time clean up */
 	}
+	mutex_unlock(&usb_bus_list_lock);
 
 	return retval;
 }
@@ -1530,6 +1545,7 @@ static int unlink1(struct usb_hcd *hcd, struct urb *urb, int status)
 int usb_hcd_unlink_urb (struct urb *urb, int status)
 {
 	struct usb_hcd		*hcd;
+	struct usb_device	*udev = urb->dev;
 	int			retval = -EIDRM;
 	unsigned long		flags;
 
@@ -1541,20 +1557,19 @@ int usb_hcd_unlink_urb (struct urb *urb, int status)
 	spin_lock_irqsave(&hcd_urb_unlink_lock, flags);
 	if (atomic_read(&urb->use_count) > 0) {
 		retval = 0;
-		usb_get_dev(urb->dev);
+		usb_get_dev(udev);
 	}
 	spin_unlock_irqrestore(&hcd_urb_unlink_lock, flags);
 	if (retval == 0) {
 		hcd = bus_to_hcd(urb->dev->bus);
 		retval = unlink1(hcd, urb, status);
-		usb_put_dev(urb->dev);
+		if (retval == 0)
+			retval = -EINPROGRESS;
+		else if (retval != -EIDRM && retval != -EBUSY)
+			dev_dbg(&udev->dev, "hcd_unlink_urb %p fail %d\n",
+					urb, retval);
+		usb_put_dev(udev);
 	}
-
-	if (retval == 0)
-		retval = -EINPROGRESS;
-	else if (retval != -EIDRM && retval != -EBUSY)
-		dev_dbg(&urb->dev->dev, "hcd_unlink_urb %p fail %d\n",
-				urb, retval);
 	return retval;
 }
 
@@ -1884,6 +1899,8 @@ int usb_alloc_streams(struct usb_interface *interface,
 		return -EINVAL;
 	if (dev->speed != USB_SPEED_SUPER)
 		return -EINVAL;
+	if (dev->state < USB_STATE_CONFIGURED)
+		return -ENODEV;
 
 	/* Streams only apply to bulk endpoints. */
 	for (i = 0; i < num_eps; i++)
@@ -2024,8 +2041,9 @@ int hcd_bus_resume(struct usb_device *rhdev, pm_message_t msg)
 	status = hcd->driver->bus_resume(hcd);
 	clear_bit(HCD_FLAG_WAKEUP_PENDING, &hcd->flags);
 	if (status == 0) {
-		/* TRSMRCY = 10 msec */
-		msleep(10);
+		struct usb_device *udev;
+		int port1;
+
 		spin_lock_irq(&hcd_root_hub_lock);
 		if (!HCD_DEAD(hcd)) {
 			usb_set_device_state(rhdev, rhdev->actconfig
@@ -2035,6 +2053,20 @@ int hcd_bus_resume(struct usb_device *rhdev, pm_message_t msg)
 			hcd->state = HC_STATE_RUNNING;
 		}
 		spin_unlock_irq(&hcd_root_hub_lock);
+
+		/*
+		 * Check whether any of the enabled ports on the root hub are
+		 * unsuspended.  If they are then a TRSMRCY delay is needed
+		 * (this is what the USB-2 spec calls a "global resume").
+		 * Otherwise we can skip the delay.
+		 */
+		usb_hub_for_each_child(rhdev, port1, udev) {
+			if (udev->state != USB_STATE_NOTATTACHED &&
+					!udev->port_is_suspended) {
+				usleep_range(10000, 11000);	/* TRSMRCY */
+				break;
+			}
+		}
 	} else {
 		hcd->state = old_state;
 		dev_dbg(&rhdev->dev, "bus %s fail, err %d\n",

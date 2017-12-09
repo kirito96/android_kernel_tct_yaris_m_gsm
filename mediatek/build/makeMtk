@@ -1,31 +1,50 @@
 #!/usr/bin/perl
 # 
+# Copyright Statement:
+# --------------------
+# This software is protected by Copyright and the information contained
+# herein is confidential. The software may not be copied and the information
+# contained herein may not be used or disclosed except with the written
+# permission of MediaTek Inc. (C) 2010
+# 
+# BY OPENING THIS FILE, BUYER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+# THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+# RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO BUYER ON
+# AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+# NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+# SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+# SUPPLIED WITH THE MEDIATEK SOFTWARE, AND BUYER AGREES TO LOOK ONLY TO SUCH
+# THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. MEDIATEK SHALL ALSO
+# NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE RELEASES MADE TO BUYER'S
+# SPECIFICATION OR TO CONFORM TO A PARTICULAR STANDARD OR OPEN FORUM.
+# 
+# BUYER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND CUMULATIVE
+# LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+# AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+# OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY BUYER TO
+# MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+# 
+# THE TRANSACTION CONTEMPLATED HEREUNDER SHALL BE CONSTRUED IN ACCORDANCE
+# WITH THE LAWS OF THE STATE OF CALIFORNIA, USA, EXCLUDING ITS CONFLICT OF
+# LAWS PRINCIPLES.  ANY DISPUTES, CONTROVERSIES OR CLAIMS ARISING THEREOF AND
+# RELATED THERETO SHALL BE SETTLED BY ARBITRATION IN SAN FRANCISCO, CA, UNDER
+# THE RULES OF THE INTERNATIONAL CHAMBER OF COMMERCE (ICC).
+# 
+use Sys::Hostname;
 my $DEBUG = 0; # enable/disable script debugging message
 
 # Set environment variable for current Android version building
 # such as, JDK version, arm-eabi version etc.
 # If anymore, you can specify them in ./mbldenv.sh
 setBuildEnvVars("./mbldenv.sh");
+setCacheEnvVars() if (uc($ENV{"MTK_INTERNAL"}) eq "TRUE");
 # End
 
-# add by jianbo.deng from rav4 2013-04-17
-#modify for Yariss
-if ("@ARGV" =~ /jrdhz72_we_jb3/)
-{
-	changePJconfig("./pjConfig");
-}
 
-if ("@ARGV" =~ /yariss/)
-{
-	changePJconfig("./pjSConfig");
-}
 
-if ("@ARGV" =~ /soul4/)
-{
-	changePJconfig("./pjSoul4Config");
-}
-# End
-
+ 
 $myCmd = "makeMtk"; #$0
 
 #space check for build path
@@ -84,8 +103,8 @@ qw(
    new n bm_new remake r bm_remake clean c listproject listp
    drvgen codegen emigen nandgen custgen javaoptgen ptgen run-preprocess remove-preprocessed
    check-modem update-modem sign-image encrypt-image sign-modem check-dep
-   dump-memusage gen-relkey check-appres
-   rel-cust modem-info bindergen mrproper perso
+   dump-memusage gen-relkey check-appres perso jrdmagic
+   rel-cust modem-info bindergen mrproper pregen check-seandroid mtxgen
   );
 
 my @ABSNativeActions = 
@@ -93,12 +112,13 @@ qw(
    customimage bootimage systemimage recoveryimage secroimage cacheimage factoryimage
    userdataimage userdataimage-nodeps target-files-package
    sdk win_sdk banyan_addon banyan_addon_x86 cts otapackage dist updatepackage
-   update-api mm snod dump-comp-build-info
+   update-api mm mma snod dump-comp-build-info dump-products bootimage-nodeps
+   ramdisk-nodeps
   );
 
 push(@actions, @ABSNativeActions);
 
-@modules = qw(android kernel dr k preloader pl lk);
+@modules = qw(android kernel dr k preloader pl lk tz md32);
 @orgARGV = @ARGV;
 
 while ($#ARGV != -1)
@@ -152,7 +172,7 @@ while ($#ARGV != -1)
             . "mediatek/config/${project}/ProjectConfig.mk from $ini\n"
         if (!-e "mediatek/config/${project}/ProjectConfig.mk");
       }
-    } 
+    }
     else
     {
       shift(@ARGV);
@@ -169,6 +189,28 @@ while ($#ARGV != -1)
   shift(@ARGV);
 }
 
+#zhongyang remove to file begin
+#add by yanqi.liu for adding JRD MARCO
+#&changePJconfig("./pjConfig");
+
+#zhongyang add for pixi3_4 pixi3_45 to file begin
+
+if ("@orgARGV" =~ /pixi3_45/)
+{
+        print "pixi3_45 project changePJconfig use pjPixi345Config file!  \n\n";
+	&changePJconfig("./pjPixi345Config");
+
+}elsif ("@orgARGV" =~ /pixi3_4/)
+{
+        print "pixi3_4 changePJconfig use pjPixi34Config file!  \n\n";
+	&changePJconfig("./pjPixi34Config");
+}else
+{
+        print "changePJconfig use pjConfig file!  \n\n";
+	&changePJconfig("./pjConfig");
+}
+# End
+
 foreach $prj ("mediatek/config/${project}/ProjectConfig.mk", "mediatek/config/common/ProjectConfig.mk")
 {
   open (FILE_HANDLE, "<$prj") or die "cannot open $prj\n";
@@ -182,11 +224,6 @@ foreach $prj ("mediatek/config/${project}/ProjectConfig.mk", "mediatek/config/co
   close FILE_HANDLE;
 }
 
-if (($project ne "banyan_addon") && ($project ne "banyan_addon_x86")) {
-  die "Lack off the action.\nIt should be one of (@actions)\nOr try $myCmd -h\n" if ($action eq "");
-}
-#p_system("perl mediatek/build/tools/flavor_configuration.pl $project $ENV{\"CUSTOM_KERNEL_LCM\"}");
-#&writeINI;
 
 my $flavor = "";
 if ( $project =~ /\[(.*)\]/ )
@@ -201,7 +238,13 @@ if ($project =~ /^(tablet)/ || $project =~ /_(ph|tb|tv|phone|tablet)$/)
   $product = $products->{$key};
 }
 
+if (($project ne "banyan_addon") && ($project ne "banyan_addon_x86")) {
+  die "Lack off the action.\nIt should be one of (@actions)\nOr try $myCmd -h\n" if ($action eq "");
+}
+
 @acts = split(",", $action);
+my $snod;
+my $MM_PATH;
 foreach $uAct (@acts)
 {
   $isFound = 0;
@@ -219,16 +262,46 @@ foreach $uAct (@acts)
     $uAct =~ s/^bm_//;
     push(@mOpts, "-k");
   }
-  if ($uAct eq "mm")
+  if (($uAct eq "mm")||($uAct eq "mma"))
   {
-    $MM_PATH = shift(@arguments);
-    die "the given path does not exist!" if (! -d $MM_PATH);
-    $snod = shift(@arguments) if ($#arguments == 0);
+    foreach my $path (@arguments)
+    {
+      if ($path eq "snod")
+      {
+        $snod = $path;
+      }
+      else
+      {
+        die "the given $path does not exist!" if (! -d $path);
+        $MM_PATH .= "\\ " if ($MM_PATH ne "");
+        $MM_PATH .= $path;
+      }
+    }
     die "the target behind mm must be snod, not $snod" if (($snod ne "") && ($snod ne "snod"));
+    @arguments = ();
   }
   ($uAct = "new") if ($uAct eq "n");
   ($uAct = "clean") if ($uAct eq "c");
-  ($uAct = "remake") if ($uAct eq "r");  
+  ($uAct = "remake") if ($uAct eq "r");
+  #add by yanqi.liu for Modem build will be start after env check @{
+  # Modem build when we new/perso.
+#modify by yanqi.liu for MINI all in one JRD@{
+  if (("@orgARGV" =~ /.*TARGET_BUILD_MMITEST=true.*/) && ("@orgARGV" =~ /.*TARGET_BUILD_MMI_ALLINONE=true.*/))
+	{
+	    if (($uAct eq "new") || ($uAct eq "perso"))
+			{
+				modemBuildMMI('./jrd_modem_build');
+			}
+	}else {
+		    if (($uAct eq "new") || ($uAct eq "perso"))
+			{
+				modemBuild('./jrd_modem_build');
+			 }
+	}
+
+#}JRD@
+  #}
+
   if (($uAct eq "remake") || ($uAct eq "bm_remake"))
   {
      unshift(@mOpts, "MTK_DEPENDENCY_AUTO_CHECK=true");
@@ -240,7 +313,7 @@ foreach $uAct (@acts)
           if (/^(\S+)\s*=\s*(\S+)/)
           {   
             $keyname = $1;
-            if ($keyname eq "build_mode") {$${keyname} = $2;} 
+            if ($keyname eq "build_mode") {$${keyname} = $2;}
           }   
         }  
         foreach $i (@mOpts)
@@ -248,13 +321,14 @@ foreach $uAct (@acts)
           @temp = split("=","$i");
           if ($temp[0] eq "TARGET_BUILD_VARIANT")
           {
-             $TARGET_BUILD_VARIANT = $temp[1]; 
+             $TARGET_BUILD_VARIANT = $temp[1];
           }
         }
         if ($TARGET_BUILD_VARIANT eq "") { $TARGET_BUILD_VARIANT = "eng"; }
         if ($build_mode ne $TARGET_BUILD_VARIANT) { print "WARNING *** : Previous build is $build_mode build, and now is $TARGET_BUILD_VARIANT build\n"; }  
      }
   }
+  ($uAct = "perso") if ($uAct eq "p");
 }
 &writeINI;
 #print "@acts\n";
@@ -294,6 +368,7 @@ else
         . "It should be one of (@modules)\nOr try $myCmd -h\n"
       if ( ($isFound == 0) && ($arguments[$i - 1] !~ /[k|kernel|dr|android]/) );
       ($uMod = "preloader") if ($uMod eq "pl");
+      ($uMod = "trustzone") if ($uMod eq "tz");
       ($uMod = "kernel") if ($uMod eq "k");  
       ($uMod = "android") if ($uMod eq "dr");
       if (($uMod eq "kernel") && ($arguments[$i + 1] =~ /^(.*)\//))
@@ -312,11 +387,20 @@ else
   }
   else
   {
-    @default_arguments = qw(preloader lk kernel android);
+    @default_arguments = qw(preloader lk md32 tz kernel android);
   }
 }
 
 #logdir should sync with Makefile.yusu
+my $out_dir = "out";
+foreach my $i (@mOpts)
+{
+  my @temp = split("=",$i);
+  if ($temp[0] eq "OUT_DIR")
+  {
+    $out_dir = $temp[1];
+  }
+}
 $ENV{"MTK_PROJECT"} = $project;
 my $actPttn = join('|', @actions);
 if (join(' ', @acts) =~ /($actPttn)/ || $project eq "banyan_addon" || $project eq "banyan_addon_x86")
@@ -333,7 +417,7 @@ if (join(' ', @acts) =~ /($actPttn)/ || $project eq "banyan_addon" || $project e
 
   if ($action ne "gen-relkey")
   {
-    $logdir = "out/target/product";
+    $logdir = $out_dir . "/target/product";
     &p_system("mkdir -p $logdir") if (!-d $logdir);
 
     my $ABSActPttn = join('|',@ABSNativeActions);
@@ -345,7 +429,7 @@ if (join(' ', @acts) =~ /($actPttn)/ || $project eq "banyan_addon" || $project e
         &p_system("rm -f $logdir/${project}_${act}.log_err");
       }
     }
-    if (join(' ', @acts) =~ /(new|remake|clean)/)
+    if (join(' ', @acts) =~ /(new|remake|clean|perso)/)
     {
       @create_arguments = ($#arguments < 0) ? @default_arguments : @arguments;
       foreach $uMod (@create_arguments)
@@ -374,8 +458,19 @@ if ($action eq "gen-relkey")
   exit $result;
 }
 
-$result += &p_system("$makeCmd banyan_addon") if($#acts == -1 && $project eq "banyan_addon");
-$result += &p_system("$makeCmd banyan_addon_x86") if($#acts == -1 && $project eq "banyan_addon_x86");
+if($#acts == -1 && $project eq "banyan_addon")
+{
+ &chkMustEnv;
+ &chkDep;
+ $result += &p_system("$makeCmd banyan_addon");
+}
+
+if($#acts == -1 && $project eq "banyan_addon_x86")
+{
+ &chkMustEnv;
+ &chkDep;
+ $result += &p_system("$makeCmd banyan_addon_x86");
+}
 
 foreach $uAct (@acts)
 {
@@ -383,7 +478,7 @@ foreach $uAct (@acts)
   {
     $result += &p_system("$makeCmd $uAct");
   }
-  elsif ($uAct eq "mm")
+  elsif (($uAct eq "mm")||($uAct eq "mma"))
   {
     $result += &p_system("$makeCmd $uAct SNOD=$snod MM_PATH=$MM_PATH");
   }
@@ -470,6 +565,8 @@ Actions:
   bm_new        : "new" + GNU make's "-k"(keep going when encounter error) feature.
   bm_remake     : "remake" + GNU make's "-k"(keep going when encounter error) feature.
   mm            : Build module through Android native command "mm"
+  mma           : Build module through Android native command "mma"
+  p, perso      : Build perso
 
   emigen        : Generate EMI setting source code.
   nandgen       : Generate supported NAND flash device list.
@@ -507,6 +604,7 @@ Actions:
   userdataimage-nodeps
                 : Build userdata image without dependency.
                   (that is, ONLY pack the userdata image, NOT checking its dependencies.)
+  dump-products : Dump products related configuration(PRODUCT_PACKAGE,PRODUCT_NAME ect.)
   target-files-package
                 : Build the target files package.
                   (A zip of the directories that map to the target filesystem.
@@ -518,6 +616,8 @@ Actions:
 Modules:
   pl, preloader : Specify to build preloader.
   lk            : Specify to build little kernel.
+  md32          : Specify to build DSP md32.
+  tz, trustzone : Specify to build trusted execution environment.
   k,  kernel    : Specify to build kernel.
   dr, android   : Specify to build android.
   NULL          : Specify to build all components/modules in default.
@@ -525,6 +625,11 @@ Modules:
                 : Specify to build kernel component/module with the source path.
   dr <module name>
                 : Specify to build android component/module with module name.
+  perso         : Specify to build perso.
+
+Other tools:
+  prebuilts/misc/linux-x86/ccache/ccache -M 10G
+                : Set CCACHE pool size to 10GB
 
 Example:
   ./mk -t e1k emigen
@@ -545,6 +650,8 @@ Example:
                 : Rebuild android module named Gallery for e1k project.
   ./makeMtk e1k mm packages/apps/Settings
     : Change Directory to packages/apps/Settings and execute "mm"
+  ./makeMtk e1k mma packages/apps/Settings
+    : Change Directory to packages/apps/Settings and execute "mma"
 
 
 __END_OF_USAGE
@@ -567,6 +674,10 @@ sub writeINI
     if ($m eq "build_mode" && $build_mode eq "")
     {
       print FILE_HANDLE "$m = eng\n";
+    }
+    elsif ($m eq "project" && $flavor ne "")
+    {
+      print FILE_HANDLE "$m = $project\[$flavor\]\n";
     }
     else
     {
@@ -663,6 +774,227 @@ sub setBuildEnvVars
   }
 }
 
+sub setCacheEnvVars
+{
+	my $host_server;
+	if ($ENV{"LSB_SUB_HOST"} ne "")
+	{
+		$host_server = $ENV{"LSB_SUB_HOST"};
+	}
+	else
+	{
+		$host_server = hostname;
+	}
+	print "Server = " . $host_server . "\n" if ($DEBUG);
+	if (($host_server =~ /m\w\wswgbm/i) || ($ENV{"USER"} =~ /wcxbm/i) || ($ENV{"USER"} =~ /arsbm/i))
+	{
+		# ignore for special server/user
+	}
+	else
+	{
+		my $ccache_bin = "prebuilts/misc/linux-x86/ccache/ccache";
+		if ((exists $ENV{"USE_CCACHE"}) && ($ENV{"USE_CCACHE"} eq ""))
+		{
+			# print "CCACHE: ignore for special setting\n";
+		}
+		elsif (-d $ENV{"HOME"} . "/.ccache")
+		{
+			my $size_cur = 0;
+			my $size_max = 0;
+			my @message = `$ccache_bin -s`;
+			foreach my $line (@message)
+			{
+				if ($line =~ /^cache size\s+(\S+)\s+([GMK])bytes/)
+				{
+					$size_cur = $1;
+					$size_cur /= 1024 if ($2 eq "M");
+					$size_cur /= 1048576 if ($2 eq "K");
+				}
+				elsif ($line =~ /^max cache size\s+(\S+)\s+([GMK])bytes/)
+				{
+					$size_max = $1;
+					$size_max /= 1024 if ($2 eq "M");
+					$size_max /= 1048576 if ($2 eq "K");
+				}
+			}
+			if ($size_cur + 0.9 > $size_max)
+			{
+				print "Warning: CCACHE is disabled due to cache pool is almost full\n";
+				print "Current = $size_cur GB, max = $size_max GB\n";
+				print "Please run \"$ccache_bin -C\" to clean cache pool first\n";
+			}
+			{
+				# default cache is turned on
+				$ENV{"USE_CCACHE"} = 1;
+			}
+		}
+		else
+		{
+			print "Warning: CCACHE is disabled due to it has not been initialized before\n";
+			print "Please run \"$ccache_bin -M 10G\" to set CCACHE pool size first\n";
+		}
+		if ((exists $ENV{"USE_DXCACHE"}) && ($ENV{"USE_DXCACHE"} eq ""))
+		{
+		}
+		elsif (-d $ENV{"HOME"} . "/.dxcache")
+		{
+			if ($ENV{"USE_CCACHE"} == 1)
+			{
+				# dxcache follows ccache's rule
+				$ENV{"USE_DXCACHE"} = 1;
+			}
+		}
+	}
+}
+
+ # Add by yanqi.liu for modem build before we build Android source @{
+ sub modemBuild
+ {
+   print "**********start to build modem************\n";
+   $buildmode = 'eng';
+   if ("@mOpts" =~ /.*TARGET_BUILD_VARIANT=(user|eng).*/)
+   {
+           $buildmode = $1
+   }
+   my $cmd = shift;
+   chdir('./modem');
+#add by yanqi.liu ,before build modem, clear all temporarily files
+   system("rm -rf build/ build_internal/ out_modem/ PlfParse.pyc");
+   my $status = system("$cmd '-p $project' '-m $buildmode'");
+   chdir('../');
+   if ($status != 0){
+      print "\n**************[FAIL!!!]\n";
+      die "**************Modem build Failed! Please check the build process in the folder ./modem .\n"
+   }
+   print "**************[OK]\n";
+   print "***********end building modem*************\n";
+ }
+#}
+
+ # Add by yanqi.liu for MMI modem build before we build Android source @{
+ sub modemBuildMMI
+ {
+   print "**********start to build modem for MMI for EU************\n";
+   $buildmode = 'eng';
+   if ("@mOpts" =~ /.*TARGET_BUILD_VARIANT=(user|eng).*/)
+   {
+           $buildmode = $1
+   }
+   my $cmd = shift;
+   chdir('./modem');
+#add by yanqi.liu ,before build modem, clear all temporarily files
+   system("rm -rf build/ build_internal/ out_modem/ PlfParse.pyc");
+   my $status = system("$cmd '-p $project' '-b EU' '-m $buildmode'");
+   if ($status != 0){
+      print "\n**************[FAIL!!!]\n";
+      die "**************Modem build EU Failed! Please check the build process in the folder ./modem .\n"
+   }
+	print "cp -dpRv out_modem/modem_1_wg_n.img ./modem_1_wg_n.img.EU\n";
+	system("cp -dpRv out_modem/modem_1_wg_n.img ./modem_1_wg_n.img.EU");
+   chdir('../');
+   print "**************[OK]\n";
+   print "***********end building modem for EU*************\n";
+####################################################################################
+   print "**********start to build modem for MMI for US0************\n";
+   chdir('./modem');
+#add by yanqi.liu ,before build modem, clear all temporarily files
+   system("rm -rf build/ build_internal/ out_modem/ PlfParse.pyc");
+   my $status = system("$cmd '-p $project' '-b US0' '-m $buildmode'");
+   if ($status != 0){
+      print "\n**************[FAIL!!!]\n";
+      die "**************Modem build US1 Failed! Please check the build process in the folder ./modem .\n"
+   }
+	print "cp -dpRv out_modem/modem_1_wg_n.img ./modem_1_wg_n.img.US0\n";
+	system("cp -dpRv out_modem/modem_1_wg_n.img ./modem_1_wg_n.img.US0");
+	chdir('../');
+   print "**************[OK]\n";
+   print "***********end building modem US1*************\n";
+############################################################################################
+####################################################################################
+   print "**********start to build modem for MMI for US1************\n";
+   chdir('./modem');
+#add by yanqi.liu ,before build modem, clear all temporarily files
+   system("rm -rf build/ build_internal/ out_modem/ PlfParse.pyc");
+   my $status = system("$cmd '-p $project' '-b US1' '-m $buildmode'");
+   if ($status != 0){
+      print "\n**************[FAIL!!!]\n";
+      die "**************Modem build US1 Failed! Please check the build process in the folder ./modem .\n"
+   }
+	print "cp -dpRv out_modem/modem_1_wg_n.img ./modem_1_wg_n.img.US1\n";
+	system("cp -dpRv out_modem/modem_1_wg_n.img ./modem_1_wg_n.img.US1");
+	chdir('../');
+   print "**************[OK]\n";
+   print "***********end building modem US1*************\n";
+############################################################################################
+   print "**********start to build modem for MMI for US3************\n";
+   chdir('./modem');
+#add by yanqi.liu ,before build modem, clear all temporarily files
+   system("rm -rf build/ build_internal/ out_modem/ PlfParse.pyc");
+   my $status = system("$cmd '-p $project' '-b US3' '-m $buildmode'");
+   if ($status != 0){
+      print "\n**************[FAIL!!!]\n";
+      die "**************Modem build US2 Failed! Please check the build process in the folder ./modem .\n"
+   }
+	print "cp -dpRv out_modem/modem_1_wg_n.img ./modem_1_wg_n.img.US3\n";
+	system("cp -dpRv out_modem/modem_1_wg_n.img ./modem_1_wg_n.img.US3");
+
+   print "**************[OK]\n";
+   print "***********end building modem US2*************\n";
+# retain for modem checking
+#	print "rm -rf out_modem/modem_1_wg_n.img\n";
+#	system("rm -rf out_modem/modem_1_wg_n.img");
+	print "cp -dpRv ./modem_1_wg_n.img.* out_modem/\n";
+	system("cp -dpRv ./modem_1_wg_n.img.* out_modem/");
+	print "rm -rf ./modem_1_wg_n.img.*\n";
+	system("rm -rf ./modem_1_wg_n.img.*");
+	chdir('../');
+	print "***********end building modem all*************\n";
+ }
+#}
+
+#add by yanqi.liu for adding JRD MARCO @{
+sub changePJconfig
+{
+  my $cmd = shift;
+  chdir('./mediatek/build');
+  if ("@orgARGV" =~ /.*JRD_MODEMBAND_SUPPORT=(EU|US0|US1|US3).*/)
+  	{
+  	  system("$cmd $1 'ModemBand' $project");
+  	}
+  if ("@orgARGV" =~ /.*JRD_TV_SUPPORT=(ATV|DTV|NONE).*/)
+       {
+         system("$cmd $1 'ADTV' $project");
+       }
+  if ("@orgARGV" =~ /.*JRD_CLK_SUPPORT=(yes|no).*/)
+       {
+         system("$cmd $1 'CLK' $project");
+       }
+ #begin zhongyang.hu add for gemini 201400820
+  if ("@orgARGV" =~ /.*JRD_GEMINI_SUPPORT=(yes|no).*/)
+  	{
+  	  system("$cmd $1 'GEMINI' $project");
+  	}
+   #end zhongyang.hu add for gemini 201400820
+
+#BEGIN: add by fangjie for camera feature (4013M:"5MP", 4013E:"SW 8MP (5MP)")
+  if ("@orgARGV" =~ /.*JRD_CAM_ACTUAL_5MP_SUPPORT=(yes|no).*/)
+       {
+         system("$cmd $1 'CAM' $project");
+       }
+#END: add by fangjie for camera feature (4013M:"5MP", 4013E:"SW 8MP (5MP)")
+#BEGIN: add by zhaoshie for receiver ISDM feature open
+  if ("@orgARGV" =~ /.*JRD_RECEIVER_ISDM_SUPPORT=(yes|no).*/)
+       {
+         system("$cmd $1 'RECEIVER' $project");
+       }
+#END: add by zhaoshie for receiver ISDM feature open
+
+#zhongyang_ssv
+   system("$cmd 'yes' 'SSV' 'all'");
+  chdir('../../');
+}
+#}
+
 # interactive mode for inputting signature subject
 sub inputSignSubject
 {
@@ -702,31 +1034,3 @@ sub inputSignSubject
   return $subjectStr;
 }
 
-
-# add for GEMINI HD CU 3G ATV, 2013-08-07 begin
-sub changePJconfig
-{
-  my $cmd = shift;
-  if ("@ARGV" =~ /.*JRD_GEMINI_SUPPORT=(yes|no).*/)
-  	{
-  	  system("$cmd $1 'GEMINI'");
-  	}
-  if ("@ARGV" =~ /.*JRD_CU_SUPPORT=(yes|no).*/)
-        {
-           system("$cmd $1 'CUSUPPORT'");
-        }
-  if ("@ARGV" =~ /.*JRD_3G_SUPPORT=(yes|no).*/)
-        {
-           system("$cmd $1 '3GSUPPORT'");
-        }
-  if ("@ARGV" =~ /.*JRD_USOREU_SUPPORT=(eu|e1|e2|us|cn|u1|u2|panasonic|2m|aws|digicel).*/)
-        {
-           system("$cmd $1 'VERSION'");
-        }
-  if ("@ARGV" =~ /.*JRD_ATV_SUPPORT=(yes|no).*/)
-        {
-           system("$cmd $1 'ATV'");
-        }
-  
-}
-# add for GEMINI HD CU 3G ATV, 2013-08-07 end

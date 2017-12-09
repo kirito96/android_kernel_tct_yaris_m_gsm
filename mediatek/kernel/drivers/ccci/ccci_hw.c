@@ -821,10 +821,8 @@ static void lg_default_dtor(struct logical_channel *lg_ch)
 int pc_register(struct physical_channel *pc_ch,int ch_num, char *name,int buf_num,
 		CCCI_CALLBACK call_back,void *private_data)
 {
-	struct logical_channel *lg_ch=NULL;
 	int ret=0;
-	
-	ret=(*pc_ch->lg_layer.add_client)(&pc_ch->lg_layer,ch_num,buf_num,&lg_ch);
+	ret=(*pc_ch->lg_layer.add_client)(&pc_ch->lg_layer,ch_num,buf_num,name,private_data,call_back,lg_default_dtor);
 	if (ret)
 	{
 		if(ret != -EEXIST){
@@ -832,23 +830,6 @@ int pc_register(struct physical_channel *pc_ch,int ch_num, char *name,int buf_nu
 		}
 		return ret;
 	}
-	WARN_ON(lg_ch==NULL);
-	spin_lock_init(&lg_ch->lock);
-	lg_ch->name=name;
-	lg_ch->have_fifo=0;
-	snprintf(lg_ch->owner,sizeof(lg_ch->owner),current->comm);
-#if 0
-	ret=kfifo_alloc(&lg_ch->fifo,buf_num*sizeof(CCCI_BUFF_T),GFP_KERNEL);
-	if (ret)
-	{
-		CCCI_DEBUG("kfifo alloc failed(ret=%d).\n",ret);
-		goto err_out;
-	}
-#endif	
-	lg_ch->callback=call_back;
-	lg_ch->private_data=private_data;
-	lg_ch->dtor=lg_default_dtor;
-	CCCI_CCIF_MSG("CH:%d Name:%s Process:%s \n",ch_num,name,current->comm);
 	return ret;
 }
 

@@ -45,8 +45,13 @@
 
 #define  MT_CIRQ_POL_NEG        (0)
 #define  MT_CIRQ_POL_POS        (1)
+
+#ifndef  MT_EDGE_SENSITIVE
 #define  MT_EDGE_SENSITIVE      (0)
+#endif
+#ifndef  MT_LEVEL_SENSITIVE
 #define  MT_LEVEL_SENSITIVE     (1)
+#endif
 
 /*
  * Define macro

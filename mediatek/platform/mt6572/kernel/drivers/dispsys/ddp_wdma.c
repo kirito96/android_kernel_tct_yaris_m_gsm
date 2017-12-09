@@ -2,7 +2,7 @@
 #include <linux/mm.h>
 #include <linux/mm_types.h>
 #include <linux/module.h>
-#include <linux/autoconf.h>
+#include <generated/autoconf.h>
 #include <linux/init.h>
 #include <linux/types.h>
 #include <linux/cdev.h>
@@ -32,9 +32,34 @@
 #include "ddp_matrix_para.h"
 #include "ddp_reg.h"
 #include "ddp_wdma.h"
-#include "ddp_debug.h"//zhao.li@tcl bug 481348 P28
+#include "ddp_debug.h"
+#include "ddp_hal.h"
+
 
 #define DISP_INDEX_OFFSET 0
+
+enum WDMA_OUTPUT_FORMAT {
+    WDMA_OUTPUT_FORMAT_RGB565 = 0x00,   // basic format
+    WDMA_OUTPUT_FORMAT_RGB888 = 0x01,
+    WDMA_OUTPUT_FORMAT_ARGB = 0x02,
+    WDMA_OUTPUT_FORMAT_XRGB = 0x03,
+    WDMA_OUTPUT_FORMAT_UYVY = 0x04,
+    WDMA_OUTPUT_FORMAT_YUV444 = 0x05,
+    WDMA_OUTPUT_FORMAT_YUV420_P = 0x06,
+    WDMA_OUTPUT_FORMAT_UYVY_BLK = 0x0c,
+
+    WDMA_OUTPUT_FORMAT_BGR888 = 0xa0,   // special format by swap
+    WDMA_OUTPUT_FORMAT_BGRA = 0xa1,
+    WDMA_OUTPUT_FORMAT_ABGR = 0xa2,
+    WDMA_OUTPUT_FORMAT_RGBA = 0xa3,
+
+    WDMA_OUTPUT_FORMAT_UNKNOWN = 0x100
+
+    /*WDMA_OUTPUT_FORMAT_Y1V0Y0U0,   // UV format by swap
+    WDMA_OUTPUT_FORMAT_V0Y1U0Y0,
+    WDMA_OUTPUT_FORMAT_Y1U0Y0V0,
+    WDMA_OUTPUT_FORMAT_U0Y1V0Y0,//*/
+};
 
 enum WDMA_COLOR_SPACE {
     WDMA_COLOR_SPACE_RGB = 0,
@@ -63,28 +88,27 @@ int WDMAStop(unsigned idx) {
 
 int WDMAReset(unsigned idx) {
     
-    
     unsigned int delay_cnt = 0;
-    unsigned int regValue;//zhao.li@tcl bug 481348 P28
+    unsigned int regValue;
     
-    regValue = DISP_REG_GET((idx*DISP_INDEX_OFFSET+DISP_REG_WDMA_RST));//zhao.li@tcl bug 481348 P28
-    DISP_REG_SET(idx*DISP_INDEX_OFFSET+DISP_REG_WDMA_RST, regValue | 0x1);       //zhao.li@tcl bug 481348 P28     // soft reset
+    regValue = DISP_REG_GET((idx*DISP_INDEX_OFFSET+DISP_REG_WDMA_RST));
+    DISP_REG_SET(idx*DISP_INDEX_OFFSET+DISP_REG_WDMA_RST, regValue | 0x1);            // soft reset
     while((DISP_REG_GET(DISP_INDEX_OFFSET*idx+DISP_REG_WDMA_RST)&0x1)!=0)
     {
          delay_cnt++;
          if(delay_cnt>10000)
          {
-             printk("[DDP] error, WDMAReset(%d) timeout! \n", idx);
+             DDP_DRV_ERR("[DDP] error, WDMAReset(%d) timeout! \n", idx);
              break;
          }
     }
-    DISP_REG_SET(idx*DISP_INDEX_OFFSET+DISP_REG_WDMA_RST, regValue & (~0x1));//zhao.li@tcl bug 481348 P28
-//zhao.li@tcl bug 481348 P28
+    DISP_REG_SET(idx*DISP_INDEX_OFFSET+DISP_REG_WDMA_RST, regValue & (~0x1));
+
     return 0;
 }
 
 int WDMAInit(unsigned idx) {
-//zhao.li@tcl bug 481348 P28 end    
+    
     DISP_REG_SET(idx*DISP_INDEX_OFFSET+DISP_REG_WDMA_CFG , 0x00);
     DISP_REG_SET(idx*DISP_INDEX_OFFSET+DISP_REG_WDMA_SRC_SIZE , 0x00);
     DISP_REG_SET(idx*DISP_INDEX_OFFSET+DISP_REG_WDMA_CLIP_SIZE , 0x00);
@@ -108,11 +132,19 @@ int WDMAConfigUV(unsigned idx, unsigned int uAddr, unsigned int vAddr, unsigned 
 }
 
 int WDMAConfig(unsigned idx,
-               unsigned inputFormat, unsigned srcWidth, unsigned srcHeight,
-               unsigned clipX, unsigned clipY, unsigned clipWidth, unsigned clipHeight,
-               unsigned outputFormat, unsigned dstAddress, unsigned dstWidth,               
-               bool useSpecifiedAlpha, unsigned char alpha) {
-
+               unsigned inputFormat, 
+               unsigned srcWidth, 
+               unsigned srcHeight,
+               unsigned clipX, 
+               unsigned clipY, 
+               unsigned clipWidth, 
+               unsigned clipHeight,
+               DpColorFormat  out_formt, 
+               unsigned dstAddress, 
+               unsigned dstWidth,               
+               bool useSpecifiedAlpha, 
+               unsigned char alpha) 
+{
     unsigned int output_format=0;
     unsigned int byte_swap=0;
     unsigned int rgb_swap=0;
@@ -122,6 +154,7 @@ int WDMAConfig(unsigned idx,
     unsigned output_color_space;                        // check output format color space
     unsigned mode = 0xdeaddead;    
     unsigned bpp;
+    enum WDMA_OUTPUT_FORMAT outputFormat = wdma_fmt_convert(out_formt);
     
     ASSERT((WDMA_INPUT_FORMAT_ARGB == inputFormat) ||
            (WDMA_INPUT_FORMAT_YUV444 == inputFormat));    
@@ -294,6 +327,11 @@ int WDMAConfig(unsigned idx,
     return 0;
 }
 
+void WDMAConfigAddress(unsigned int idx, unsigned int addr) 
+{
+    DISP_REG_SET(idx*DISP_INDEX_OFFSET+DISP_REG_WDMA_DST_ADDR, addr);
+}
+
 void WDMAWait(unsigned idx)
 {
     // polling interrupt status
@@ -304,7 +342,7 @@ void WDMAWait(unsigned idx)
         msleep(1);
         if(delay_cnt>100)
         {
-            printk("[DDP] error:WDMA%dWait timeout \n", idx);
+            DDP_DRV_ERR("[DDP] error:WDMA%dWait timeout \n", idx);
             break;
         }
     }
@@ -325,3 +363,41 @@ void WDMASlowMode(unsigned int idx,
     DISP_REG_SET_FIELD(WDMA_SMI_CON_FLD_Threshold,   idx*DISP_INDEX_OFFSET+DISP_REG_WDMA_SMI_CON, threadhold&0xf);
 
 }
+
+enum WDMA_OUTPUT_FORMAT wdma_fmt_convert(DpColorFormat fmt)
+{
+   enum WDMA_OUTPUT_FORMAT wdma_fmt = WDMA_OUTPUT_FORMAT_UNKNOWN;
+   switch(fmt)
+   {    
+       case eRGB565           :
+         wdma_fmt = WDMA_OUTPUT_FORMAT_RGB565   ;  break;
+       case eRGB888           :
+         wdma_fmt = WDMA_OUTPUT_FORMAT_RGB888   ;  break;
+       case eARGB8888         :
+         wdma_fmt = WDMA_OUTPUT_FORMAT_ARGB     ;  break;
+       case eXARGB8888        :
+         wdma_fmt = WDMA_OUTPUT_FORMAT_XRGB     ;  break;
+       case eUYVY             :
+         wdma_fmt = WDMA_OUTPUT_FORMAT_UYVY     ;  break;
+       case eYUV_444_3P       :
+         wdma_fmt = WDMA_OUTPUT_FORMAT_YUV444   ;  break;
+       case eYUV_420_3P       :
+         wdma_fmt = WDMA_OUTPUT_FORMAT_YUV420_P ;  break;
+       case eYUV_420_2P_ISP_BLK : // TODO: confirm later
+         wdma_fmt = WDMA_OUTPUT_FORMAT_UYVY_BLK ;  break;
+       case eBGR888           :
+         wdma_fmt = WDMA_OUTPUT_FORMAT_BGR888   ;  break;
+       case eBGRA8888         :
+         wdma_fmt = WDMA_OUTPUT_FORMAT_BGRA     ;  break;
+       case eABGR8888         :
+         wdma_fmt = WDMA_OUTPUT_FORMAT_ABGR     ;  break;
+       case eRGBA8888         :
+         wdma_fmt = WDMA_OUTPUT_FORMAT_RGBA     ;  break;
+       default:
+         break;
+   }
+
+   return wdma_fmt;
+}
+
+

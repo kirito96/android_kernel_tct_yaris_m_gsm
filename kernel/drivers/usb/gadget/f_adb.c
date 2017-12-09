@@ -27,6 +27,7 @@
 #include <linux/device.h>
 #include <linux/miscdevice.h>
 #include <linux/xlog.h>
+#include <linux/ratelimit.h>
 #include "logger.h"
 
 #define ADB_BULK_BUFFER_SIZE           4096
@@ -162,9 +163,11 @@ static void adb_debug_read_copy_from_user(char __user *buf, struct usb_request *
 {
   if (sizeof(debuginfo) == req->length)
   {
-    debuginfo *dbg = (debuginfo*) req->buf;
-
-    copy_from_user(req->buf, buf, req->length);
+    unsigned long ret;
+    ret = copy_from_user(req->buf, buf, req->length);
+    if(ret!=0){
+        printk(KERN_INFO "copy_from_user fail \n"); 
+    }
   }
 }
 
@@ -173,7 +176,11 @@ static void adb_debug_read_copy_to_user(char __user *buf, struct usb_request *re
   debuginfo *dbg = (debuginfo*) req->buf;
 
   if(dbg != NULL && dbg->command == A_DBUG && dbg->headtoken == DBGHEADTOKEN && dbg->tailtoken == DBGTAILTOKEN){
-    copy_to_user(buf, req->buf, req->length);
+    unsigned long ret;
+    ret = copy_to_user(buf, req->buf, req->length);
+    if(ret!=0){
+        printk(KERN_INFO "copy_to_user fail \n"); 
+    }    
     printk(KERN_INFO "adb_read A_DBUG (0x%x) (0x%x) (0x%x) \n", dbg->command, dbg->msg_check, dbg->data_check); 
   }
 }
@@ -347,6 +354,7 @@ static ssize_t adb_read(struct file *fp, char __user *buf,
 	struct usb_request *req;
 	int r = count, xfer;
 	int ret;
+	static DEFINE_RATELIMIT_STATE(ratelimit, 1 * HZ, 10);
 
 	pr_debug("%s %s %d: (%d)\n", __FILE__, __func__, __LINE__, count);
 	if (!_adb_dev)
@@ -361,8 +369,10 @@ static ssize_t adb_read(struct file *fp, char __user *buf,
 
 	if (adb_lock(&dev->read_excl))
 	{
-		xlog_printk(ANDROID_LOG_ERROR, XLOG_TAG, "%s %s %d: Failed due to lock busy\n", __FILE__, __func__, __LINE__);
-		USB_LOGGER(DEC_NUM, ADB_READ, "adb_lock", -EBUSY);
+		if (__ratelimit(&ratelimit)) {
+			xlog_printk(ANDROID_LOG_ERROR, XLOG_TAG, "%s %s %d: Failed due to lock busy\n", __FILE__, __func__, __LINE__);
+			USB_LOGGER(DEC_NUM, ADB_READ, "adb_lock", -EBUSY);
+		}
 		return -EBUSY;
 	}
 
@@ -497,6 +507,7 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 	int r = count, xfer;
 	int ret;
 	static int flow_state;
+	bool data;
 
 	if (!_adb_dev)
 		return -ENODEV;
@@ -535,7 +546,7 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 			}
 
 			//__ADB_DEBUG__ start
-			bool data = TRUE;
+			data = true;
 			if(bitdebug_enabled == 1){
 				if(count == sizeof(amessage)){
 					amessage *msg = (amessage*) req->buf;
@@ -561,12 +572,12 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 									printk(KERN_INFO "adb_write msg (0x%x) (0x%x) (0x%x) (0x%x) (0x%x) (0x%x) \n", msg->command, msg->arg0, msg->arg1, 
 										msg->data_length, msg->data_check, msg->magic);
 								}
-								data = FALSE;
+								data = false;
 								break;
 						}
 					}
 				} else {
-					data = TRUE;
+					data = true;
       }
 
 				if(count == sizeof(debuginfo)){
@@ -579,7 +590,7 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 							printk(KERN_INFO "adb_write flow state debug warning \n");
 							printk(KERN_INFO "adb_write dbg (0x%x) (0x%x) (0x%x) \n", dbg->command, dbg->msg_check, dbg->data_check);
 						}
-						data = FALSE;
+						data = false;
 						if(dbg->count == -1){
 							bitdebug_enabled = 0;
 							bitdebug_writeCnt = 1;
@@ -590,7 +601,7 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 					}
 				}
 
-				if(data == TRUE && bitdebug_enabled == 1){
+				if(data == true && bitdebug_enabled == 1){
 					if(flow_state == 1){
 						flow_state = 2;
 					}else{

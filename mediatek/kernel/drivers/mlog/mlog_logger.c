@@ -14,9 +14,12 @@
 #include <linux/rcupdate.h>
 #include <linux/seq_file.h>
 #include <asm/uaccess.h>
+#include <linux/version.h>
 
-#ifdef MALI_SUPPORT
-#include <mali_ukk.h>
+#define COLLECT_GPU_MEMINFO
+
+#ifdef COLLECT_GPU_MEMINFO
+#include <linux/mtk_gpu_utility.h>
 #endif
 
 #ifdef CONFIG_ZSMALLOC
@@ -31,8 +34,8 @@
 
 #define CONFIG_MLOG_BUF_SHIFT   16  /* 64KB */
 
-#define P2K(x) (((u32)x) << (PAGE_SHIFT - 10))
-#define B2K(x) (((u32)x) >> (10))
+#define P2K(x) (((unsigned long)x) << (PAGE_SHIFT - 10))
+#define B2K(x) (((unsigned long)x) >> (10))
 
 
 #define MLOG_STR_LEN        16
@@ -51,10 +54,15 @@
 #define M_GPUUSE            (1 << 3)
 #define M_MLOCK             (1 << 4)
 #define M_ZRAM              (1 << 5)
+#define M_ACTIVE              (1 << 6)
+#define M_INACTIVE              (1 << 7)
+#define M_SHMEM              (1 << 8)
+#define M_GPU_PAGE_CACHE              (1 << 9)
 
 #define V_PSWPIN            (1 << 0)
 #define V_PSWPOUT           (1 << 1)
 #define V_PGFMFAULT         (1 << 2)
+#define V_PGANFAULT         (1 << 3)
 
 #define P_ADJ               (1 << 0)
 #define P_RSS               (1 << 1)
@@ -65,12 +73,16 @@
 #define P_MINFAULT          (1 << 6)
 #define P_MAJFAULT          (1 << 7)
 
+#define B_NORMAL               (1 << 0)
+#define B_HIGH               (1 << 1)
+
 #define P_FMT_SIZE          (P_RSS | P_RSWAP)
 #define P_FMT_COUNT         (P_SWPIN | P_SWPOUT | P_FMFAULT | P_MINFAULT | P_MAJFAULT)
 
-#define M_FILTER_ALL        (M_MEMFREE | M_SWAPFREE | M_CACHED | M_GPUUSE | M_MLOCK | M_ZRAM)
-#define V_FILTER_ALL        (V_PSWPIN | V_PSWPOUT | V_PGFMFAULT)
+#define M_FILTER_ALL        (M_MEMFREE | M_SWAPFREE | M_CACHED | M_GPUUSE | M_GPU_PAGE_CACHE | M_MLOCK | M_ZRAM | M_ACTIVE | M_INACTIVE | M_SHMEM)
+#define V_FILTER_ALL        (V_PSWPIN | V_PSWPOUT | V_PGFMFAULT | V_PGANFAULT)
 #define P_FILTER_ALL        (P_ADJ | P_RSS | P_RSWAP | P_SWPIN | P_SWPOUT | P_FMFAULT)
+#define B_FILTER_ALL        (B_NORMAL | B_HIGH)
 
 #define MLOG_TRIGGER_TIMER  0
 #define MLOG_TRIGGER_LMK    1
@@ -81,6 +93,7 @@ extern void mlog_init_procfs(void);
 static uint meminfo_filter = M_FILTER_ALL;
 static uint vmstat_filter = V_FILTER_ALL;
 static uint proc_filter = P_FILTER_ALL;
+static uint buddyinfo_filter = B_FILTER_ALL;
 
 static DEFINE_SPINLOCK(mlogbuf_lock);
 DECLARE_WAIT_QUEUE_HEAD(mlog_wait);
@@ -110,6 +123,22 @@ static char acc_count_str[] = " %7lu";
 static char pid_str[] = " [%lu]";
 static char adj_str[] = " %3ld";
 
+/* 
+buddyinfo
+Node 0, zone   Normal    486    297    143     59     30     16      7      0      2      1     54 
+Node 0, zone  HighMem     74     18      7     65    161     67     23     10      0      1     21
+*/
+                                      /* 0    1     2    3    4     5    6    7    8     9    10*/
+static char order_start_str[] = " [%6lu";
+static char order_middle_str[] = " %6lu";
+static char order_end_str[] = " %6lu]";
+
+/*
+active & inactive
+Active:           211748 kB
+Inactive:         257988 kB
+*/
+
 static void mlog_emit_32(long v)
 {
 	MLOG_BUF(mlog_end) = v;
@@ -118,6 +147,7 @@ static void mlog_emit_32(long v)
 		mlog_start = mlog_end - mlog_buf_len;
 }
 
+/*
 static void mlog_emit_32_ex(long v)
 {
     spin_lock_bh(&mlogbuf_lock);
@@ -125,7 +155,6 @@ static void mlog_emit_32_ex(long v)
     spin_unlock_bh(&mlogbuf_lock);
 }
 
-/*
 static void mlog_emit_64(long long v)
 {
     mlog_emit_32(v >> BITS_PER_LONG);
@@ -143,6 +172,8 @@ static void mlog_reset_format(void)
         meminfo_filter = M_FILTER_ALL;
     if (vmstat_filter)
         vmstat_filter = V_FILTER_ALL;
+    if (buddyinfo_filter)
+        buddyinfo_filter = B_FILTER_ALL;
     if (proc_filter)
         proc_filter = P_FILTER_ALL;
 
@@ -152,6 +183,9 @@ static void mlog_reset_format(void)
     len += hweight32 (meminfo_filter);
     len += hweight32 (vmstat_filter);
 
+    // buddyinfo
+    len += (2 * MAX_ORDER);
+	
     if (proc_filter)
     {
         len++; /* PID */        
@@ -187,6 +221,20 @@ static void mlog_reset_format(void)
         int i;
         for (i = 0; i < hweight32(vmstat_filter); ++i)
             strfmt_list[len++] = acc_count_str;
+    }
+
+    if (buddyinfo_filter)
+    {
+        int i, j;
+        // normal and high zone
+        for (i = 0; i < 2; ++i) {
+	        strfmt_list[len++] = order_start_str;
+	        for (j = 0; j < MAX_ORDER - 2; ++j) {
+	            strfmt_list[len++] = order_middle_str;
+	            //printk("zmj: insert oder string format: %s\n", order_str);
+	        }
+	        strfmt_list[len++] = order_end_str;
+        }
     }
 
     if (proc_filter)
@@ -225,10 +273,18 @@ int mlog_print_fmt(struct seq_file *m)
         seq_printf(m, "  cache");
     if (meminfo_filter & M_GPUUSE)
         seq_printf(m, "    gpu");
+    if (meminfo_filter & M_GPU_PAGE_CACHE)
+        seq_printf(m, "    gpu_page_cache");
     if (meminfo_filter & M_MLOCK)
         seq_printf(m, "  mlock");
     if (meminfo_filter & M_ZRAM)
         seq_printf(m, "   zram");
+    if (meminfo_filter & M_ACTIVE)
+        seq_printf(m, "   active");
+    if (meminfo_filter & M_INACTIVE)
+        seq_printf(m, "   inactive");
+    if (meminfo_filter & M_SHMEM)
+        seq_printf(m, "   shmem");
     
     if (vmstat_filter & V_PSWPIN)
         seq_printf(m, "   swpin");
@@ -236,7 +292,14 @@ int mlog_print_fmt(struct seq_file *m)
         seq_printf(m, "  swpout");
     if (vmstat_filter & V_PGFMFAULT)
         seq_printf(m, "   fmflt");
+    if (vmstat_filter & V_PGANFAULT)
+        seq_printf(m, "   anflt");
 
+    if (buddyinfo_filter) {
+        seq_printf(m, "   [normal]");
+        seq_printf(m, "   [high]");
+    }
+	
     if (proc_filter) {
         seq_printf(m, " [pid]");
         if (proc_filter & P_ADJ)
@@ -270,35 +333,56 @@ static void mlog_meminfo(void)
     unsigned long memfree;
     unsigned long swapfree;
     unsigned long cached;
-    unsigned long gpuuse;
+    unsigned int gpuuse = 0;
+    unsigned int gpu_page_cache = 0;
     unsigned long mlock;
     unsigned long zram;
-
+    unsigned long active, inactive;
+    unsigned long shmem;
+	
     memfree = P2K(global_page_state(NR_FREE_PAGES));
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+    swapfree = P2K(atomic_long_read(&nr_swap_pages));
+    cached = P2K(global_page_state(NR_FILE_PAGES) -
+    			 total_swapcache_pages());
+#else
     swapfree = P2K(nr_swap_pages);
 	cached = P2K(global_page_state(NR_FILE_PAGES) -
     			 total_swapcache_pages);
-#ifdef MALI_SUPPORT
-    gpuuse = B2K(_mali_ukk_report_memory_usage());
-#else
-    gpuuse = 0;
 #endif
+
+#ifdef COLLECT_GPU_MEMINFO
+	if (mtk_get_gpu_memory_usage(&gpuuse))
+    		gpuuse = B2K(gpuuse);
+	if (mtk_get_gpu_page_cache(&gpu_page_cache))
+    		gpu_page_cache = B2K(gpu_page_cache);
+#endif
+
     mlock = P2K(global_page_state(NR_MLOCK));
 #if defined(CONFIG_ZRAM) & defined(CONFIG_ZSMALLOC)
-    zram = (zram_devices && zram_devices->init_done) ?
-        B2K(zs_get_total_size_bytes(zram_devices->mem_pool)) :
+    zram = (zram_devices && zram_devices->init_done && zram_devices->meta) ?
+        B2K(zs_get_total_size_bytes(zram_devices->meta->mem_pool)) :
         0;
 #else
     zram = 0;
 #endif
 
+    active = P2K(global_page_state(NR_ACTIVE_ANON) + global_page_state(NR_ACTIVE_FILE));
+    inactive = P2K(global_page_state(NR_INACTIVE_ANON) + global_page_state(NR_INACTIVE_FILE));
+    //MLOG_PRINTK("active: %lu, inactive: %lu\n", active, inactive);
+    shmem= P2K(global_page_state(NR_SHMEM));
+    
     spin_lock_bh(&mlogbuf_lock);
     mlog_emit_32(memfree);
     mlog_emit_32(swapfree);
     mlog_emit_32(cached);
     mlog_emit_32(gpuuse);
+    mlog_emit_32(gpu_page_cache);
     mlog_emit_32(mlock);
     mlog_emit_32(zram);
+    mlog_emit_32(active);
+    mlog_emit_32(inactive);
+    mlog_emit_32(shmem);
     spin_unlock_bh(&mlogbuf_lock);
 }
 
@@ -314,12 +398,83 @@ static void mlog_vmstat(void)
         v[PSWPIN] += this->event[PSWPIN];
         v[PSWPOUT] += this->event[PSWPOUT];
         v[PGFMFAULT] += this->event[PGFMFAULT];
+        
+        // TODO: porting PGANFAULT to kernel-3.10
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0))
+        v[PGANFAULT] += this->event[PGANFAULT];
+#endif
 	}
 
     spin_lock_bh(&mlogbuf_lock);
     mlog_emit_32(v[PSWPIN]);
     mlog_emit_32(v[PSWPOUT]);
     mlog_emit_32(v[PGFMFAULT]);
+    
+    // TODO: porting PGANFAULT to kernel-3.10
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))    
+    mlog_emit_32(0);
+#else
+    mlog_emit_32(v[PGANFAULT]);
+#endif
+    spin_unlock_bh(&mlogbuf_lock);
+}
+
+//static void mlog_buddyinfo(void)
+void mlog_buddyinfo(void)
+{
+    int i;
+    struct zone *zone;
+    struct zone *node_zones;
+    unsigned int order;
+    int zone_nr = 0;
+    unsigned long normal_nr_free[MAX_ORDER];
+    unsigned long high_nr_free[MAX_ORDER];
+	
+    for_each_online_node(i) {
+        pg_data_t *pgdat = NODE_DATA(i);
+        unsigned long flags;
+        
+        node_zones = pgdat->node_zones;
+
+        // MAX_NR_ZONES 3
+	 for (zone = node_zones; zone - node_zones < MAX_NR_ZONES; ++zone) {
+            if (!populated_zone(zone))
+			continue;
+
+            spin_lock_irqsave(&zone->lock, flags);
+			
+            zone_nr++;
+            //printk("[mlog] Node %d, zone %8s \n", pgdat->node_id, zone->name);
+	     for (order = 0; order < MAX_ORDER; ++order) {
+                 if (zone_nr == 1)
+                     normal_nr_free[order] = zone->free_area[order].nr_free;
+                 if (zone_nr == 2)
+                     high_nr_free[order] = zone->free_area[order].nr_free;				 
+	     } 
+            spin_unlock_irqrestore(&zone->lock, flags);
+	}
+    }
+
+
+    if(zone_nr == 1) {
+        for (order = 0; order < MAX_ORDER; ++order)
+            high_nr_free[order] = 0;
+    }
+	
+    spin_lock_bh(&mlogbuf_lock);
+    //printk("[mlog]: normal zone:\n");
+    for (order = 0; order < MAX_ORDER; ++order) {
+        //printk("%6lu ", normal_nr_free[order]);
+        mlog_emit_32(normal_nr_free[order]);
+    }
+    //printk("\n");
+
+    //printk("[mlog]: high zone:\n");	
+    for (order = 0; order < MAX_ORDER; ++order) {
+        mlog_emit_32(high_nr_free[order]);
+        //printk("%6lu ", high_nr_free[order]);
+    }
+    //printk("\n");
     spin_unlock_bh(&mlogbuf_lock);
 }
 
@@ -334,6 +489,17 @@ struct task_struct *find_trylock_task_mm(struct task_struct *t)
 	return NULL;
 }
 
+/*
+ * it's copied from lowmemorykiller.c
+*/
+static short lowmem_oom_score_adj_to_oom_adj(short oom_score_adj)
+{
+    if (oom_score_adj == OOM_SCORE_ADJ_MAX)
+        return OOM_ADJUST_MAX;
+    else
+        return ((oom_score_adj * -OOM_DISABLE *10)/OOM_SCORE_ADJ_MAX + 5)/10; //round
+}
+
 static void mlog_procinfo(void)
 {
     struct task_struct *tsk;
@@ -341,7 +507,7 @@ static void mlog_procinfo(void)
     rcu_read_lock();
     for_each_process(tsk) {
         int oom_score_adj;
-        const struct cred *cred;
+        const struct cred *cred = NULL;
         struct task_struct *real_parent;
         struct task_struct *p;
         pid_t ppid;
@@ -360,7 +526,15 @@ static void mlog_procinfo(void)
         if (!p->signal)
             goto unlock_continue;
 
-        oom_score_adj = p->signal->oom_adj;
+#ifdef CONFIG_ANDROID_LOW_MEMORY_KILLER_AUTODETECT_OOM_ADJ_VALUES
+		oom_score_adj = lowmem_oom_score_adj_to_oom_adj(p->signal->oom_score_adj);
+		//printk("[mlog] p->pid: %d, p->signal->oom_score_adj:%d, oom_score_adj: %d\n", 
+			//p->pid, p->signal->oom_score_adj, oom_score_adj);
+#else
+		oom_score_adj = p->signal->oom_adj;
+		//printk("[mlog] p->pid: %d, p->signal->oom_adj: %d\n", 
+			//p->pid, p->signal->oom_adj);
+#endif
 
         if (max_adj < oom_score_adj || oom_score_adj < min_adj)
             goto unlock_continue;
@@ -425,6 +599,9 @@ static void mlog_procinfo(void)
         spin_unlock_bh(&mlogbuf_lock);
 
 unlock_continue:
+	if(cred) 
+		put_cred(cred);
+	
         task_unlock(p);
     }
     rcu_read_unlock();
@@ -433,7 +610,7 @@ unlock_continue:
 
 void mlog(int type)
 {
-    unsigned long flag;
+    //unsigned long flag;
     unsigned long microsec_rem;
     unsigned long long t = local_clock();
 #ifdef PROFILE_MLOG_OVERHEAD
@@ -458,6 +635,10 @@ void mlog(int type)
         mlog_meminfo();
     if (vmstat_filter)
         mlog_vmstat();
+
+    if (buddyinfo_filter)
+        mlog_buddyinfo();
+
     if (proc_filter)
         mlog_procinfo();
 
@@ -472,7 +653,7 @@ void mlog(int type)
 }
 EXPORT_SYMBOL(mlog);
 
-void mlog_doopen()
+void mlog_doopen(void)
 {
     spin_lock_bh(&mlogbuf_lock);
     strfmt_idx = 0;
@@ -557,7 +738,7 @@ out:
 }
 
 
-static void mlog_timer_handler(void)
+static void mlog_timer_handler(unsigned long data)
 {
     mlog(MLOG_TRIGGER_TIMER);
 
@@ -587,7 +768,6 @@ static void mlog_exit_logger(void)
 
 static int __init mlog_init(void)
 {
-	int err, i;
     mlog_init_logger();
     mlog_init_procfs();
     return 0;

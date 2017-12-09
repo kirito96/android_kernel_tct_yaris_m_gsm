@@ -1,3 +1,39 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ *
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #include "typedefs.h"
 #include "platform.h"
@@ -61,6 +97,55 @@ void mtk_pll_post_init(void)
     return;
 }
 
+#define BIT(_bit_)                  (unsigned int)(1 << (_bit_))
+#define BITS(_bits_, _val_)         ((BIT(((1)?_bits_)+1)-BIT(((0)?_bits_))) & (_val_<<((0)?_bits_)))
+#define BITMASK(_bits_)             (BIT(((1)?_bits_)+1)-BIT(((0)?_bits_)))
+
+int mtk_pll_init_emi(unsigned int freq)
+{
+    kal_uint32 reg_val = 0;
+
+    switch (freq)
+    {
+    case 200:
+        /* rg_emi2x_gfmux_sel = 0xA: main pll/4 */
+        reg_val = DRV_Reg32(CLK_SEL_0) & ~BITMASK(4:1);
+        reg_val |= BITS(4:1, 0xA);
+        DRV_WriteReg32(CLK_SEL_0, reg_val);
+        break;
+
+    case 266:
+        /* rg_emi2x_gfmux_sel = 0x9: main pll/3 */
+        reg_val = DRV_Reg32(CLK_SEL_0) & ~BITMASK(4:1);
+        reg_val |= BITS(4:1, 0x9);
+        DRV_WriteReg32(CLK_SEL_0, reg_val);
+        break;
+
+    case 333:
+        /* adjust main pll frequency for EMI @ 667Mhz */
+        // POSDIV: 1, VCO: 1326.0, PLL: 1326.0
+        reg_val = 0x800CC000; // | ((DRV_Reg32(MAINPLL_CON0) & 1) << 31);
+        DRV_WriteReg32(MAINPLL_CON1, reg_val);
+
+        //5. Wait 100us for ARMPLL, MAINPLL and UNIVPLL settle
+        /* wait for 1ms */
+        gpt_busy_wait_us(1000);
+
+        reg_val = DRV_Reg32(CLK_SEL_0) & ~(BITMASK(4:1) | BITMASK(7:5));
+        /* rg_emi2x_gfmux_sel = 0xC: main pll/2 */
+        reg_val |= BITS(4:1, 0xC);
+        /* rg_axibus_gfmux_sel = 0x2: main pll/10 */
+        reg_val |= BITS(7:5, 0x2);
+        DRV_WriteReg32(CLK_SEL_0, reg_val);
+        break;
+
+    default:
+        return -1;
+    }
+
+    return 0;
+}
+
 void mtk_pll_init(void)
 {
 #if !(CFG_FPGA_PLATFORM)
@@ -98,16 +183,6 @@ void mtk_pll_init(void)
         DRV_WriteReg32(ARMPLL_CON1, 0x01114000);
     }
 
-    #if defined(__EMI_CLK_333MHZ__)
-    /* adjust main pll frequency for EMI @ 667Mhz */
-
-    DRV_WriteReg32(CLK_SEL_0, 0x08603022); // rg_axibus_gfmux_sel: xtal
-
-    reg_val = 0x000CC000 | ((DRV_Reg32(MAINPLL_CON0) & 1) << 31);
-
-    DRV_WriteReg32(MAINPLL_CON1, reg_val);
-    #endif /* __EMI_CLK_333MHZ__ */
-
     /* switch to HW mode */
     reg_val = DRV_Reg32(AP_PLL_CON1);
     reg_val &= 0xF8F8CF8C;
@@ -120,41 +195,8 @@ void mtk_pll_init(void)
     DRV_WriteReg32(ACLKEN_DIV, 0x12); // CPU bus clock is MCU clock /2
     DRV_WriteReg32(PCLKEN_DIV, 0x15); // CPU debug APB bus clock is MCU clokc /5
 
-#if !defined(CFG_MEM_PRESERVED_MODE)
-    /* EMI and bus clock */
-    #if defined(__EMI_CLK_266MHZ__)
     DRV_WriteReg32(CLK_SWCG_3, 0x80000000);
-    DRV_WriteReg32(CLK_SEL_0, 0x10000492); // rg_axibus_gfmux_sel: main pll/12
-                                           // rg_emi2x_gfmux_sel : main pll/3
-    #elif defined(__EMI_CLK_200MHZ__)
-    DRV_WriteReg32(CLK_SWCG_3, 0x80000000);
-    DRV_WriteReg32(CLK_SEL_0, 0x10000494); // rg_axibus_gfmux_sel: main pll/12
-                                           // rg_emi2x_gfmux_sel : main pll/4
-    #elif defined(__EMI_CLK_333MHZ__)
-    DRV_WriteReg32(CLK_SWCG_3, 0x80000000);
-    DRV_WriteReg32(CLK_SEL_0, 0x10000458); // rg_axibus_gfmux_sel: main pll/10
-                                           // rg_emi2x_gfmux_sel : main pll/2
-    #endif
-#else
-    /* for memory preserved mode */
-    // do not init pll/emi in memory preserved mode, due to code is located in EMI
-    // set all pll except EMI
-    /* EMI and bus clock */
-    #if defined(__EMI_CLK_266MHZ__)
-    DRV_WriteReg32(CLK_SWCG_3, 0x80000000);
-    DRV_WriteReg32(CLK_SEL_0, 0x10000482); // rg_axibus_gfmux_sel: main pll/12
-                                           // rg_emi2x_gfmux_sel : main pll/3
-    #elif defined(__EMI_CLK_200MHZ__)
-    DRV_WriteReg32(CLK_SWCG_3, 0x80000000);
-    DRV_WriteReg32(CLK_SEL_0, 0x10000484); // rg_axibus_gfmux_sel: main pll/12
-                                           // rg_emi2x_gfmux_sel : main pll/4
-    #elif defined(__EMI_CLK_333MHZ__)
-    DRV_WriteReg32(CLK_SWCG_3, 0x80000000);
-    DRV_WriteReg32(CLK_SEL_0, 0x10000448); // rg_axibus_gfmux_sel: main pll/10
-                                           // rg_emi2x_gfmux_sel : main pll/2
-    #endif
-
-#endif
+    DRV_WriteReg32(CLK_SEL_0, 0x10000480); // rg_axibus_gfmux_sel: main pll/12
 
     /* clock switch - switch AP MCU clock */
     reg_val = DRV_Reg32(INFRA_TOPCKGEN_CKMUXSEL);

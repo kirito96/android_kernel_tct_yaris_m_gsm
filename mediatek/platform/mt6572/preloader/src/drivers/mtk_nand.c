@@ -1,3 +1,39 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ *
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #include "typedefs.h"
 #include "platform.h"
@@ -9,13 +45,22 @@
 #include "part.h"
 #include "partition_define.h"
 
-#ifndef PART_SIZE_BMTPOOL
-#define BMT_POOL_SIZE (80)
+#if defined(MTK_COMBO_NAND_SUPPORT)
+	// BMT_POOL_SIZE is not used anymore
 #else
-#define BMT_POOL_SIZE (PART_SIZE_BMTPOOL)
+	#ifndef PART_SIZE_BMTPOOL
+	#define BMT_POOL_SIZE (80)
+	#else
+	#define BMT_POOL_SIZE (PART_SIZE_BMTPOOL)
+	#endif
 #endif
 
 #define PMT_POOL_SIZE (2)
+/******************************************************************************
+*
+* Macro definition
+*
+*******************************************************************************/
 
 #define NFI_SET_REG32(reg, value)   (DRV_WriteReg32(reg, DRV_Reg32(reg) | (value)))
 #define NFI_SET_REG16(reg, value)   (DRV_WriteReg16(reg, DRV_Reg16(reg) | (value)))
@@ -54,6 +99,9 @@
 u32 PAGE_SIZE;
 u32 BLOCK_SIZE;
 
+/**************************************************************************
+*  MACRO LIKE FUNCTION
+**************************************************************************/
 
 static inline u32 PAGE_NUM(u32 logical_size)
 {
@@ -194,6 +242,9 @@ static inline unsigned int uffs(unsigned int x)
 
 #define NAND_SECTOR_SIZE 512
 
+/**************************************************************************
+*  reset descriptor
+**************************************************************************/
 void mtk_nand_reset_descriptor(void)
 {
 
@@ -409,6 +460,25 @@ static void ECC_Config(u32 ecc_bit)
 
 }
 
+/******************************************************************************
+* mtk_nand_check_bch_error
+*
+* DESCRIPTION:
+*   Check BCH error or not !
+*
+* PARAMETERS:
+*   struct mtd_info *mtd
+*    u8* pDataBuf
+*    u32 u4SecIndex
+*    u32 u4PageAddr
+*
+* RETURNS:
+*   None
+*
+* NOTES:
+*   None
+*
+******************************************************************************/
 static bool mtk_nand_check_bch_error(u8 * pDataBuf, u32 u4SecIndex, u32 u4PageAddr)
 {
     bool bRet = TRUE;
@@ -747,6 +817,9 @@ bool getflashid(u8 * nand_id, int longest_id_number)
 
     return TRUE;
 }
+/*******************************************************************************
+ * GPIO(PinMux) register definition
+ *******************************************************************************/
 #define GPIO_MODE4_NFI        ((volatile u32 *)(GPIO_BASE+0x0340)) //8,CE,12,13,9,3,2,15
 #define GPIO_MODE5_NFI        ((volatile u32 *)(GPIO_BASE+0x0350)) //11,WP,NRNB,NRE, 1, NWE, 0,6
 #define GPIO_MODE6_NFI        ((volatile u32 *)(GPIO_BASE+0x0360)) //10, ALE, CLE, 4,5,7,14
@@ -910,7 +983,11 @@ int mtk_nand_init(void)
 
     g_nand_chip.oobsize = spare_per_sector * (g_nand_chip.page_size / NAND_SECTOR_SIZE);
     MSG(INIT, "[NAND]: oobsize: %x\n", g_nand_chip.oobsize);
-    g_nand_chip.chipsize -= g_nand_chip.erasesize * (BMT_POOL_SIZE);
+    #if defined(MTK_COMBO_NAND_SUPPORT)
+    	g_nand_chip.chipsize -= (PART_SIZE_BMTPOOL);
+    #else
+    	g_nand_chip.chipsize -= g_nand_chip.erasesize * (BMT_POOL_SIZE);
+    #endif
     if (g_nand_chip.bus16 == NAND_BUS_WIDTH_16)
     {
 #ifdef  DBG_PRELOADER
@@ -947,7 +1024,11 @@ int mtk_nand_init(void)
     /* Interrupt arise when read data or program data to/from AHB is done. */
     DRV_WriteReg16(NFI_INTR_EN_REG16, 0);
 
+		#if defined(MTK_COMBO_NAND_SUPPORT)
+    if (!(init_bmt(&g_nand_chip, ((PART_SIZE_BMTPOOL)/g_nand_chip.erasesize))))
+    #else
     if (!(init_bmt(&g_nand_chip, BMT_POOL_SIZE)))
+    #endif
     {
         MSG(INIT, "Error: init bmt failed, quit!\n");
         ASSERT(0);
@@ -1615,6 +1696,9 @@ bool mtk_nand_wait_for_finish(void)
     return TRUE;
 }
 
+/**************************************************************************
+*  MACRO LIKE FUNCTION
+**************************************************************************/
 static int nand_bread(blkdev_t * bdev, u32 blknr, u32 blks, u8 * buf)
 {
     u32 i;

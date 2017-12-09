@@ -1,7 +1,10 @@
 #include <platform/mt_reg_base.h>
+#include <platform/mt_gpt.h>
 #include <platform/disp_drv_platform.h>
 #include <platform/ddp_reg.h>
 #include <platform/ddp_path.h>
+
+#include "disp_drv_log.h"
          
 unsigned int gMutexID = 0;
          
@@ -42,12 +45,12 @@ int disp_delay_timeout(BOOL flag, unsigned int delay_ms)
 
 int disp_path_get_mutex()
 {
+#if 0
     int cnt = 0;
    
     DISP_REG_SET(DISP_REG_CONFIG_MUTEX_EN(gMutexID), 1);        
     DISP_REG_SET(DISP_REG_CONFIG_MUTEX(gMutexID), 1);
 
-#if 0
     while((DISP_REG_GET(DISP_REG_CONFIG_MUTEX(gMutexID)) & DISP_INT_MUTEX_BIT_MASK) != DISP_INT_MUTEX_BIT_MASK)
     {
         cnt++;
@@ -57,7 +60,11 @@ int disp_path_get_mutex()
             return -1;
         }
     }
+
 #else
+   DISP_REG_SET(DISP_REG_CONFIG_MUTEX_EN(gMutexID), 1);        
+   DISP_REG_SET(DISP_REG_CONFIG_MUTEX(gMutexID), 1);
+
    if(disp_delay_timeout(((DISP_REG_GET(DISP_REG_CONFIG_MUTEX(gMutexID))& DISP_INT_MUTEX_BIT_MASK) == DISP_INT_MUTEX_BIT_MASK), 5))
    {
       printf("[DDP] error! disp_path_get_mutex(), get mutex timeout! \n");
@@ -72,12 +79,12 @@ int disp_path_get_mutex()
 
 int disp_path_release_mutex()
 {
+#if 0
     unsigned int reg = 0;
-    int cnt = 0;
+    unsigned int cnt = 0;
     
     DISP_REG_SET(DISP_REG_CONFIG_MUTEX(gMutexID), 0);
 
-#if 0
     while((DISP_REG_GET(DISP_REG_CONFIG_MUTEX(gMutexID)) & DISP_INT_MUTEX_BIT_MASK) != 0)
     {
         cnt++;
@@ -98,10 +105,15 @@ int disp_path_release_mutex()
             break;
         }
     }
+
 #else
+    unsigned int reg = 0;
+    
+    DISP_REG_SET(DISP_REG_CONFIG_MUTEX(gMutexID), 0);
+
    if(disp_delay_timeout(((DISP_REG_GET(DISP_REG_CONFIG_MUTEX(gMutexID)) & DISP_INT_MUTEX_BIT_MASK) == 0), 5))
    {
-      if((DISP_REG_GET(DISP_REG_CONFIG_MUTEX_INTSTA) & (1<<(gMutexID+8))) == (1<<(gMutexID+8)))
+      if((DISP_REG_GET(DISP_REG_CONFIG_MUTEX_INTSTA) & (1<<(gMutexID+8))) == (unsigned int)(1<<(gMutexID+8)))
       {
           printf("[DDP] error! disp_path_release_mutex(), release mutex timeout! \n");
           disp_dump_reg(DISP_MODULE_CONFIG);
@@ -132,7 +144,7 @@ int disp_path_config_layer(OVL_CONFIG_STRUCT* pOvlConfig)
 {
    //    unsigned int reg_addr;
 
-   printf("[DDP]disp_path_config_layer(), layer=%d, source=%d, fmt=%d, addr=0x%x, x=%d, y=%d \n\
+   DISP_LOG("[DDP]disp_path_config_layer(), layer=%d, source=%d, fmt=%d, addr=0x%x, x=%d, y=%d \n\
              w=%d, h=%d, pitch=%d, keyEn=%d, key=%d, aen=%d, alpha=%d \n ", 
              pOvlConfig->layer,   // layer
              pOvlConfig->source,   // data source (0=memory)
@@ -147,7 +159,7 @@ int disp_path_config_layer(OVL_CONFIG_STRUCT* pOvlConfig)
              pOvlConfig->key,  //color key
              pOvlConfig->aen, // alpha enable
              pOvlConfig->alpha);	
-   
+
    // config overlay
    OVLLayerSwitch(pOvlConfig->layer, pOvlConfig->layer_en);
 
@@ -175,10 +187,10 @@ int disp_path_config_layer(OVL_CONFIG_STRUCT* pOvlConfig)
 
 int disp_path_config_layer_addr(unsigned int layer, unsigned int addr)
 {
-   unsigned int reg_addr;
+   unsigned int reg_addr = 0;
    
 
-   printf("[DDP]disp_path_config_layer_addr(), layer=%d, addr=0x%x\n ", layer, addr);
+   DISP_LOG("[DDP]disp_path_config_layer_addr(), layer=%d, addr=0x%x\n ", layer, addr);
    
    switch(layer)
    {
@@ -200,8 +212,9 @@ int disp_path_config_layer_addr(unsigned int layer, unsigned int addr)
          break;
       default:
          printf("[DDP] error! error: unknow layer=%d \n", layer);
+         ASSERT(0);
    }
-   printf("[DDP]disp_path_config_layer_addr() done, addr=0x%x \n", DISP_REG_GET(reg_addr));
+   DISP_LOG("[DDP]disp_path_config_layer_addr() done, addr=0x%x \n", DISP_REG_GET(reg_addr));
    
    return 0;
 }
@@ -211,7 +224,7 @@ int disp_path_ddp_clock_on()
     DISP_REG_SET(DISP_REG_CONFIG_CG_CLR0, 0x002081F0);
     DISP_REG_SET(0x14010064, 0xFFFFF);
 
-    printf("[DISP] - disp_path_ddp_clock_on 0. 0x%8x\n", INREG32(DISP_REG_CONFIG_CG_CON0));
+    DISP_LOG("[DISP] - disp_path_ddp_clock_on 0. 0x%8x\n", INREG32(DISP_REG_CONFIG_CG_CON0));
     return 0;	
 }
 
@@ -219,7 +232,7 @@ int disp_path_ddp_clock_off()
 {    
     DISP_REG_SET(DISP_REG_CONFIG_CG_SET0, 0x002081F0);
 
-    printf("[DISP] - disp_path_ddp_clock_off 0. 0x%8x\n", INREG32(DISP_REG_CONFIG_CG_CON0));
+    DISP_LOG("[DISP] - disp_path_ddp_clock_off 0. 0x%8x\n", INREG32(DISP_REG_CONFIG_CG_CON0));
     return 0;	
 }
 
@@ -228,10 +241,10 @@ int disp_path_config(struct disp_path_config_struct* pConfig)
 {
    ///> get mutex and set mout/sel
    //        unsigned int gMutexID = 0;
-   unsigned int mutex_mode;
+   unsigned int mutex_mode  = 0;
    
 
-   printf("[DDP]disp_path_config(), srcModule=%d, addr=0x%x, inFormat=%d, \n\
+   DISP_LOG("[DDP]disp_path_config(), srcModule=%d, addr=0x%x, inFormat=%d, \n\
              pitch=%d, bgROI(%d,%d,%d,%d), bgColor=%d, outFormat=%d, dstModule=%d, dstAddr=0x%x,  \n",
              pConfig->srcModule,            
              pConfig->addr,  
@@ -271,6 +284,7 @@ int disp_path_config(struct disp_path_config_struct* pConfig)
       
       default:
          printf("[DDP] error! unknown dstModule=%d \n", pConfig->dstModule); 
+         ASSERT(0);
    }
    
    
@@ -279,7 +293,7 @@ int disp_path_config(struct disp_path_config_struct* pConfig)
 
    if(pConfig->srcModule==DISP_MODULE_RDMA0)
    {
-      DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(gMutexID), 0x400);  // [0]: MDP_WROT
+      DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(gMutexID), 0x680);  // [0]: MDP_WROT
                                                                                                                    // [1]: MDP_PRZ0
                                                                                                                    // [2]: MDP_PRZ1
                                                                                                                    // [3]: DISP_OVL
@@ -297,7 +311,7 @@ int disp_path_config(struct disp_path_config_struct* pConfig)
       if (pConfig->dstModule==DISP_MODULE_WDMA0)
       {
 
-         DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(gMutexID), 0x248);  // [0]: MDP_WROT
+         DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(gMutexID), 0x48);  // [0]: MDP_WROT
                                                                                                                    // [1]: MDP_PRZ0
                                                                                                                    // [2]: MDP_PRZ1
                                                                                                                    // [3]: DISP_OVL
@@ -349,7 +363,7 @@ int disp_path_config(struct disp_path_config_struct* pConfig)
          break;
       
       case DISP_MODULE_DPI0:
-         printf("DISI_MODULE_DPI0\n");
+         DISP_LOG("DISI_MODULE_DPI0\n");
          DISP_REG_SET(DISP_REG_CONFIG_OVL_MOUT_EN, 0x1);  // OVL output, [0]: DISP_RDMA, [1]: DISP_WDMA, [2]: DISP_COLOR
          DISP_REG_SET(DISP_REG_CONFIG_DISP_OUT_SEL, 0x1);  // display output, 0: DSI, 1: DPI, 2: DBI
          DISP_REG_SET(DISP_REG_CONFIG_RDMA0_OUT_SEL, 0x0);  // RDMA output, 0: DISP_COLOR, 1: DSI
@@ -437,7 +451,7 @@ int disp_path_config(struct disp_path_config_struct* pConfig)
          RDMAConfig(0, 
                              RDMA_MODE_DIRECT_LINK,       ///direct link mode
                              RDMA_INPUT_FORMAT_RGB888,    // inputFormat
-                             NULL,                        // address
+                             (unsigned int)NULL,                        // address
                              pConfig->outFormat,          // output format
                              pConfig->pitch,              // pitch
                              pConfig->srcROI.width,       // width

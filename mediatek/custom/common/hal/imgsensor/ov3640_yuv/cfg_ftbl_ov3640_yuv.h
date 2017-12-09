@@ -1,4 +1,3 @@
-
 #ifndef _CFG_FTBL_OV3640_YUV_H_
 #define _CFG_FTBL_OV3640_YUV_H_
 

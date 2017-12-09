@@ -1,17 +1,37 @@
 #include "AudioVIBSPKControl.h"
 #include "audio_custom_exp.h"
 
+#include "AudioAssert.h"
+
 #define LOG_TAG "AudioVIBSPKControl"
 
 namespace android
 {
-#if defined(MTK_VIBSPK_SUPPORT)
+//#if defined(MTK_VIBSPK_SUPPORT)
 
 AudioVIBSPKControl *AudioVIBSPKControl::UniqueAudioVIBSPKControl = NULL;
 AudioVIBSPKVsgGen *AudioVIBSPKVsgGen::UniqueAudioVIBSPKVsgGen = NULL;
 
-#define VSG_SIN_TAB_SIZE 65
-#define VSG_ODD_STAT VSG_SIN_TAB_SIZE-2
+// VSG_SIN_TAB_SIZE must be 2^n - 1
+#define VSG_PHASE_BITS      15
+#define VSG_PHASE_ADJUST    (15-VSG_PHASE_BITS)
+#define VSG_SIN_TAB_SIZE    65
+#define VSG_ODD_STAT        (VSG_SIN_TAB_SIZE-2)
+#define VSG_SIN_TAB_ORDER   6
+#define VSG_SIN_L_SHIFT     (VSG_PHASE_BITS-VSG_SIN_TAB_ORDER)
+#define VSG_SIN_R_SHIFT     (VSG_PHASE_BITS-VSG_SIN_TAB_ORDER)
+#define DEC_LEN_MAX         1152
+
+
+/// define Vibration SPK Default Center Freq and RMS
+#ifndef VIBSPK_MV_RMS
+#define VIBSPK_MV_RMS           (350) //280~560, 70 per step
+#endif
+
+#ifndef VIBSPK_DEFAULT_FREQ
+#define VIBSPK_DEFAULT_FREQ     (156) //141~330 Hz
+#endif
+
 
 const short vsg_sin_tab[VSG_SIN_TAB_SIZE] = 
 {    0,   804,  1608,  2410,  3212,  4011,  4808,  5602,  6393,  7179,
@@ -73,15 +93,15 @@ void AudioVIBSPKVsgGen::vsgInit(int32_t samplerate, int32_t center_freq, int32_t
    ALOGD("VsgGenInit");
    switch (samplerate) // my0: Q5.11
    {
-      case 8000:  my0 = 0x8312; break;
-      case 11025: my0 = 0x5F1B; break;
-      case 12000: my0 = 0x5761; break;
-      case 16000: my0 = 0x4189; break;
-      case 22050: my0 = 0x2F8D; break;
-      case 24000: my0 = 0x2BB0; break;
-      case 32000: my0 = 0x20C4; break;
-      case 44100: my0 = 0x17C6; break;
-      case 48000: my0 = 0x15D8; break;
+        case 8000:  my0 = 0x8312; break;
+        case 11025: my0 = 0x5F1B; break;
+        case 12000: my0 = 0x5761; break;
+        case 16000: my0 = 0x4189; break;
+        case 22050: my0 = 0x2F8D; break;
+        case 24000: my0 = 0x2BB0; break;
+        case 32000: my0 = 0x20C4; break;
+        case 44100: my0 = 0x17C6; break;
+        case 48000: my0 = 0x15D8; break;
    }
    
    mCenter_Freq = center_freq;
@@ -119,15 +139,16 @@ int16_t AudioVIBSPKVsgGen::SineGen(int16_t cur_ph, int16_t ph_st)
    int16_t lo_idx, lo_value, hi_value, lo_ph, v_diff, p_diff, temp_out;
    uint32_t temp_mr, temp_sr;
    
-   ft = cur_ph;
-   lo_idx = cur_ph >> 9;
+   ft = cur_ph << VSG_PHASE_ADJUST;
+   lo_idx = cur_ph >> VSG_SIN_R_SHIFT;
 
    if ((ph_st & 0x1) != 0)
    {
       lo_idx = VSG_ODD_STAT - lo_idx;
-      ft = 0x8000 - cur_ph;
+      ft = 0x8000 - (cur_ph << VSG_PHASE_ADJUST);
    }
-   lo_ph = lo_idx << 9;
+
+   lo_ph = lo_idx << (VSG_SIN_L_SHIFT + VSG_PHASE_ADJUST);
 
    lo_value = vsg_sin_tab[lo_idx];
    hi_value = vsg_sin_tab[lo_idx+1];
@@ -149,7 +170,7 @@ int16_t AudioVIBSPKVsgGen::SineGen(int16_t cur_ph, int16_t ph_st)
 uint32_t AudioVIBSPKVsgGen::Process(uint32_t size, void *buffer, uint16_t channels, uint8_t rampcontrol, int32_t gain)
 {
    uint32_t I;
-   int16_t mr1, ar, vsg_temp_phase, vsg_temp_stat, temp_out;
+   int16_t mr1, ar, vsg_temp_stat, temp_out, vsg_temp_phase;
    int32_t outputsample;
    int16_t *ptr16 = (int16_t*)buffer;
    
@@ -166,20 +187,22 @@ uint32_t AudioVIBSPKVsgGen::Process(uint32_t size, void *buffer, uint16_t channe
    {
       mMod_Phase += mMod_PhaseInc;
       
-      if( mMod_Phase < 0 ) 
+      if( mMod_Phase  < 0) 
       {
-         mMod_Phase &= 0x7FFF;
          mMod_PhaseStat++;
+         mMod_Phase &= 0x7FFF;
+         //mMod_PhaseStat &= 0x3;
       }
       
       ar = SineGen(mMod_Phase, mMod_PhaseStat);     
       mr1 = (int16_t)((int32_t)ar * mMod_Idx >> 15);
       
       mCenter_Phase += mCenter_PhaseInc;
-      if( mCenter_Phase < 0 ) 
+      if( mCenter_Phase < 0) 
       {
-         mCenter_Phase &= 0x7FFF;
-         mCenter_PhaseStat++;
+         mCenter_PhaseStat += 1;
+       	 mCenter_Phase &= 0x7FFF;
+         //mCenter_PhaseStat &= 0x3;
       }
       
       vsg_temp_phase = mCenter_Phase + mr1;
@@ -188,19 +211,15 @@ uint32_t AudioVIBSPKVsgGen::Process(uint32_t size, void *buffer, uint16_t channe
       if (vsg_temp_phase < 0)
       {
          vsg_temp_phase &= 0x7FFF;
-         if (mr1 < 0)
-         {
+         if(mr1 < 0)
             vsg_temp_stat--;
-         }
          else
-         {
             vsg_temp_stat++;
-         }
       }
 
       temp_out = SineGen(vsg_temp_phase, vsg_temp_stat);
       outputsample = (temp_out*mGain)>>15;
-	  if(mRampControl == 1 && mGain > 0)
+      if(mRampControl == 1 && mGain > 0)
       {
          mGain-= VIB_RAMPSTEP;
          if(mGain < 0)
@@ -223,18 +242,6 @@ uint32_t AudioVIBSPKVsgGen::Process(uint32_t size, void *buffer, uint16_t channe
    return I;
 }
 
-/* +Porting JRD519743(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P83) */
-void AudioVIBSPKVsgGen::resetPhase()
-{
-   mCenter_Phase     = 0;
-   mCenter_PhaseStat = 0;
-   
-   mMod_Phase        = 0;
-   mMod_PhaseStat    = 0;
-   mRampControl = 0;
-   mGain        = 0;
-}
-/* -Porting JRD519743(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P83) */
 //=============================================================================================
 //                 AudioVIBSPKControl Imeplementation
 //=============================================================================================
@@ -262,6 +269,7 @@ AudioVIBSPKControl *AudioVIBSPKControl::getInstance()
    if (UniqueAudioVIBSPKControl == NULL) {
       ALOGD("+UniqueAudioVIBSPKControl");
       UniqueAudioVIBSPKControl = new AudioVIBSPKControl();
+      ASSERT(NULL!=UniqueAudioVIBSPKControl);  
       ALOGD("-UniqueAudioVIBSPKControl");
    }
    ALOGD("getInstance()");
@@ -303,6 +311,7 @@ void AudioVIBSPKControl::VibSpkRampControl(uint8_t rampcontrol)
 {
    Mutex::Autolock _l(mMutex);
    mRampControl = rampcontrol;
+   ALOGD("Ramp : [%d] 0--none, 1--rampdown, 2--rampup",mRampControl);
 }
 
 void AudioVIBSPKControl::setParameters(int32_t rate, int32_t center_freq, int32_t mod_freq, int32_t delta_freq)
@@ -319,13 +328,6 @@ void AudioVIBSPKControl::setParameters(int32_t rate, int32_t center_freq, int32_
    }
 }
 
-/* +Porting JRD519743(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P83) */
-int16_t AudioVIBSPKControl::getVibSpkGain(void)
-{
-    return (int16_t)mDigitalGain;
-}
-/* -Porting JRD519743(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P83) */
-
 void AudioVIBSPKControl::setVibSpkGain(int32_t MaxVolume, int32_t MinVolume, int32_t VolumeRange)
 {
     int32_t mvrms, index;
@@ -341,13 +343,37 @@ void AudioVIBSPKControl::setVibSpkGain(int32_t MaxVolume, int32_t MinVolume, int
     mDigitalGain = vsg_gain_tab[index][VolumeRange];
 }
 
-/* +Porting JRD519743(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P83) */
-void AudioVIBSPKControl::resetVibSpkPhase()
+#ifdef DYNAMIC_VIBSPK_STRONG
+int32_t vibspk_gain_map[6] = {0,
+                              vsg_gain_tab[0][0],//0x8a7
+                              vsg_gain_tab[1][6],//0x158f
+                              vsg_gain_tab[2][8],//0x208f
+                              vsg_gain_tab[3][9],//0x2aa0
+                              vsg_gain_tab[4][9]};//0x30b8
+void AudioVIBSPKControl::setCurrentVibSpkGain(int32_t value)
 {
-   mVsg->resetPhase();
+    #if 0
+    if( value < 0 )
+		value = 0 ;
+    if( value > 100 )
+		value = 100 ;
+    mDigitalGain = ((vsg_gain_tab[4][15]-vsg_gain_tab[0][0])/100)*value + vsg_gain_tab[0][0] ;
+    #else
+    if( value < 0 )
+		value = 0 ;
+    if( value > 5 )
+		value = 5 ;
+    mDigitalGain = vibspk_gain_map[value];
+    #endif
 
+    ALOGD("setCurrentVibSpkGain : mDigitalGain = 0x%x", mDigitalGain);
 }
-/* -Porting JRD519743(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P83) */
+#endif
+
+int16_t AudioVIBSPKControl::getVibSpkGain(void)
+{
+    return (int16_t)mDigitalGain;
+}
 
 void AudioVIBSPKControl::VibSpkProcess(uint32_t size, void *buffer, uint32_t channels)
 {
@@ -357,6 +383,6 @@ void AudioVIBSPKControl::VibSpkProcess(uint32_t size, void *buffer, uint32_t cha
 
 
 
-#endif//#if defined(MTK_VIBSPK_SUPPORT)
+//#endif//#if defined(MTK_VIBSPK_SUPPORT)
 
 }   //namespace android

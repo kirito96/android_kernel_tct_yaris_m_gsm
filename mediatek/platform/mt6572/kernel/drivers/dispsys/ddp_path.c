@@ -2,7 +2,7 @@
 #include <linux/mm.h>
 #include <linux/mm_types.h>
 #include <linux/module.h>
-#include <linux/autoconf.h>
+#include <generated/autoconf.h>
 #include <linux/init.h>
 #include <linux/types.h>
 #include <linux/cdev.h>
@@ -31,13 +31,15 @@
 #include <mach/mt_clkmgr.h> // ????
 #include <mach/mt_irq.h>
 #include <mach/sync_write.h>
-#include "smi_common.h"
+#include <mach/mt_smi.h>
+#include <mach/m4u.h>
 
+#include "ddp_hal.h"
 #include "ddp_drv.h"
 #include "ddp_reg.h"
 #include "ddp_path.h"
 #include "ddp_debug.h"
-
+#include "ddp_bls.h"
 #include "ddp_rdma.h"
 #include "ddp_wdma.h"
 #include "ddp_ovl.h"
@@ -46,7 +48,16 @@
 
 unsigned int gMutexID = 0;
 unsigned int gTdshpStatus[OVL_LAYER_NUM] = {0};
+unsigned int gMemOutMutexID = 2;
+extern unsigned int decouple_addr;
+extern BOOL DISP_IsDecoupleMode(void);
+extern UINT32 DISP_GetScreenWidth(void);
+extern UINT32 DISP_GetScreenHeight(void);
+extern unsigned int disp_ms2jiffies(unsigned long ms);
 static DEFINE_MUTEX(DpEngineMutexLock);
+
+DECLARE_WAIT_QUEUE_HEAD(mem_out_wq);
+unsigned int mem_out_done = 0;
 
 extern void DpEngine_COLORonConfig(unsigned int srcWidth,unsigned int srcHeight);
 extern    void DpEngine_COLORonInit(void);
@@ -55,9 +66,13 @@ extern unsigned char pq_debug_flag;
 static DECLARE_WAIT_QUEUE_HEAD(g_disp_mutex_wq);
 static unsigned int g_disp_mutex_reg_update = 0;
 
+#ifdef DDP_USE_CLOCK_API
+void disp_path_recovery(unsigned int mutexID);
+#endif
+
 
 //50us -> 1G needs 50000times
-int disp_wait_timeout(BOOL flag, unsigned int timeout)
+int disp_wait_timeout(bool flag, unsigned int timeout)
 {
    unsigned int cnt=0;
    
@@ -74,7 +89,7 @@ int disp_wait_timeout(BOOL flag, unsigned int timeout)
 }
 
 
-int disp_delay_timeout(BOOL flag, unsigned int delay_ms)
+int disp_delay_timeout(bool flag, unsigned int delay_ms)
 {
    unsigned int cnt=0;
    
@@ -92,7 +107,8 @@ int disp_delay_timeout(BOOL flag, unsigned int delay_ms)
 }
 
 
-void dispsys_bypass_color(unsigned int width, unsigned int height)
+#if 0
+static void dispsys_bypass_color(unsigned int width, unsigned int height)
 {
     printk("dispsys_bypass_color, width=%d, height=%d \n", width, height);
 
@@ -109,7 +125,7 @@ void dispsys_bypass_color(unsigned int width, unsigned int height)
 }
 
 
-void dispsys_bypass_bls(unsigned int width, unsigned int height)
+static void dispsys_bypass_bls(unsigned int width, unsigned int height)
 {
     printk("dispsys_bypass_bls, width=%d, height=%d, reg=0x%x \n", 
         width, height, ((height<<16) + width));
@@ -195,33 +211,6 @@ void dispsys_bypass_bls(unsigned int width, unsigned int height)
     //*(volatile kal_uint32 *)(DDP_REG_BASE_DISP_BLS + 0x000b4) = 0x00000001; 
 
 }
-
-
-#if 0
-int disp_path_get_mutex_()
-{
-    unsigned int cnt=0;
-    
-    DISP_REG_SET(DISP_REG_CONFIG_MUTEX(gMutexID), 1);
-    DISP_REG_SET_FIELD(REG_FLD(1, gMutexID), DISP_REG_CONFIG_MUTEX_INTSTA, 0);
-
-    while(((DISP_REG_GET(DISP_REG_CONFIG_MUTEX(gMutexID))& DISP_INT_MUTEX_BIT_MASK) != DISP_INT_MUTEX_BIT_MASK))
-    {
-        cnt++;
-        if(cnt>10000)
-        {
-            printk("[DDP] disp_path_get_mutex() timeout! \n");
-            break;
-        }
-    }
-
-    return 0;
-}
-
-int disp_path_release_mutex_()
-{
-    DISP_REG_SET(DISP_REG_CONFIG_MUTEX(gMutexID), 0);
-}
 #endif
 
 
@@ -255,37 +244,40 @@ int disp_path_get_mutex()
 int disp_path_get_mutex_(int mutexID)
 {
     unsigned int cnt=0;
+#ifdef DDP_USE_CLOCK_API
+    // If mtcmos is shutdown once a while unfortunately
+    disp_path_recovery(mutexID);
+#endif
 
     DDP_DRV_DBG("disp_path_get_mutex %d \n", disp_mutex_lock_cnt++);
+
     mutex_lock(&DpEngineMutexLock);
     MMProfileLog(DDP_MMP_Events.Mutex[mutexID], MMProfileFlagStart);
     DISP_REG_SET(DISP_REG_CONFIG_MUTEX_EN(mutexID), 1);        
     DISP_REG_SET(DISP_REG_CONFIG_MUTEX(mutexID), 1);
     DISP_REG_SET_FIELD(REG_FLD(1, mutexID), DISP_REG_CONFIG_MUTEX_INTSTA, 0);
 
-#if 0
-    while(((DISP_REG_GET(DISP_REG_CONFIG_MUTEX(mutexID))& DISP_INT_MUTEX_BIT_MASK) != DISP_INT_MUTEX_BIT_MASK))
+    while (1)
     {
-        cnt++;
-        if(cnt>1000*1000)
+        if(((DISP_REG_GET(DISP_REG_CONFIG_MUTEX(mutexID))& DISP_INT_MUTEX_BIT_MASK) == DISP_INT_MUTEX_BIT_MASK))
         {
-            DDP_DRV_ERR("disp_path_get_mutex() timeout! \n");
-            disp_dump_reg(DISP_MODULE_CONFIG);
-            MMProfileLogEx(DDP_MMP_Events.Mutex[mutexID], MMProfileFlagPulse, 0, 0);
-            ASSERT(0);
             break;
         }
+        else
+        {
+            if(cnt>5)  // wait 5 msec
+            {
+                DDP_DRV_ERR("disp_path_get_mutex() timeout! \n");
+                disp_dump_reg(DISP_MODULE_MUTEX);
+                disp_dump_reg(DISP_MODULE_CONFIG);
+                MMProfileLogEx(DDP_MMP_Events.Mutex[mutexID], MMProfileFlagPulse, 0, 0);
+                ASSERT(0);
+                break;
+            }
+        }
+        mdelay(1);
+        cnt++;
     }
-#else
-    if(disp_delay_timeout(((DISP_REG_GET(DISP_REG_CONFIG_MUTEX(mutexID))& DISP_INT_MUTEX_BIT_MASK) == DISP_INT_MUTEX_BIT_MASK), 5))
-    {
-        DDP_DRV_ERR("disp_path_get_mutex(), get mutex timeout! \n");
-        disp_dump_reg(DISP_MODULE_MUTEX);
-        disp_dump_reg(DISP_MODULE_CONFIG);
-        MMProfileLogEx(DDP_MMP_Events.Mutex[mutexID], MMProfileFlagPulse, 0, 0);
-        ASSERT(0);
-    } 
-#endif
 
     return 0;
 }
@@ -305,6 +297,22 @@ int disp_path_release_mutex()
 }
 
 
+extern int disp_path_release_mutex1_(int mutexID);
+
+int disp_path_release_mutex1(void)
+{
+    if(pq_debug_flag == 3)
+    {
+        return 0;
+    }
+    else
+    {
+        g_disp_mutex_reg_update = 0;
+        return disp_path_release_mutex1_(gMutexID);
+    }
+}
+
+
 // check engines' clock bit and enable bit before unlock mutex
 // todo: modify bit info according to new chip change
 #define DDP_SMI_COMMON_POWER_BIT     (1<<0)
@@ -315,7 +323,7 @@ int disp_path_release_mutex()
 #define DDP_RDMA0_POWER_BIT   (1<<7)
 #define DDP_OVL_POWER_BIT     (1<<8)
 
-int disp_check_engine_status(int mutexID)
+static int disp_check_engine_status(int mutexID)
 {
     int result = 0;
     unsigned int engine = DISP_REG_GET(DISP_REG_CONFIG_MUTEX_MOD(mutexID)); 
@@ -403,87 +411,70 @@ int disp_path_release_mutex_(int mutexID)
     
     DISP_REG_SET(DISP_REG_CONFIG_MUTEX(mutexID), 0);
     
-#if 0
-    while((DISP_REG_GET(DISP_REG_CONFIG_MUTEX(mutexID)) & DISP_INT_MUTEX_BIT_MASK) != 0)
+    while(1)
     {
-        cnt++;
-        if(cnt>1000*1000)
+        if ((DISP_REG_GET(DISP_REG_CONFIG_MUTEX(mutexID)) & DISP_INT_MUTEX_BIT_MASK) == 0)
         {
-            DDP_DRV_ERR("error: disp_mutex_unlock timeout! \n");
-            return - 1;
-        }
-    }
-
-    while(((DISP_REG_GET(DISP_REG_CONFIG_MUTEX_INTSTA) & (1<<mutexID)) != (1<<mutexID)))
-    {
-        if((DISP_REG_GET(DISP_REG_CONFIG_MUTEX_INTSTA) & (1<<(mutexID+8))) == (1<<(mutexID+8)))
-        {
-            DDP_DRV_ERR("disp_path_release_mutex() timeout! \n");
-            disp_dump_reg(DISP_MODULE_CONFIG);
-            //print error engine
-            reg = DISP_REG_GET(DISP_REG_CONFIG_REG_COMMIT);
-            if(reg!=0)
-            {
-                  if(reg&(1<<3))  { DDP_DRV_INFO(" OVL update reg timeout! \n"); disp_dump_reg(DISP_MODULE_OVL); }
-                  if(reg&(1<<6))  { DDP_DRV_INFO(" WDMA0 update reg timeout! \n"); disp_dump_reg(DISP_MODULE_WDMA0); }
-                  if(reg&(1<<7))  { DDP_DRV_INFO(" COLOR update reg timeout! \n"); disp_dump_reg(DISP_MODULE_COLOR); }
-                  if(reg&(1<<9))  { DDP_DRV_INFO(" BLS update reg timeout! \n"); disp_dump_reg(DISP_MODULE_BLS); }
-                  if(reg&(1<<10))  { DDP_DRV_INFO(" RDMA1 update reg timeout! \n"); disp_dump_reg(DISP_MODULE_RDMA0); }
-            }  
-                     
-            //reset mutex
-            DISP_REG_SET(DISP_REG_CONFIG_MUTEX_RST(mutexID), 1);
-            DISP_REG_SET(DISP_REG_CONFIG_MUTEX_RST(mutexID), 0);
-            DDP_DRV_INFO("mutex reset done! \n");
-            MMProfileLogEx(DDP_MMP_Events.Mutex[mutexID], MMProfileFlagPulse, mutexID, 1);
             break;
         }
-
-        cnt++;
-        if(cnt>1000*100)
+        else
         {
-            DDP_DRV_ERR("disp_path_release_mutex() timeout! \n");
-            MMProfileLogEx(DDP_MMP_Events.Mutex[mutexID], MMProfileFlagPulse, mutexID, 2);
-            break;
-        }
-    }
-
-    // clear status
-    reg = DISP_REG_GET(DISP_REG_CONFIG_MUTEX_INTSTA);
-    reg &= ~(1<<mutexID);
-    reg &= ~(1<<(mutexID+8));
-    DISP_REG_SET(DISP_REG_CONFIG_MUTEX_INTSTA, reg);
-#else
-    if(disp_delay_timeout(((DISP_REG_GET(DISP_REG_CONFIG_MUTEX(mutexID)) & DISP_INT_MUTEX_BIT_MASK) == 0), 5))
-    {
-        if((DISP_REG_GET(DISP_REG_CONFIG_MUTEX_INTSTA) & (1<<(mutexID+8))) == (1<<(mutexID+8)))
-        {
-            DDP_DRV_ERR("disp_path_release_mutex() timeout! \n");
-            disp_dump_reg(DISP_MODULE_CONFIG);
-
-            //print error engine
-            reg = DISP_REG_GET(DISP_REG_CONFIG_REG_COMMIT);
-            if(reg!=0)
+            if (cnt > 5)  // wait 5 msec
             {
-                  if(reg&(1<<3))  { DDP_DRV_INFO(" OVL update reg timeout! \n"); disp_dump_reg(DISP_MODULE_OVL); }
-                  if(reg&(1<<6))  { DDP_DRV_INFO(" WDMA0 update reg timeout! \n"); disp_dump_reg(DISP_MODULE_WDMA0); }
-                  if(reg&(1<<7))  { DDP_DRV_INFO(" COLOR update reg timeout! \n"); disp_dump_reg(DISP_MODULE_COLOR); }
-                  if(reg&(1<<9))  { DDP_DRV_INFO(" BLS update reg timeout! \n"); disp_dump_reg(DISP_MODULE_BLS); }
-                  if(reg&(1<<10))  { DDP_DRV_INFO(" RDMA1 update reg timeout! \n"); disp_dump_reg(DISP_MODULE_RDMA0); }
-            }  
-                     
-            disp_dump_reg(DISP_MODULE_MUTEX);
-            disp_dump_reg(DISP_MODULE_CONFIG);
-            //ASSERT(0);
-
-            return - 1;
+                if((DISP_REG_GET(DISP_REG_CONFIG_MUTEX_INTSTA) & (1<<(mutexID+8))) == (1<<(mutexID+8)))
+                {
+                    DDP_DRV_ERR("disp_path_release_mutex() timeout! \n");
+        
+                    //print error engine
+                    reg = DISP_REG_GET(DISP_REG_CONFIG_REG_COMMIT);
+                    if(reg!=0)
+                    {
+                          if(reg&(1<<3))  { DDP_DRV_INFO(" OVL update reg timeout! \n"); disp_dump_reg(DISP_MODULE_OVL); }
+                          if(reg&(1<<6))  { DDP_DRV_INFO(" WDMA0 update reg timeout! \n"); disp_dump_reg(DISP_MODULE_WDMA0); }
+                          if(reg&(1<<7))  { DDP_DRV_INFO(" COLOR update reg timeout! \n"); disp_dump_reg(DISP_MODULE_COLOR); }
+                          if(reg&(1<<9))  { DDP_DRV_INFO(" BLS update reg timeout! \n"); disp_dump_reg(DISP_MODULE_BLS); }
+                          if(reg&(1<<10))  { DDP_DRV_INFO(" RDMA1 update reg timeout! \n"); disp_dump_reg(DISP_MODULE_RDMA0); }
+                    }  
+                             
+                    disp_dump_reg(DISP_MODULE_MUTEX);
+                    disp_dump_reg(DISP_MODULE_CONFIG);
+                    //ASSERT(0);
+        
+                    return - 1;
+                }
+            }
         }
+        mdelay(1);
+        cnt++;
     }
-#endif
 
     MMProfileLog(DDP_MMP_Events.Mutex[mutexID], MMProfileFlagEnd);
     mutex_unlock(&DpEngineMutexLock);
+
     DDP_DRV_DBG("disp_path_release_mutex %d \n", disp_mutex_unlock_cnt++);
+
+    return 0;
+}
+
+
+int disp_path_release_mutex1_(int mutexID)
+{
+
+    disp_check_engine_status(mutexID);
+
+    DISP_REG_SET(DISP_REG_CONFIG_MUTEX(mutexID), 0);
+
+
+    MMProfileLog(DDP_MMP_Events.Mutex[mutexID], MMProfileFlagEnd);
+
+    return 0;
+}
+
+
+int disp_path_release_soft_mutex(void)
+{
+
+    //mutex_unlock(&DpEngineMutexLock);
 
     return 0;
 }
@@ -509,6 +500,312 @@ int disp_path_change_tdshp_status(unsigned int layer, unsigned int enable)
 }
 
 
+///============================================================================
+// OVL decouple @{
+///========================
+void _disp_path_wdma_callback(unsigned int param);
+
+int disp_path_get_mem_read_mutex (void) 
+{
+    disp_path_get_mutex_(gMutexID);
+
+    return 0;
+}
+
+int disp_path_release_mem_read_mutex (void) 
+{
+    disp_path_release_mutex_(gMutexID);
+
+    return 0;
+}
+
+int disp_path_get_mem_write_mutex (void) 
+{
+    disp_path_get_mutex_(gMemOutMutexID);
+
+    return 0;
+}
+
+int disp_path_release_mem_write_mutex (void) 
+{
+    disp_path_release_mutex_(gMemOutMutexID);
+
+    return 0;
+}
+
+#if 0
+static int disp_path_get_m4u_moduleId (DISP_MODULE_ENUM module) 
+{
+    int m4u_module = M4U_PORT_UNKNOWN;
+
+    switch (module) 
+    {
+        case DISP_MODULE_OVL:
+            m4u_module = M4U_PORT_LCD_OVL;
+            break;
+        case DISP_MODULE_RDMA0:
+            m4u_module = M4U_PORT_LCD_R;
+            break;
+        case DISP_MODULE_WDMA0:
+            m4u_module = M4U_PORT_LCD_W;
+            break;
+        default:
+            break;
+    }
+    
+    return m4u_module;
+}
+#endif
+
+static int disp_path_init_m4u_port (DISP_MODULE_ENUM module) 
+{
+    int m4u_module = M4U_PORT_UNKNOWN;
+    M4U_PORT_STRUCT portStruct;
+
+    switch (module) 
+    {
+        case DISP_MODULE_OVL:
+            m4u_module = M4U_PORT_LCD_OVL;
+            break;
+        case DISP_MODULE_RDMA0:
+            m4u_module = M4U_PORT_LCD_R;
+            break;
+        case DISP_MODULE_WDMA0:
+            m4u_module = M4U_PORT_LCD_W;
+            break;
+        default:
+            break;
+    }
+
+    portStruct.ePortID = m4u_module;		   //hardware port ID, defined in M4U_PORT_ID_ENUM
+    portStruct.Virtuality = 1;
+    portStruct.Security = 0;
+    portStruct.domain = 0;            //domain : 0 1 2 3
+    portStruct.Distance = 1;
+    portStruct.Direction = 0;
+
+    m4u_config_port(&portStruct);
+
+    return 0;
+}
+
+#if 0
+static int disp_path_deinit_m4u_port (DISP_MODULE_ENUM module) 
+{
+    int m4u_module = M4U_PORT_UNKNOWN;
+    M4U_PORT_STRUCT portStruct;
+
+    switch (module) 
+    {
+        case DISP_MODULE_OVL:
+            m4u_module = M4U_PORT_LCD_OVL;
+            break;
+        case DISP_MODULE_RDMA0:
+            m4u_module = M4U_PORT_LCD_R;
+            break;
+        case DISP_MODULE_WDMA0:
+            m4u_module = M4U_PORT_LCD_W;
+            break;
+        default:
+            break;
+    }
+
+    portStruct.ePortID = m4u_module;		   //hardware port ID, defined in M4U_PORT_ID_ENUM
+    portStruct.Virtuality = 0;
+    portStruct.Security = 0;
+    portStruct.domain = 0;            //domain : 0 1 2 3
+    portStruct.Distance = 1;
+    portStruct.Direction = 0;
+
+    m4u_config_port(&portStruct);
+
+    return 0;
+}
+#endif
+
+/**
+ * In decouple mode, disp_config_update_kthread will call this to reconfigure
+ * next buffer to RDMA->LCM
+ */
+int disp_path_config_rdma (RDMA_CONFIG_STRUCT* pRdmaConfig) 
+{
+    DISP_DBG("[DDP] config_rdma(), idx=%d, mode=%d, in_fmt=%d, addr=0x%x, out_fmt=%d, pitch=%d, x=%d, y=%d, byteSwap=%d, rgbSwap=%d \n ",
+                     pRdmaConfig->idx,
+                     pRdmaConfig->mode,       	 // direct link mode
+                     pRdmaConfig->inputFormat,    // inputFormat
+                     pRdmaConfig->address,        // address
+                     pRdmaConfig->outputFormat,   // output format
+                     pRdmaConfig->pitch,       	 // pitch
+                     pRdmaConfig->width,       	 // width
+                     pRdmaConfig->height,      	 // height
+                     pRdmaConfig->isByteSwap,  	 // byte swap
+                     pRdmaConfig->isRGBSwap);
+
+    // TODO: just need to reconfig buffer address now! because others are configured before
+    //RDMASetAddress(pRdmaConfig->idx, pRdmaConfig->address);
+    RDMAConfig(pRdmaConfig->idx, pRdmaConfig->mode, pRdmaConfig->inputFormat, pRdmaConfig->address,
+    pRdmaConfig->outputFormat, pRdmaConfig->pitch, pRdmaConfig->width,
+    pRdmaConfig->height, pRdmaConfig->isByteSwap, pRdmaConfig->isRGBSwap);
+
+    return 0;
+}
+
+/**
+ * In decouple mode, disp_ovl_worker_kthread will call this to reconfigure
+ * next output buffer to OVL-->WDMA
+ */
+int disp_path_config_wdma (struct disp_path_config_mem_out_struct* pConfig) 
+{
+    DISP_DBG("[DDP] config_wdma(), idx=%d, dstAddr=%x, out_fmt=%d\n",
+                      0,
+                      pConfig->dstAddr,
+                      pConfig->outFormat);
+
+    // TODO: just need to reconfig buffer address now! because others are configured before
+    WDMAConfigAddress(0, pConfig->dstAddr);
+    WDMAStart(0);
+    
+    return 0;
+}
+
+/**
+ * switch decouple:
+ * 1. save mutex0(gMutexID) contents
+ * 2. reconfigure OVL->WDMA within mutex0(gMutexID)
+ * 3. move engines in mutex0(gMutexID) to mutex1(gLcmMutexID)
+ * 4. reconfigure MMSYS_OVL_MOUT
+ * 5. reconfigure RDMA mode
+ */
+int disp_path_switch_ovl_mode (struct disp_path_config_ovl_mode_t *pConfig) 
+{
+    int reg_mutex_mod;
+    //int reg_mutex_sof;
+
+    if (DISP_IsDecoupleMode()) 
+    {
+        //reg_mutex_sof = DISP_REG_GET(DISP_REG_CONFIG_MUTEX_SOF(gMutexID));
+        reg_mutex_mod = DISP_REG_GET(DISP_REG_CONFIG_MUTEX_MOD(gMutexID));
+        // ovl mout
+        DISP_REG_SET(DISP_REG_CONFIG_DISP_OVL_MOUT_EN, 1<<1);   // ovl_mout output to wdma0
+        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_INTEN , 0x0303);
+        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_INTSTA, (1<<gMemOutMutexID)|(1<<gMutexID));
+        // mutex0
+        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(gMutexID), reg_mutex_mod&~(1<<3)); 	//remove OVL
+        // mutex1
+        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_EN(gMemOutMutexID), 1); 					//enable mutex1
+        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(gMemOutMutexID), (1<<3)|(1<<6)); 	//OVL, WDMA
+        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_SOF(gMemOutMutexID), 0);					//single mode
+
+        disp_register_irq(DISP_MODULE_WDMA0, _disp_path_wdma_callback);
+
+        // config wdma0
+        WDMAReset(0);
+        WDMAConfig(0,
+                             WDMA_INPUT_FORMAT_ARGB,
+                             pConfig->roi.width,
+                             pConfig->roi.height,
+                             pConfig->roi.x,
+                             pConfig->roi.y,
+                             pConfig->roi.width,
+                             pConfig->roi.height,
+                             pConfig->format,
+                             pConfig->address,
+                             pConfig->roi.width,
+                             1,
+                             0);
+        WDMAStart(0);
+
+        // config rdma
+        RDMAConfig(0,
+                            RDMA_MODE_MEMORY,       		// memory mode
+                            pConfig->format,    			// inputFormat
+                            pConfig->address,       		// address, will be reset later
+                            RDMA_OUTPUT_FORMAT_ARGB,     	// output format
+                            pConfig->pitch,         		// pitch
+                            pConfig->roi.width,
+                            pConfig->roi.height,
+                            0,                      		//byte swap
+                            0);                     		// is RGB swap
+        RDMAStart(0);
+        //disp_dump_reg(DISP_MODULE_WDMA0);
+    } 
+    else 
+    {
+        //reg_mutex_sof = DISP_REG_GET(DISP_REG_CONFIG_MUTEX_SOF(gMemOutMutexID));
+        reg_mutex_mod = DISP_REG_GET(DISP_REG_CONFIG_MUTEX_MOD(gMutexID));
+        // ovl mout
+        DISP_REG_SET(DISP_REG_CONFIG_DISP_OVL_MOUT_EN, 1<<0);   // ovl_mout output to rdma
+        //DISP_REG_SET(DISP_REG_CONFIG_MUTEX_EN(gMutexID), 1);
+        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_INTEN , 0x0101);
+        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_INTSTA, 1<<gMutexID);
+        // mutex0
+        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(gMutexID), reg_mutex_mod|(1<<3)); //Add OVL
+        //DISP_REG_SET(DISP_REG_CONFIG_MUTEX_SOF(gMutexID), reg_mutex_sof);
+        // mutex1
+        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(gMemOutMutexID), 0);
+        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_EN(gMemOutMutexID), 0); //disable mutex1
+
+        // config rdma
+        RDMAConfig(0,
+                            RDMA_MODE_DIRECT_LINK,       // direct link mode
+                            pConfig->format,    		 // inputFormat
+                            pConfig->address,            // address
+                            RDMA_OUTPUT_FORMAT_ARGB,     // output format
+                            pConfig->pitch,         	 // pitch
+                            pConfig->roi.width,
+                            pConfig->roi.height,
+                            0,                           // byte swap
+                            0);                          // is RGB swap
+
+        disp_unregister_irq(DISP_MODULE_WDMA0, _disp_path_wdma_callback);
+        RDMAStart(0);
+    }
+
+    return 0;
+}
+
+int disp_path_wait_frame_done(void)
+{
+    //wait_event_interruptible(mem_out_wq, mem_out_done);
+    //mem_out_done = 0;
+
+    int ret = 0;
+    // use timeout version instead of wait-forever
+    ret = wait_event_interruptible_timeout(
+                    mem_out_wq, 
+                    mem_out_done, 
+                    disp_ms2jiffies(100) ); // timeout after 2s
+                    
+    /*wake-up from sleep*/
+    if(ret==0) // timeout
+    {
+        if (DISP_REG_GET(DISP_REG_WDMA_EN))
+        {
+            DISP_ERR("disp_path_wait_mem_out_done timeout \n");
+
+            // reset DSI & WDMA engine
+            WDMAReset(0);
+        }
+    }
+    else if(ret<0) // intr by a signal
+    {
+        DISP_ERR("disp_path_wait_mem_out_done intr by a signal ret=%d \n", ret);
+    }
+
+    mem_out_done = 0;   
+    return ret;
+}
+// OVL decouple @}
+///========================
+
+
+//#define MANUAL_DEBUG
+/**
+ * In D-link mode, disp_config_update_kthread will call this to reconfigure next
+ * buffer to OVL
+ * In Decouple mode, disp_ovl_worker_kthread will call this to reconfigure next
+ * buffer to OVL
+ */
 int disp_path_config_layer(OVL_CONFIG_STRUCT* pOvlConfig)
 {
 //    unsigned int reg_addr;
@@ -611,9 +908,6 @@ int disp_path_config_layer_addr(unsigned int layer, unsigned int addr)
 }
 
 
-DECLARE_WAIT_QUEUE_HEAD(mem_out_wq);
-static unsigned int mem_out_done = 0;
-
 void _disp_path_wdma_callback(unsigned int param)
 {
     mem_out_done = 1;
@@ -621,8 +915,7 @@ void _disp_path_wdma_callback(unsigned int param)
 }
 
 
-extern unsigned int disp_ms2jiffies(unsigned long ms);
-int disp_path_wait_mem_out_done(void)
+void disp_path_wait_mem_out_done(void)
 {
     //wait_event_interruptible(mem_out_wq, mem_out_done);
     //mem_out_done = 0;
@@ -637,43 +930,38 @@ int disp_path_wait_mem_out_done(void)
     /*wake-up from sleep*/
     if(ret==0) // timeout
     {
-//zhao.li@tcl bug 481348 P28
-/*
-        DISP_ERR("disp_path_wait_mem_out_done timeout \n");
-        disp_dump_reg(DISP_MODULE_WDMA0); 
-        disp_dump_reg(DISP_MODULE_OVL); 
-        disp_dump_reg(DISP_MODULE_CONFIG);
-
-        // reset DSI & WDMA engine
-        WDMAReset(0);
-        mem_out_done = 1;    
-        return -1;
-*/		
         if (DISP_REG_GET(DISP_REG_WDMA_EN))
         {
             DISP_ERR("disp_path_wait_mem_out_done timeout \n");
 
             // reset DSI & WDMA engine
             WDMAReset(0);
-            return -1;
         }
-//zhao.li@tcl bug 481348 P28 end		
     }
     else if(ret<0) // intr by a signal
     {
         DISP_ERR("disp_path_wait_mem_out_done intr by a signal ret=%d \n", ret);
     }
-//zhao.li@tcl bug 481348 P28    
-    return 0;
-}
 
-
-int disp_path_clear_mem_out_done(void)
-{
-//zhao.li@tcl bug 481348 P28 end
     mem_out_done = 0;    
+}
+
+
+// for video mode, if there are more than one frame between memory_out done and disable WDMA
+// mem_out_done will be set to 1, next time user trigger disp_path_wait_mem_out_done() will return 
+// directly, in such case, screen capture will dose not work for one time. 
+// so we add this func to make sure disp_path_wait_mem_out_done() will be execute everytime.
+void disp_path_clear_mem_out_done_flag(void)
+{
+    mem_out_done = 0;    
+}
+
+
+int  disp_path_query()
+{
     return 0;
 }
+
 
 // just mem->ovl->wdma1->mem, used in suspend mode screen capture
 // have to call this function set pConfig->enable=0 to reset configuration
@@ -700,13 +988,14 @@ int disp_path_config_mem_out_without_lcd(struct disp_path_config_mem_out_struct*
 
     if(pConfig->enable==1)
     {
- //zhao.li@tcl bug 481348 P28       mem_out_done = 0;
+        mem_out_done = 0;
         disp_register_irq(DISP_MODULE_WDMA0, _disp_path_wdma_callback);
 
         // config wdma0
-        WDMAInit(0);//zhao.li@tcl bug 481348 P28
+        WDMAInit(0);
+        
         WDMAReset(0);
-//zhao.li@tcl bug 481348 P28
+
         if(pConfig->dstAddr==0 ||
            pConfig->srcROI.width==0    ||
            pConfig->srcROI.height==0    )
@@ -719,7 +1008,9 @@ int disp_path_config_mem_out_without_lcd(struct disp_path_config_mem_out_struct*
             disp_unregister_irq(DISP_MODULE_WDMA0, _disp_path_wdma_callback);
             return -1;
         }
-//zhao.li@tcl bug 481348 P28 end
+
+        //disp_dump_reg(DISP_MODULE_WDMA0);
+        
         WDMAConfig(0, 
                             WDMA_INPUT_FORMAT_ARGB, 
                             pConfig->srcROI.width,
@@ -751,13 +1042,12 @@ int disp_path_config_mem_out_without_lcd(struct disp_path_config_mem_out_struct*
     }
     else
     {
-	//zhao.li@tcl bug 481348 P28
         WDMAStop(0);
         WDMAReset(0);
         
         OVLStop();
         OVLReset();    
-//zhao.li@tcl bug 481348 P28 end
+    
         // mutex
         DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(gMutexID), reg_mutex_mod);
         DISP_REG_SET(DISP_REG_CONFIG_MUTEX_SOF(gMutexID), reg_mutex_sof);         
@@ -769,6 +1059,7 @@ int disp_path_config_mem_out_without_lcd(struct disp_path_config_mem_out_struct*
 
     return 0;
 }
+
 
 // add wdma0 into the path
 // should call get_mutex() / release_mutex for this func
@@ -793,13 +1084,14 @@ int disp_path_config_mem_out(struct disp_path_config_mem_out_struct* pConfig)
 
     if(pConfig->enable==1)
     {
-//zhao.li@tcl bug 481348 P28        mem_out_done = 0;
+        mem_out_done = 0;
         disp_register_irq(DISP_MODULE_WDMA0, _disp_path_wdma_callback);
 
         // config wdma0
-        WDMAInit(0);//zhao.li@tcl bug 481348 P28
+        WDMAInit(0);
+        
         WDMAReset(0);
-//zhao.li@tcl bug 481348 P28
+
         if(pConfig->dstAddr==0 ||
            pConfig->srcROI.width==0    ||
            pConfig->srcROI.height==0    )
@@ -812,7 +1104,7 @@ int disp_path_config_mem_out(struct disp_path_config_mem_out_struct* pConfig)
             disp_unregister_irq(DISP_MODULE_WDMA0, _disp_path_wdma_callback);
             return -1;
         }
-//zhao.li@tcl bug 481348 P28 end
+                
         WDMAConfig(0, 
                    WDMA_INPUT_FORMAT_ARGB, 
                    pConfig->srcROI.width,
@@ -834,7 +1126,7 @@ int disp_path_config_mem_out(struct disp_path_config_mem_out_struct* pConfig)
         
         // ovl mout
         reg = DISP_REG_GET(DISP_REG_CONFIG_DISP_OVL_MOUT_EN);
-        DISP_REG_SET(DISP_REG_CONFIG_DISP_OVL_MOUT_EN, reg|(0x2));   // ovl_mout output to bls
+        DISP_REG_SET(DISP_REG_CONFIG_DISP_OVL_MOUT_EN, reg|(0x2));   // ovl_mout output to rdma & wdma
         
         //disp_dump_reg(DISP_MODULE_WDMA0);
     }
@@ -858,13 +1150,13 @@ int disp_path_config_mem_out(struct disp_path_config_mem_out_struct* pConfig)
 
 UINT32 fb_width = 0;
 UINT32 fb_height = 0;
-UINT32 fb_vaddr = 0;//zhao.li@tcl bug 481348 P28
+UINT32 fb_vaddr = 0;
 
 int disp_path_config(struct disp_path_config_struct* pConfig)
 {
     fb_width = pConfig->srcROI.width;
     fb_height = pConfig->srcROI.height;
-    fb_vaddr = pConfig->ovl_config.vaddr;//zhao.li@tcl bug 481348 P28
+    fb_vaddr = pConfig->ovl_config.vaddr;
     return disp_path_config_(pConfig, gMutexID);
 }
 
@@ -874,7 +1166,6 @@ DISP_MODULE_ENUM g_dst_module;
 int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
 {
     unsigned int mutexMode;
-    unsigned int mutexValue;
 
     DDP_DRV_DBG("[DDP] disp_path_config(), srcModule=%d, addr=0x%x, inFormat=%d, \n\
                      pitch=%d, bgROI(%d,%d,%d,%d), bgColor=%d, outFormat=%d, dstModule=%d, dstAddr=0x%x, dstPitch=%d, mutexId=%d \n",
@@ -926,24 +1217,29 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
        
         if(pConfig->srcModule==DISP_MODULE_RDMA0)
         {
-           DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(gMutexID), 0x400);  // [0]: MDP_WROT
-                                                                                                                         // [1]: MDP_PRZ0
-                                                                                                                         // [2]: MDP_PRZ1
-                                                                                                                         // [3]: DISP_OVL
-                                                                                                                         // [4]: MDP_WDMA
-                                                                                                                         // [5]: MDP_RDMA
-                                                                                                                         // [6]: DISP_WDMA
-                                                                                                                         // [7]: DISP_COLOR
-                                                                                                                         // [8]: MDP_TDSHP
-                                                                                                                         // [9]: DISP_BLS
-                                                                                                                         // [10]: DISP_RDMA
-                                                                                                                         // [11]: ISP_MOUT
+            if (pConfig->dstModule==DISP_MODULE_WDMA0)
+            {
+                DDP_DRV_ERR("RDMA cannot connect to WDMA!!\n"); 
+                ASSERT(0);
+            }
+            DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(mutexId), 0x680);  // [0]: MDP_WROT
+                                                                                                                          // [1]: MDP_PRZ0
+                                                                                                                          // [2]: MDP_PRZ1
+                                                                                                                          // [3]: DISP_OVL
+                                                                                                                          // [4]: MDP_WDMA
+                                                                                                                          // [5]: MDP_RDMA
+                                                                                                                          // [6]: DISP_WDMA
+                                                                                                                          // [7]: DISP_COLOR
+                                                                                                                          // [8]: MDP_TDSHP
+                                                                                                                          // [9]: DISP_BLS
+                                                                                                                          // [10]: DISP_RDMA
+                                                                                                                          // [11]: ISP_MOUT
         }
         else
         {
             if (pConfig->dstModule==DISP_MODULE_WDMA0)
             {
-               DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(gMutexID), 0x48);  // [0]: MDP_WROT
+               DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(mutexId), 0x48);  // [0]: MDP_WROT
                                                                                                                            // [1]: MDP_PRZ0
                                                                                                                            // [2]: MDP_PRZ1
                                                                                                                            // [3]: DISP_OVL
@@ -959,7 +1255,7 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
             else
             {
                //DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(gMutexID), 0x284); //ovl=2, bls=9, rdma0=7
-               DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(gMutexID), 0x688);  // [0]: MDP_WROT
+               DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(mutexId), 0x688);  // [0]: MDP_WROT
                                                                                                                              // [1]: MDP_PRZ0
                                                                                                                              // [2]: MDP_PRZ1
                                                                                                                              // [3]: DISP_OVL
@@ -973,37 +1269,70 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
                                                                                                                              // [11]: ISP_MOUT
             }
         }		
-        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_SOF(gMutexID), mutexMode);
-        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_INTSTA, (1 << gMutexID));
+        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_SOF(mutexId), mutexMode);
+        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_INTSTA, (1 << mutexId));
         DISP_REG_SET(DISP_REG_CONFIG_MUTEX_INTEN , 0x0d0d);   // enable mutex 0,2,3's intr, other mutex will be used by MDP    
-        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_EN(gMutexID), 1);        
+        DISP_REG_SET(DISP_REG_CONFIG_MUTEX_EN(mutexId), 1);        
+
+        if (DISP_IsDecoupleMode()) 
+        {
+            disp_path_init_m4u_port(DISP_MODULE_RDMA0);
+            disp_path_init_m4u_port(DISP_MODULE_WDMA0);
+            DISP_REG_SET(DISP_REG_CONFIG_MUTEX_EN(gMemOutMutexID), 1);
+            DISP_REG_SET(DISP_REG_CONFIG_MUTEX_INTEN , 0x0F0F);
+            /// config OVL-WDMA data path with mutex0
+            DISP_REG_SET(DISP_REG_CONFIG_MUTEX_MOD(gMemOutMutexID), (1<<3)|(1<<6)); // OVL-->WDMA
+            DISP_REG_SET(DISP_REG_CONFIG_MUTEX_SOF(gMemOutMutexID), 0x0);// single mode
+            DISP_REG_SET(DISP_REG_CONFIG_MUTEX_INTSTA, (1 << gMemOutMutexID)|(1 << mutexId));
+        }
  
         ///> config config reg
         switch(pConfig->dstModule)
         {
             case DISP_MODULE_DSI_VDO:
             case DISP_MODULE_DSI_CMD:
-               DISP_REG_SET(DISP_REG_CONFIG_DISP_OVL_MOUT_EN, 0x1);  // OVL output, [0]: DISP_RDMA, [1]: DISP_WDMA, [2]: DISP_COLOR
+               if (DISP_IsDecoupleMode()) 
+               {
+                   DISP_REG_SET(DISP_REG_CONFIG_DISP_OVL_MOUT_EN, 0x2);  // OVL output, [0]: DISP_RDMA, [1]: DISP_WDMA, [2]: DISP_COLOR
+               } 
+               else 
+               {
+                   DISP_REG_SET(DISP_REG_CONFIG_DISP_OVL_MOUT_EN, 0x1);  // OVL output, [0]: DISP_RDMA, [1]: DISP_WDMA, [2]: DISP_COLOR
+                   DISP_REG_SET(DISP_REG_CONFIG_RDMA0_OUT_SEL, 0x0);  // RDMA output, 0: DISP_COLOR, 1: DSI
+                   DISP_REG_SET(DISP_REG_CONFIG_COLOR_SEL, 0x0);  // color input, 0: DISP_RDMA, 1: DISP_OVL
+                   DISP_REG_SET(DISP_REG_CONFIG_DSI_SEL, 0x0);  // DSI input, 0: DISP_BLS, 1: DISP_RDMA
+               }
                DISP_REG_SET(DISP_REG_CONFIG_DISP_OUT_SEL, 0x0);  // display output, 0: DSI, 1: DPI, 2: DBI
-               DISP_REG_SET(DISP_REG_CONFIG_RDMA0_OUT_SEL, 0x0);  // RDMA output, 0: DISP_COLOR, 1: DSI
-               DISP_REG_SET(DISP_REG_CONFIG_COLOR_SEL, 0x0);  // color input, 0: DISP_RDMA, 1: DISP_OVL
-               DISP_REG_SET(DISP_REG_CONFIG_DSI_SEL, 0x0);  // DSI input, 0: DISP_BLS, 1: DISP_RDMA
                break;
 
             case DISP_MODULE_DPI0:
                //printk("DISI_MODULE_DPI0\n");
-               DISP_REG_SET(DISP_REG_CONFIG_DISP_OVL_MOUT_EN, 0x1);  // OVL output, [0]: DISP_RDMA, [1]: DISP_WDMA, [2]: DISP_COLOR
+               if (DISP_IsDecoupleMode()) 
+               {
+                   DISP_REG_SET(DISP_REG_CONFIG_DISP_OVL_MOUT_EN, 0x2);  // OVL output, [0]: DISP_RDMA, [1]: DISP_WDMA, [2]: DISP_COLOR
+               } 
+               else 
+               {
+                   DISP_REG_SET(DISP_REG_CONFIG_DISP_OVL_MOUT_EN, 0x1);  // OVL output, [0]: DISP_RDMA, [1]: DISP_WDMA, [2]: DISP_COLOR
+                   DISP_REG_SET(DISP_REG_CONFIG_RDMA0_OUT_SEL, 0x0);  // RDMA output, 0: DISP_COLOR, 1: DSI
+                   DISP_REG_SET(DISP_REG_CONFIG_DPI0_SEL, 0);  // DPI input, 0: DISP_BLS, 1: DISP_RDMA
+                   DISP_REG_SET(DISP_REG_CONFIG_COLOR_SEL, 0x0);  // color input, 0: DISP_RDMA, 1: DISP_OVL
+               }
                DISP_REG_SET(DISP_REG_CONFIG_DISP_OUT_SEL, 0x1);  // display output, 0: DSI, 1: DPI, 2: DBI
-               DISP_REG_SET(DISP_REG_CONFIG_RDMA0_OUT_SEL, 0x0);  // RDMA output, 0: DISP_COLOR, 1: DSI
-               DISP_REG_SET(DISP_REG_CONFIG_DPI0_SEL, 0);  // DPI input, 0: DISP_BLS, 1: DISP_RDMA
-               DISP_REG_SET(DISP_REG_CONFIG_COLOR_SEL, 0x0);  // color input, 0: DISP_RDMA, 1: DISP_OVL
                break;
 
             case DISP_MODULE_DBI:
-               DISP_REG_SET(DISP_REG_CONFIG_DISP_OVL_MOUT_EN, 0x1);  // OVL output, [0]: DISP_RDMA, [1]: DISP_WDMA, [2]: DISP_COLOR
+               if (DISP_IsDecoupleMode()) 
+               {
+                   DISP_REG_SET(DISP_REG_CONFIG_DISP_OVL_MOUT_EN, 0x2);  // OVL output, [0]: DISP_RDMA, [1]: DISP_WDMA, [2]: DISP_COLOR
+               } 
+               else 
+               {
+                   DISP_REG_SET(DISP_REG_CONFIG_DISP_OVL_MOUT_EN, 0x1);  // OVL output, [0]: DISP_RDMA, [1]: DISP_WDMA, [2]: DISP_COLOR
+                   DISP_REG_SET(DISP_REG_CONFIG_RDMA0_OUT_SEL, 0x0);  // RDMA output, 0: DISP_COLOR, 1: DSI
+                   DISP_REG_SET(DISP_REG_CONFIG_COLOR_SEL, 0x0);  // color input, 0: DISP_RDMA, 1: DISP_OVL
+               }
                DISP_REG_SET(DISP_REG_CONFIG_DISP_OUT_SEL, 0x2);  // display output, 0: DSI, 1: DPI, 2: DBI
-               DISP_REG_SET(DISP_REG_CONFIG_RDMA0_OUT_SEL, 0x0);  // RDMA output, 0: DISP_COLOR, 1: DSI
-               DISP_REG_SET(DISP_REG_CONFIG_COLOR_SEL, 0x0);  // color input, 0: DISP_RDMA, 1: DISP_OVL
                break;
 
             case DISP_MODULE_WDMA0:
@@ -1015,9 +1344,11 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
         }    
         
         ///> config engines
-        if(pConfig->srcModule!=DISP_MODULE_RDMA0)
+        if(pConfig->srcModule!=DISP_MODULE_RDMA1)
         {            // config OVL
-            OVLInit();//zhao.li@tcl bug 481348 P28
+            // ovl initialization
+            OVLInit();
+            
             OVLROI(pConfig->bgROI.width, // width
                    pConfig->bgROI.height, // height
                    pConfig->bgColor);// background B
@@ -1025,7 +1356,7 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
             if(pConfig->dstModule!=DISP_MODULE_DSI_VDO && pConfig->dstModule!=DISP_MODULE_DPI0)
             {
                 OVLStop();
-                OVLReset();//zhao.li@tcl bug 481348 P28
+                OVLReset();
             }
             if(pConfig->ovl_config.layer<4)
             {
@@ -1070,8 +1401,10 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
 
             if(pConfig->dstModule==DISP_MODULE_WDMA0)  //1. mem->ovl->wdma0->mem
             {
-                WDMAInit(0);//zhao.li@tcl bug 481348 P28
+                WDMAInit(0);
+
                 WDMAReset(0);
+
                 if(pConfig->dstAddr==0 ||
                    pConfig->srcROI.width==0    ||
                    pConfig->srcROI.height==0    )
@@ -1113,7 +1446,7 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
                 ///config RDMA
                 if(pConfig->dstModule!=DISP_MODULE_DSI_VDO && pConfig->dstModule!=DISP_MODULE_DPI0)
                 {
-                    RDMAInit(0);//zhao.li@tcl bug 481348 P28
+                    RDMAInit(0);
                     RDMAStop(0);
                     RDMAReset(0);
                 }
@@ -1125,18 +1458,75 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
                            pConfig->srcROI.height);
                     return -1;
                 }
-                RDMAConfig(0, 
-                           RDMA_MODE_DIRECT_LINK,       ///direct link mode
-                           RDMA_INPUT_FORMAT_RGB888,    // inputFormat
-                           NULL,                        // address
-                           pConfig->outFormat,          // output format
-                           pConfig->pitch,              // pitch
-                           pConfig->srcROI.width,       // width
-                           pConfig->srcROI.height,      // height
-                           0,                           //byte swap
-                           0);                          // is RGB swap        
-                           
-                RDMAStart(0);
+
+                if (DISP_IsDecoupleMode()) 
+                {
+                    printk("from de-couple\n");
+                    WDMAReset(0);
+
+                    if(decouple_addr==0 ||
+                       pConfig->srcROI.width==0    ||
+                       pConfig->srcROI.height==0    )
+                    {
+                        DISP_ERR("wdma parameter invalidate, addr=0x%x, w=%d, h=%d \n",
+                                         decouple_addr,
+                                         pConfig->srcROI.width,
+                                         pConfig->srcROI.height);
+
+                        return -1;
+                    }
+
+                    WDMAConfig(0,
+                                         WDMA_INPUT_FORMAT_ARGB,
+                                         pConfig->srcROI.width,
+                                         pConfig->srcROI.height,
+                                         0,
+                                         0,
+                                         pConfig->srcROI.width,
+                                         pConfig->srcROI.height,
+                                         eRGB888,
+                                         decouple_addr,
+                                         pConfig->srcROI.width,
+                                         1,
+                                         0);
+                    WDMAStart(0);
+                    // Register WDMA intr
+                    mem_out_done = 0;
+                    disp_register_irq(DISP_MODULE_WDMA0, _disp_path_wdma_callback);
+                    
+                    RDMAConfig(0,
+                                        RDMA_MODE_MEMORY,       	 // mem mode
+                                        eRGB888,    				 // inputFormat
+                                        decouple_addr,               // display lk logo when entering kernel
+                                        RDMA_OUTPUT_FORMAT_ARGB,     // output format
+                                        pConfig->srcROI.width*3,     // pitch, eRGB888
+                                        pConfig->srcROI.width,       // width
+                                        pConfig->srcROI.height,      // height
+                                        0,                           // byte swap
+                                        0);
+
+                    RDMASetTargetLine(0, DISP_GetScreenHeight()*4/5);
+
+                    RDMAStart(0);
+                }
+                else 
+                {
+                    RDMAConfig(0, 
+                                         RDMA_MODE_DIRECT_LINK,       ///direct link mode
+                                         eRGB888,    // inputFormat
+                                         (unsigned)NULL,                        // address
+                                         pConfig->outFormat,          // output format
+                                         pConfig->pitch,              // pitch
+                                         pConfig->srcROI.width,       // width
+                                         pConfig->srcROI.height,      // height
+                                         0,                           //byte swap
+                                         0);                          // is RGB swap        
+    
+                    RDMASetTargetLine(0, DISP_GetScreenHeight()*4/5);
+                    
+                    RDMAStart(0);
+                }
+
 
                 /////bypass BLS
                 //dispsys_bypass_bls(pConfig->srcROI.width, pConfig->srcROI.height);
@@ -1172,14 +1562,16 @@ int disp_path_config_(struct disp_path_config_struct* pConfig, int mutexId)
     //DISP_REG_SET(DISP_REG_WDMA_BUF_CON1, 0x10000000);
     //DISP_REG_SET(DISP_REG_WDMA_BUF_CON2, 0x20402020);
 
-
-        return 0;
+    // a workaround for OVL hang after back to back grlast
+    DISP_REG_SET(DISP_REG_OVL_DATAPATH_CON, (1<<29));
+    return 0;
 }
 
 #ifdef DDP_USE_CLOCK_API
 extern unsigned int* pRegBackup;
 unsigned int reg_offset = 0;
 unsigned int disp_intr_status[DISP_MODULE_MAX] = {0};
+unsigned int gNeedToRecover = 0; // for UT debug test
 
 // #define DDP_RECORD_REG_BACKUP_RESTORE  // print the reg value before backup and after restore
 
@@ -1222,7 +1614,6 @@ static int _disp_intr_restore(void)
     //DISP_REG_SET(DISP_REG_ROT_INTERRUPT_ENABLE,   disp_intr_status[DISP_MODULE_ROT]  );  
     //DISP_REG_SET(DISP_REG_SCL_INTEN,              disp_intr_status[DISP_MODULE_SCL]  ); 
     DISP_REG_SET(DISP_REG_OVL_INTEN,              disp_intr_status[DISP_MODULE_OVL]  ); 
-    //DISP_REG_SET(DISP_REG_WDMA_INTEN,             disp_intr_status[DISP_MODULE_WDMA0]); 
     DISP_REG_SET(DISP_REG_WDMA_INTEN,      disp_intr_status[DISP_MODULE_WDMA0]); 
     DISP_REG_SET(DISP_REG_RDMA_INT_ENABLE,        disp_intr_status[DISP_MODULE_RDMA0]); 
     //DISP_REG_SET(DISP_REG_RDMA_INT_ENABLE+0x1000, disp_intr_status[DISP_MODULE_RDMA0]); 
@@ -1240,8 +1631,6 @@ static int _disp_intr_disable_and_clear(void)
     //disp_intr_status[DISP_MODULE_SCL] = DISP_REG_GET(DISP_REG_SCL_INTEN);
     disp_intr_status[DISP_MODULE_OVL] = DISP_REG_GET(DISP_REG_OVL_INTEN);
     disp_intr_status[DISP_MODULE_WDMA0] = DISP_REG_GET(DISP_REG_WDMA_INTEN);
-    //disp_intr_status[DISP_MODULE_WDMA1] = DISP_REG_GET(DISP_REG_WDMA_INTEN+0x1000);
-    //disp_intr_status[DISP_MODULE_RDMA0] = DISP_REG_GET(DISP_REG_RDMA_INT_ENABLE);
     disp_intr_status[DISP_MODULE_RDMA0] = DISP_REG_GET(DISP_REG_RDMA_INT_ENABLE);
     disp_intr_status[DISP_MODULE_MUTEX] = DISP_REG_GET(DISP_REG_CONFIG_MUTEX_INTEN);
     
@@ -1265,11 +1654,10 @@ static int _disp_intr_disable_and_clear(void)
 }
 
 
-int disp_mutex_backup()
+static int disp_mutex_backup(void)
 {
     int i;
 
-//zhao.li@tcl bug 481348 P28    _reg_backup(DISP_REG_CONFIG_MUTEX_INTEN);
     _reg_backup(DISP_REG_CONFIG_REG_UPD_TIMEOUT);
 
     for (i=0; i<DDP_MAX_MUTEX_MUN; i++)
@@ -1283,7 +1671,8 @@ int disp_mutex_backup()
 }
 
 
-int disp_bls_backup()
+#if 0
+static int disp_bls_backup(void)
 {
     int i;
 
@@ -1315,9 +1704,10 @@ int disp_bls_backup()
  
     return 0; 
 }
+#endif
 
 
-int disp_reg_backup()
+static int disp_reg_backup(void)
 {
   reg_offset = 0;
   DDP_DRV_INFO("disp_reg_backup() start, *pRegBackup=0x%x, reg_offset=%d  \n", *pRegBackup, reg_offset);
@@ -1474,8 +1864,8 @@ int disp_reg_backup()
   _reg_backup(DISP_REG_RDMA_CF_POST_ADD2  );          
   _reg_backup(DISP_REG_RDMA_DUMMY         );          
   _reg_backup(DISP_REG_RDMA_DEBUG_OUT_SEL );          
-  
-#if 0  //zhao.li@tcl bug 481348 P28
+
+#if 1  
   // WDMA
   _reg_backup(DISP_REG_WDMA_INTEN          );             
   _reg_backup(DISP_REG_WDMA_INTSTA         );     
@@ -1510,7 +1900,7 @@ int disp_reg_backup()
   _reg_backup(DISP_REG_WDMA_FLOW_CTRL_DBG  );     
   _reg_backup(DISP_REG_WDMA_EXEC_DBG       );     
   _reg_backup(DISP_REG_WDMA_CLIP_DBG       );     
-#endif//zhao.li@tcl bug 481348 P28
+#endif
 
   DDP_DRV_INFO("disp_reg_backup() end, *pRegBackup=0x%x, reg_offset=%d \n", *pRegBackup, reg_offset);     
  
@@ -1518,11 +1908,10 @@ int disp_reg_backup()
 }
 
 
-int disp_mutex_restore()
+static int disp_mutex_restore(void)
 {
     int i;
 
-//zhao.li@tcl bug 481348 P28    _reg_restore(DISP_REG_CONFIG_MUTEX_INTEN);
     _reg_restore(DISP_REG_CONFIG_REG_UPD_TIMEOUT);
 
     for (i=0; i<DDP_MAX_MUTEX_MUN; i++)
@@ -1536,7 +1925,8 @@ int disp_mutex_restore()
 }
 
 
-int disp_bls_restore()
+#if 0
+static int disp_bls_restore(void)
 {
     int i;
 
@@ -1568,9 +1958,10 @@ int disp_bls_restore()
  
     return 0; 
 }
+#endif
 
 
-int disp_reg_restore()
+static int disp_reg_restore(void)
 {
     reg_offset = 0;
     DDP_DRV_INFO("disp_reg_restore(*) start, *pRegBackup=0x%x, reg_offset=%d  \n", *pRegBackup, reg_offset);
@@ -1592,7 +1983,6 @@ int disp_reg_restore()
     _reg_restore(DISP_REG_CONFIG_DPI0_SEL         );
 
     // OVL
-//zhao.li@tcl bug 481348 P28    OVLReset();
     _reg_restore(DISP_REG_OVL_STA                     );           
     _reg_restore(DISP_REG_OVL_INTEN                   ); 
     _reg_restore(DISP_REG_OVL_INTSTA                  ); 
@@ -1728,8 +2118,8 @@ int disp_reg_restore()
     _reg_restore(DISP_REG_RDMA_CF_POST_ADD2  );          
     _reg_restore(DISP_REG_RDMA_DUMMY         );          
     _reg_restore(DISP_REG_RDMA_DEBUG_OUT_SEL );          
-    
-#if 0    //zhao.li@tcl bug 481348 P28
+
+#if 1    
     // WDMA
     _reg_restore(DISP_REG_WDMA_INTEN          );             
     _reg_restore(DISP_REG_WDMA_INTSTA         );     
@@ -1764,7 +2154,7 @@ int disp_reg_restore()
     _reg_restore(DISP_REG_WDMA_FLOW_CTRL_DBG  );     
     _reg_restore(DISP_REG_WDMA_EXEC_DBG       );     
     _reg_restore(DISP_REG_WDMA_CLIP_DBG       );     
-#endif//zhao.li@tcl bug 481348 P28
+#endif
 
     //DDP_DRV_INFO("disp_reg_restore() release mutex \n");
     //disp_path_release_mutex();
@@ -1811,11 +2201,12 @@ int disp_path_clock_on(char* name)
 #endif
 
     // restore ddp related registers
-    if (0 == strncmp(name, "reg_restore", 11))
+    if (0 == strncmp(name, "mtkfb", 5))
     {
         if(*pRegBackup != DDP_UNBACKED_REG_MEM)
         {
-            DDP_DRV_INFO("reg_restore, caller:%s \n", name);//zhao.li@tcl bug 481348 P28
+            DDP_DRV_INFO("reg_restore, caller:%s \n", name);
+        
             // restore ddp engine registers
             disp_reg_restore();
 
@@ -1840,7 +2231,7 @@ int disp_path_clock_off(char* name)
         DDP_DRV_INFO("disp_path_power_off, caller:%s \n", name);
     }
     
-    if (0 == strncmp(name, "reg_backup", 10))
+    if (0 == strncmp(name, "mtkfb", 5))
     {
         DDP_DRV_INFO("reg_backup, caller:%s \n", name);
 
@@ -1850,7 +2241,7 @@ int disp_path_clock_off(char* name)
         // backup ddp engine registers
         disp_reg_backup();
     }
-//zhao.li@tcl bug 481348 P28 end
+
 #if 1
     if (clock_is_on(MT_CG_MDP_BLS_26M_SW_CG))
     {
@@ -1876,42 +2267,42 @@ int disp_path_clock_off(char* name)
     return 0;
 }
 
+
+int disp_intr_restore(void)
+{
+    // restore intr enable reg 
+    //DISP_REG_SET(DISP_REG_ROT_INTERRUPT_ENABLE,   disp_intr_status[DISP_MODULE_ROT]  );  
+    //DISP_REG_SET(DISP_REG_SCL_INTEN,              disp_intr_status[DISP_MODULE_SCL]  ); 
+    DISP_REG_SET(DISP_REG_OVL_INTEN,              disp_intr_status[DISP_MODULE_OVL]  ); 
+    DISP_REG_SET(DISP_REG_WDMA_INTEN,      disp_intr_status[DISP_MODULE_WDMA0]); 
+    DISP_REG_SET(DISP_REG_RDMA_INT_ENABLE,        disp_intr_status[DISP_MODULE_RDMA0]);
+    //DISP_REG_SET(DISP_REG_RDMA_INT_ENABLE+DISP_INDEX_OFFSET,        disp_intr_status[DISP_MODULE_RDMA1]);
+    DISP_REG_SET(DISP_REG_CONFIG_MUTEX_INTEN,     disp_intr_status[DISP_MODULE_MUTEX]); 
+
+    return 0;
+}
+
+
+void disp_path_recovery(unsigned int mutexID)
+{
+    if(gNeedToRecover || (DISP_REG_GET(DISP_REG_CONFIG_MUTEX_MOD(mutexID))==0))
+    {
+        DISP_ERR("mutex%d_mod invalid, try to recover!\n", mutexID);
+        gNeedToRecover = 0;
+        if (*pRegBackup != DDP_UNBACKED_REG_MEM)
+        {
+            disp_reg_restore();
+            disp_intr_restore();
+        }
+        else
+        {
+            DISP_ERR("recover failed!\n");
+        }
+    }
+}
+
+
 #else
-
-int disp_mutex_backup()
-{
-    return 0;
-}
-
-
-int disp_bls_backup()
-{
-    return 0;
-}
-
-
-int disp_reg_backup()
-{
-    return 0;
-}
-
-
-int disp_mutex_restore()
-{
-    return 0;
-}
-
-
-int disp_bls_restore()
-{
-    return 0;
-}
-
-
-int disp_reg_restore()
-{
-    return 0;
-}
 
 
 int disp_path_clock_on(char* name)

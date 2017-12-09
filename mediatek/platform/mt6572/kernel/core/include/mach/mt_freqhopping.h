@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2011 MediaTek, Inc.
+ *
+ * Author: Pupa Chen <pupa.chen@mediatek.com>
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
 
 #ifndef __MT_FREQHOPPING_H__
 #define __MT_FREQHOPPING_H__
@@ -22,7 +37,6 @@
 #define FHCTL_SM				(1 << 0)
 #define FHCTL_SSC				(1 << 1)
 #define FHCTL_HOPPING			(1 << 2)
-#define FHCTL_SSC_HP_MASK		(0x6)
 #define FHCTL_MODE_MASK			(0x7)
 
 #define FHCTL_SR_LSB			0
@@ -44,6 +58,104 @@
 #define SWITCH_PLLCON2FHCTL	1
 
 #define FREQHOP_PLLID2SRAMOFFSET(pLLID)		(pLLID * SRAM_TABLE_SIZE_BY_PLL)
+
+//- HAL porting start
+#define FHTAG "[FH]"
+
+#define VERBOSE_DEBUG 0
+
+#if VERBOSE_DEBUG
+#define FH_MSG(fmt, args...) \
+do {    \
+		printk( FHTAG""fmt" <- %s(): L<%d>  PID<%s><%d>\n", \
+            	##args ,__FUNCTION__,__LINE__,current->comm,current->pid); \
+} while(0);
+#else
+
+#if 1 //log level is 6 xlog
+#define FH_MSG(fmt, args...) \
+do {    \
+		xlog_printk(ANDROID_LOG_DEBUG, FHTAG, fmt, \
+            	##args ); \
+} while(0);
+#else //log level is 4 (printk)
+#define FH_MSG(fmt, args...) \
+do {    \
+		printk( FHTAG""fmt" \n", \
+            	##args ); \
+} while(0);
+#endif
+
+#endif
+
+//keep track the status of each PLL 
+//TODO: do we need another "uint mode" for Dynamic FH
+typedef struct{
+	unsigned int	fh_status;
+	unsigned int	pll_status;
+	unsigned int	setting_id;
+	unsigned int	curr_freq;
+	unsigned int	user_defined;
+}fh_pll_t;
+
+struct freqhopping_ssc {
+	unsigned int	 freq;
+	unsigned int	 dt;
+	unsigned int	 df;
+	unsigned int	 upbnd;
+	unsigned int 	 lowbnd;
+	unsigned int	 dds;
+};
+
+struct freqhopping_ioctl {
+	unsigned int  pll_id;
+	struct freqhopping_ssc ssc_setting; //used only when user-define
+	int  result;
+};
+
+enum FH_CMD{
+ FH_CMD_ENABLE = 1,
+ FH_CMD_DISABLE,
+ FH_CMD_ENABLE_USR_DEFINED,
+ FH_CMD_DISABLE_USR_DEFINED,
+ FH_CMD_INTERNAL_MAX_CMD,
+/* TODO:  do we need these cmds ?
+ FH_CMD_PLL_ENABLE,
+ FH_CMD_PLL_DISABLE,
+ FH_CMD_EXT_ALL_FULL_RANGE_CMD,
+ FH_CMD_EXT_ALL_HALF_RANGE_CMD,
+ FH_CMD_EXT_DISABLE_ALL_CMD,
+ FH_CMD_EXT_DESIGNATED_PLL_FULL_RANGE_CMD,
+ FH_CMD_EXT_DESIGNATED_PLL_AND_SETTING_CMD
+*/ 
+};
+
+enum FH_PLL_ID {
+ MT658X_FH_MINIMUMM_PLL = 0,		
+// MT658X_FH_ARM_PLL	= MT658X_FH_MINIMUMM_PLL,
+// MT658X_FH_MAIN_PLL	= 1,
+ MT658X_FH_MEM_PLL	= 2,
+ MT658X_FH_MSDC_PLL	= 3,
+ MT658X_FH_MM_PLL	= 4, //MT658X_FH_TVD_PLL	= 4,
+ MT658X_FH_VENC_PLL	= 5, //MT658X_FH_LVDS_PLL	= 5,
+ MT658X_FH_MAXIMUMM_PLL = MT658X_FH_VENC_PLL,
+ MT658X_FH_PLL_TOTAL_NUM
+};
+
+enum FH_FH_STATUS{
+ FH_FH_DISABLE = 0,
+ FH_FH_ENABLE_SSC,	
+ FH_FH_ENABLE_DFH,
+ FH_FH_ENABLE_DVFS,
+};
+
+enum FH_PLL_STATUS{
+ FH_PLL_DISABLE = 0,
+ FH_PLL_ENABLE = 1
+};
+
+void mt_freqhopping_pll_init(void);
+//- HAL porting end
 
 //- PLL Index
 enum FHCTL_PLL_ID
@@ -123,10 +235,10 @@ FREQHOP_EXTERN void freqhop_setbit_FHCTLx_cfg(UINT32 pll_id, UINT32 field, UINT3
 FREQHOP_EXTERN void freqhop_set_fhctlx_updnlmt(UINT32 pll_id, UINT32 uplimit, UINT32 downlimit);
 FREQHOP_EXTERN void freqhop_set_fhctlx_slope(UINT32 pll_id, UINT32 dts, UINT32 dys);
 #else	//- __FHCTL_CTP__
-FREQHOP_EXTERN void mt_freqhopping_init(void);
-FREQHOP_EXTERN int freqhopping_config(UINT32 pll_id, UINT32 vco_freq, UINT32 enable);
-FREQHOP_EXTERN void mt_fh_popod_save(void);
-FREQHOP_EXTERN void mt_fh_popod_restore(void);
+FREQHOP_EXTERN void mt_freqhop_init(void);
+FREQHOP_EXTERN int freqhop_config(unsigned int pll_id, unsigned long vco_freq, unsigned int enable);
+FREQHOP_EXTERN void mt_freqhop_popod_save(void);
+FREQHOP_EXTERN void mt_freqhop_popod_restore(void);
 FREQHOP_EXTERN void mt_fh_query_SSC_boundary (UINT32 pll_id, UINT32* uplmt_10, UINT32* dnlmt_10);
 #endif //- !__FHCTL_CTP__
 

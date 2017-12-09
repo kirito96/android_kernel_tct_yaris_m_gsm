@@ -39,6 +39,7 @@ class SpeechDriverFactory
 
         SpeechDriverInterface *mSpeechDriver1; // for modem 1
         SpeechDriverInterface *mSpeechDriver2; // for modem 2
+        SpeechDriverInterface *mSpeechDriverExternal; // for modem External
 
     private:
         /**

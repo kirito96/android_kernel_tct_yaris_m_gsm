@@ -5,9 +5,12 @@
 #include <platform/mt_pmic.h>
 #include <platform/mt_typedefs.h>
 #include <sys/types.h>
+#include <cust_rtc.h>
 
 /* RTC registers */
-#define	RTC_BASE	(0x8000)
+#ifndef RTC_BASE
+#define RTC_BASE 	 0x8000 //MT6572
+#endif
 #define RTC_BBPU	(RTC_BASE + 0x0000)
 #define RTC_IRQ_STA	(RTC_BASE + 0x0002)
 #define RTC_IRQ_EN	(RTC_BASE + 0x0004)
@@ -86,6 +89,15 @@
 #define RTC_NUM_YEARS		128
 //#define RTC_MAX_YEAR		(RTC_MIN_YEAR + RTC_NUM_YEARS - 1)
 
+#ifdef RTC_2SEC_REBOOT_ENABLE
+typedef enum
+{
+    RTC_2SEC_BOOT_NONE,  //not 2sec boot
+    RTC_2SEC_BOOT,      //2 sec boot
+    RTC_2SEC_BOOT_KPOC,
+    RTC_2SEC_BOOT_NORMAL
+}RTC_2SEC_REBOOT_KPOC;
+#endif
 
 extern void rtc_writeif_unlock(void);
 extern void rtc_writeif_lock(void);

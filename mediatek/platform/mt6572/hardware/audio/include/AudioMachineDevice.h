@@ -15,8 +15,8 @@ namespace android
 
 enum
 {
-    CHIP_VERSION_E1 =0,
-    CHIP_VERSION_E2 =1
+    CHIP_VERSION_E1 = 0,
+    CHIP_VERSION_E2 = 1
 };
 
 
@@ -85,7 +85,7 @@ class AudioMachineDevice
         * @return AudioAnalogType::MUX_TYPE
         */
         AudioAnalogType::MUX_TYPE AnalogGetMux(AudioAnalogType::DEVICE_TYPE DeviceType);
-    
+
         /**
         * a basic function fo select mux of device type, not all device may have mux
         * if select a device with no mux support , report error.
@@ -120,7 +120,11 @@ class AudioMachineDevice
         * @return copy_size
         */
         int getParameters(int command1 , int command2 , void *data);
+        bool GetAnalogSpkOCState(void);
+        status_t AnalogOpenForAddSPK(AudioAnalogType::DEVICE_TYPE DeviceType);
+        status_t AnalogCloseForSubSPK(AudioAnalogType::DEVICE_TYPE DeviceType);
 
+    private:
         status_t SetLevelShiftBufferGain(AudioAnalogType::VOLUME_TYPE volume_Type, int volume);
         status_t SetPreampBufferGain(AudioAnalogType::VOLUME_TYPE volume_Type, int volume);
         status_t SetLineinGain(AudioAnalogType::VOLUME_TYPE volume_Type, int volume);
@@ -138,8 +142,6 @@ class AudioMachineDevice
         bool GetDownLinkStatus(void);
         int GetChipVersion();
 
-    private:
-
         AudioLock mLock;
         /**
         * AnalogBlockAttribute to telling Device Type has mux and now mux selection
@@ -156,23 +158,16 @@ class AudioMachineDevice
 
         AudioAnalogReg  *mAudioAnalogReg;
 
-         /**
-         * file descriptor to open speaker , headset or earpiece
-         */
-         int mFd;
+        /**
+        * file descriptor to open speaker , headset or earpiece
+        */
+        int mFd;
 
-         uint8_t mSPKpolarity;
-         uint8_t mISPKtrim;
-/*porting for ALPS00712639(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P18) start*/
+        uint8_t mSPKpolarity;
+        uint8_t mISPKtrim;
         uint8_t mSpeakerClass;
-        bool mCurrentSensing;
-/*porting for ALPS00712639(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P18) end*/
+        bool mCurrentSensing; 
 
-//modify for 2in1 speaker cust by yi.zheng.hz begin
-#if defined(JRD_HDVOICE_CUST)
-        bool mbUsing2in1Speaker;
-#endif
-//modify for 2in1 speaker cust by yi.zheng.hz end
 };
 
 }

@@ -1,3 +1,12 @@
+/******************************************************************************
+ * gpio_init.c - MT6516 Linux GPIO Device Driver
+ *
+ * Copyright 2008-2009 MediaTek Co.,Ltd.
+ *
+ * DESCRIPTION:
+ *     default GPIO init
+ *
+ ******************************************************************************/
 
 #include <gpio.h>
 
@@ -46,7 +55,7 @@ static UINT32 save_ext[];
 
 void mt_gpio_set_default_chip(void)
 {
-    int idx;
+    u32 idx;
     u32 val;
     u32 mask;
 
@@ -185,7 +194,7 @@ void mt_gpio_set_default(void)
 	//mt_gpio_set_power();
 }
 /*----------------------------------------------------------------------------*/
-EXPORT_SYMBOL(mt_gpio_set_default);
+//EXPORT_SYMBOL(mt_gpio_set_default);
 /*----------------------------------------------------------------------------*/
 #if 0
 void mt_gpio_checkpoint_save_ext(void)
@@ -200,6 +209,7 @@ void mt_gpio_checkpoint_save_ext(void)
 #endif
 }
 #endif
+#if 0
 void mt_gpio_checkpoint_save(void)
 {
 #if defined(GPIO_INIT_DEBUG)
@@ -215,7 +225,6 @@ void mt_gpio_checkpoint_save(void)
 /*----------------------------------------------------------------------------*/
 EXPORT_SYMBOL(mt_gpio_checkpoint_save);
 /*----------------------------------------------------------------------------*/
-#if 0
 void mt_gpio_dump_diff_ext(UINT32 pre, UINT32 cur)
 {
 #if defined(GPIO_INIT_DEBUG)
@@ -231,7 +240,6 @@ void mt_gpio_dump_diff_ext(UINT32 pre, UINT32 cur)
     GPIOVER("------ GPIOEXT dumping difference end --------------------------------\n");
 #endif
 }
-#endif
 void mt_gpio_dump_diff(UINT32 pre, UINT32 cur)
 {
 #if defined(GPIO_INIT_DEBUG)
@@ -247,6 +255,7 @@ void mt_gpio_dump_diff(UINT32 pre, UINT32 cur)
     GPIOVER("------ dumping difference end --------------------------------\n");
 #endif
 }
+#endif
 /*----------------------------------------------------------------------------*/
 #if 0
 void mt_gpio_checkpoint_compare_ext(void)
@@ -274,7 +283,6 @@ void mt_gpio_checkpoint_compare_ext(void)
     }
 #endif
 }
-#endif
 void mt_gpio_checkpoint_compare(void)
 {
 #if defined(GPIO_INIT_DEBUG)
@@ -304,4 +312,5 @@ void mt_gpio_checkpoint_compare(void)
 /*----------------------------------------------------------------------------*/
 EXPORT_SYMBOL(mt_gpio_checkpoint_compare);
 /*----------------------------------------------------------------------------*/
+#endif
 #endif

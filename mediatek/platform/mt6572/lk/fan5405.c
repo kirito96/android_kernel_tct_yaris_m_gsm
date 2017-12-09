@@ -2,6 +2,7 @@
 #include <platform/mt_reg_base.h>
 #include <platform/mt_i2c.h>     
 #include <platform/fan5405.h>
+#include <platform/mt_gpio.h>
 #include <printf.h>
 
 int g_fan5405_log_en=0;
@@ -11,7 +12,7 @@ int g_fan5405_log_en=0;
   *   [I2C Slave Setting] 
   *
   *********************************************************/
-#define fan5405_SLAVE_ADDR_WRITE 0xD4
+#define fan5405_SLAVE_ADDR_WRITE   0xD4
 #define fan5405_SLAVE_ADDR_Read    0xD5
 
 /**********************************************************
@@ -22,26 +23,14 @@ int g_fan5405_log_en=0;
 #define fan5405_REG_NUM 7  
 kal_uint8 fan5405_reg[fan5405_REG_NUM] = {0};
 
+#define FAN5405_I2C_ID	I2C1
+static struct mt_i2c_t fan5405_i2c;
+
 /**********************************************************
   *
   *   [I2C Function For Read/Write fan5405] 
   *
   *********************************************************/
-U32 fan5405_i2c_read (U8 chip, U8 *cmdBuffer, int cmdBufferLen, U8 *dataBuffer, int dataBufferLen)
-{
-    U32 ret_code = I2C_OK;
-
-    ret_code = mt_i2c_write(I2C6, chip, cmdBuffer, cmdBufferLen,1);    // set register command
-    if (ret_code != I2C_OK)
-        return ret_code;
-
-    ret_code = mt_i2c_read(I2C6, chip, dataBuffer, dataBufferLen,1);
-
-    //printf("[fan5405_i2c_read] Done\n");
-
-    return ret_code;
-}
-
 U32 fan5405_i2c_write (U8 chip, U8 *cmdBuffer, int cmdBufferLen, U8 *dataBuffer, int dataBufferLen)
 {
     U32 ret_code = I2C_OK;
@@ -78,9 +67,22 @@ U32 fan5405_i2c_write (U8 chip, U8 *cmdBuffer, int cmdBufferLen, U8 *dataBuffer,
         //printf("[fan5405_i2c_write] write_data[%d]=%x\n", i, write_data[i]);
     }
 
-    ret_code = mt_i2c_write(I2C6, chip, write_data, transfer_len,1);
+    ret_code = mt_i2c_write(I2C1, chip, write_data, transfer_len,1);
 
     //printf("[fan5405_i2c_write] Done\n");
+}
+
+U32 fan5405_i2c_read (U8 chip, U8 *cmdBuffer, int cmdBufferLen, U8 *dataBuffer, int dataBufferLen)
+{
+    U32 ret_code = I2C_OK;
+
+    ret_code = mt_i2c_write(I2C1, chip, cmdBuffer, cmdBufferLen,1);    // set register command
+    if (ret_code != I2C_OK)
+        return ret_code;
+
+    ret_code = mt_i2c_read(I2C1, chip, dataBuffer, dataBufferLen,1);
+
+    //printf("[fan5405_i2c_read] Done\n");
 
     return ret_code;
 }
@@ -92,7 +94,7 @@ U32 fan5405_i2c_write (U8 chip, U8 *cmdBuffer, int cmdBufferLen, U8 *dataBuffer,
   *********************************************************/
 kal_uint32 fan5405_read_interface (kal_uint8 RegNum, kal_uint8 *val, kal_uint8 MASK, kal_uint8 SHIFT)
 {
-    U8 chip_slave_address = fan5405_SLAVE_ADDR_WRITE;
+     U8 chip_slave_address = fan5405_SLAVE_ADDR_WRITE;
     U8 cmd = 0x0;
     int cmd_len = 1;
     U8 data = 0xFF;
@@ -119,7 +121,7 @@ kal_uint32 fan5405_read_interface (kal_uint8 RegNum, kal_uint8 *val, kal_uint8 M
 
 kal_uint32 fan5405_config_interface (kal_uint8 RegNum, kal_uint8 val, kal_uint8 MASK, kal_uint8 SHIFT)
 {
-    U8 chip_slave_address = fan5405_SLAVE_ADDR_WRITE;
+   U8 chip_slave_address = fan5405_SLAVE_ADDR_WRITE;
     U8 cmd = 0x0;
     int cmd_len = 1;
     U8 data = 0xFF;
@@ -621,28 +623,44 @@ void fan5405_read_register(int i)
     printf("[fan5405_read_register] Reg[0x%X]=0x%X\n", i, fan5405_reg[i]);
 }
 
-extern int g_enable_high_vbat_spec;
-extern int g_pmic_cid;
+#if 1
+#include <cust_gpio_usage.h>
+int gpio_number   = GPIO_SWCHARGER_EN_PIN; 
+int gpio_off_mode = GPIO_SWCHARGER_EN_PIN_M_GPIO;
+int gpio_on_mode  = GPIO_SWCHARGER_EN_PIN_M_GPIO;
+#else
+int gpio_number   = 56; 
+int gpio_off_mode = 0;
+int gpio_on_mode  = 0;
+#endif
+int gpio_off_dir  = GPIO_DIR_OUT;
+int gpio_off_out  = GPIO_OUT_ONE;
+int gpio_on_dir   = GPIO_DIR_OUT;
+int gpio_on_out   = GPIO_OUT_ZERO;
+
+void fan5405_turn_on_charging(void)
+{
+    mt_set_gpio_mode(gpio_number,gpio_on_mode);  
+    mt_set_gpio_dir(gpio_number,gpio_on_dir);
+    mt_set_gpio_out(gpio_number,gpio_on_out);
+
+    fan5405_config_interface_liao(0x00,0xC0);
+    fan5405_config_interface_liao(0x01,0x78);
+    //fan5405_config_interface_liao(0x02,0x8e);
+    fan5405_config_interface_liao(0x05,0x04);
+    fan5405_config_interface_liao(0x04,0x1A); //146mA
+}
 
 void fan5405_hw_init(void)
-{    
-    if(g_enable_high_vbat_spec == 1)
-    {
-        if(g_pmic_cid == 0x1020)
-        {
-            printf("[fan5405_hw_init] (0x06,0x70) because 0x1020\n");
-            fan5405_config_interface_liao(0x06,0x70); // set ISAFE
-        }
-        else
-        {
-            printf("[fan5405_hw_init] (0x06,0x77)\n");
-            fan5405_config_interface_liao(0x06,0x77); // set ISAFE and HW CV point (4.34)
-        }
-    }
-    else
-    {
-        printf("[fan5405_hw_init] (0x06,0x70)\n");
-        fan5405_config_interface_liao(0x06,0x70); // set ISAFE
-    }
+{
+#if defined(HIGH_BATTERY_VOLTAGE_SUPPORT)
+    printf("[fan5405_hw_init] (0x06,0x77)\n");
+    fan5405_config_interface_liao(0x06,0x77); // set ISAFE and HW CV point (4.34)
+    fan5405_config_interface_liao(0x02,0xaa); // 4.34    
+#else
+    printf("[fan5405_hw_init] (0x06,0x70)\n");
+    fan5405_config_interface_liao(0x06,0x70); // set ISAFE
+    fan5405_config_interface_liao(0x02,0x8e); // 4.2
+#endif    
 }
 

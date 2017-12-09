@@ -1,3 +1,37 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein
+ * is confidential and proprietary to MediaTek Inc. and/or its licensors.
+ * Without the prior written permission of MediaTek inc. and/or its licensors,
+ * any reproduction, modification, use or disclosure of MediaTek Software,
+ * and information contained herein, in whole or in part, shall be strictly prohibited.
+ *
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
+ * AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+ * NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+ * SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+ * SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
+ * THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
+ * THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
+ * CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
+ * SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
+ * CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+ * AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+ * OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
+ * MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek Software")
+ * have been modified by MediaTek Inc. All revisions are subject to any receiver's
+ * applicable license agreements with MediaTek Inc.
+ */
 
 #ifndef _MTK_M4U_LIB_H
 #define _MTK_M4U_LIB_H
@@ -5,31 +39,6 @@
 #include <linux/ioctl.h>
 
 #define __PMEM_WRAP_LAYER_EN__
-
-
-
-
-#define DEFAULT_PAGE_SIZE   0x1000                                  //4KB
-#define MODULE_WITH_INDEPENDENT_PORT_ID  36
-
-#define M4U_CLIENT_MODULE_NUM M4U_CLNTMOD_MAX
-#define TOTAL_MVA_RANGE       0x20000000                             
-
-#define ACCESS_TYPE_TRANSLATION_FAULT  0
-#define ACCESS_TYPE_64K_PAGE           1
-#define ACCESS_TYPE_4K_PAGE            2
-#define ACCESS_TYPE_4K_EXTEND_PAGE     3
-
-#define PT_TOTAL_ENTRY_NUM    (TOTAL_MVA_RANGE/DEFAULT_PAGE_SIZE)              //total page table entries
-#define MODULE_MVA_RANGE      (TOTAL_MVA_RANGE/M4U_CLIENT_MODULE_NUM)     //the virtual address range per port
-#define PT_MODULE_ENTRY_NUM   (MODULE_MVA_RANGE/DEFAULT_PAGE_SIZE)            //number of page table entries for each port
-#define PT_MODULE_PA_SZ       (PT_MODULE_ENTRY_NUM*4)                      //the physical memory size of page table per port
-
-
-#define M4U_GET_PTE_OFST_TO_PT_SA(MVA)    ((MVA >> 12) << 2)
-
-#define SEGMENT_SIZE 16
-
 
 //====================================
 // about portid
@@ -58,10 +67,6 @@ typedef enum
     M4U_PORT_UNKNOWN
 } M4U_PORT_ID_ENUM;
 
-
-
-
-
 typedef enum
 {
     M4U_CLNTMOD_MDP     = 0,	                             
@@ -85,20 +90,6 @@ typedef struct _M4U_RANGE_DES  //sequential entry range
     unsigned int entryCount;
 } M4U_RANGE_DES_T;
 
-typedef struct _M4U_MVA_SLOT
-{
-    unsigned int BaseAddr;      //slot MVA start address
-    unsigned int Size;          //slot size
-    unsigned int Offset;        //current offset of the slot
-    unsigned int BufCnt;        //how many buffer has been allocated from this slot
-} M4U_MVA_SLOT_T;
-
-typedef enum
-{
-	M4U_DESC_MAIN_TLB=0,
-	M4U_DESC_PRE_TLB_LSB,
-	M4U_DESC_PRE_TLB_MSB
-} M4U_DESC_TLB_SELECT_ENUM;
 
 typedef enum
 {
@@ -236,8 +227,6 @@ typedef enum _M4U_STATUS
 #define MTK_M4U_T_DUMP_PAGETABLE      _IOW(MTK_M4U_MAGICNO, 21, int)
 #define MTK_M4U_T_REGISTER_BUFFER     _IOW(MTK_M4U_MAGICNO, 22, int)
 #define MTK_M4U_T_CACHE_FLUSH_ALL     _IOW(MTK_M4U_MAGICNO, 23, int)
-#define MTK_M4U_T_REG_SET             _IOW(MTK_M4U_MAGICNO, 24, int)
-#define MTK_M4U_T_REG_GET             _IOW(MTK_M4U_MAGICNO, 25, int)
 
 class MTKM4UDrv
 {
@@ -327,8 +316,6 @@ public:
 								  unsigned int *pRetMVAAddr);
 
     M4U_STATUS_ENUM m4u_cache_flush_all(M4U_MODULE_ID_ENUM eModuleID);
-    unsigned int m4u_get_reg(unsigned int addr);
-    unsigned int m4u_set_reg(unsigned int addr, unsigned int val);
 
 
 

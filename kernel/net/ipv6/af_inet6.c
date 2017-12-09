@@ -49,6 +49,7 @@
 #include <net/udplite.h>
 #include <net/tcp.h>
 #include <net/ipip.h>
+#include <net/ping.h>
 #include <net/protocol.h>
 #include <net/inet_common.h>
 #include <net/route.h>
@@ -129,6 +130,9 @@ static int inet6_create(struct net *net, struct socket *sock, int protocol,
 	    sock->type != SOCK_DGRAM &&
 	    !inet_ehash_secret)
 		build_ehash_secret();
+
+	if (protocol < 0 || protocol >= IPPROTO_MAX)
+		return -EINVAL;
 
 	/* Look for the requested type/protocol pair. */
 lookup_protocol:
@@ -1130,6 +1134,9 @@ static int __init inet6_init(void)
 	if (err)
 		goto out_unregister_udplite_proto;
 
+	err = proto_register(&pingv6_prot, 1);
+	if (err)
+		goto out_unregister_ping_proto;
 
 	/* We MUST register RAW sockets before we create the ICMP6,
 	 * IGMP6, or NDISC control sockets.
@@ -1192,6 +1199,9 @@ static int __init inet6_init(void)
 	err = ip6_route_init();
 	if (err)
 		goto ip6_route_fail;
+	err = ndisc_late_init();
+	if (err)
+		goto ndisc_late_fail;
 	err = ip6_flowlabel_init();
 	if (err)
 		goto ip6_flowlabel_fail;
@@ -1225,6 +1235,10 @@ static int __init inet6_init(void)
 	if (err)
 		goto ipv6_packet_fail;
 
+	err = pingv6_init();
+	if (err)
+		goto pingv6_fail;
+
 #ifdef CONFIG_SYSCTL
 	err = ipv6_sysctl_register();
 	if (err)
@@ -1237,6 +1251,8 @@ out:
 sysctl_fail:
 	ipv6_packet_cleanup();
 #endif
+pingv6_fail:
+	pingv6_exit();
 ipv6_packet_fail:
 	tcpv6_exit();
 tcpv6_fail:
@@ -1252,6 +1268,8 @@ ipv6_exthdrs_fail:
 addrconf_fail:
 	ip6_flowlabel_cleanup();
 ip6_flowlabel_fail:
+	ndisc_late_cleanup();
+ndisc_late_fail:
 	ip6_route_cleanup();
 ip6_route_fail:
 #ifdef CONFIG_PROC_FS
@@ -1284,6 +1302,8 @@ static_sysctl_fail:
 	rtnl_unregister_all(PF_INET6);
 out_sock_register_fail:
 	rawv6_exit();
+out_unregister_ping_proto:
+	proto_unregister(&pingv6_prot);
 out_unregister_raw_proto:
 	proto_unregister(&rawv6_prot);
 out_unregister_udplite_proto:
@@ -1319,6 +1339,7 @@ static void __exit inet6_exit(void)
 	ipv6_exthdrs_exit();
 	addrconf_cleanup();
 	ip6_flowlabel_cleanup();
+	ndisc_late_cleanup();
 	ip6_route_cleanup();
 #ifdef CONFIG_PROC_FS
 

@@ -1,7 +1,11 @@
 #ifndef __MTK_NAND_H
 #define __MTK_NAND_H
 #ifndef MTK_EMMC_SUPPORT
+	#ifdef MTK_SPI_NAND_SUPPORT
+	#include "snand_device_list.h"
+	#else
 #include "nand_device_list.h"
+#endif
 #endif
 
 /*******************************************************************************
@@ -84,11 +88,20 @@
 #define NFI_FIFODATA3_REG32 ((volatile P_U32)(NFI_BASE+0x019C))
 #define NFI_MASTERSTA_REG16 ((volatile P_U16)(NFI_BASE+0x0210))
 #define NFI_DEBUG_CON1_REG16 ((volatile P_U16)(NFI_BASE+0x0220))
+#define NFI_SPIDMA_REG32    ((volatile P_U32)(NFI_BASE+0x022C))
+#define NFI_SPIADDRCNTR_REG32 ((volatile P_U32)(NFI_BASE+0x0230))
+#define NFI_SPIBYTELEN_REG32 ((volatile P_U32)(NFI_BASE+0x0234))
+
+
 
 
 /*******************************************************************************
  * NFI Register Field Definition
  *******************************************************************************/
+
+/* NFI_SPIDMA_REG32 */
+#define SPIDMA_SEC_EN               (0x00010000)
+#define SPIDMA_SEC_SIZE_MASK        (0x0000FFFF)
 
 /* NFI_CNFG */
 #define CNFG_AHB             (0x0001)
@@ -156,6 +169,9 @@
 #define INTR_AHB_DONE_EN     (0x0040)
 #define INTR_ALL_INTR_DE     (0x0000)
 #define INTR_ALL_INTR_EN     (0x007F)
+#define INTR_CUSTOM_PROG_DONE_INTR_EN    (0x00000080)
+#define INTR_AUTO_PROG_DONE_INTR_EN      (0x00000200)
+#define INTR_AUTO_BLKER_INTR_EN          (0x00000800)
 
 /* NFI_INTR */
 #define INTR_RD_DONE         (0x0001)
@@ -215,6 +231,9 @@
 #define HWDCM_SWCON_ON    (1<<1)
 #define WBUF_EN           (1<<2)
 
+// SPI-NAND dummy command for NFI
+#define NAND_CMD_DUMMYREAD          0x00
+#define NAND_CMD_DUMMYPROG          0x80
 
 /*******************************************************************************
  * ECC Register Definition
@@ -305,7 +324,9 @@
 #define DEC_CNFG_ECC4          (0x0000)
 //#define DEC_CNFG_ECC6          (0x0001)
 //#define DEC_CNFG_ECC12         (0x0002)
+#define DEC_CNFG_DEC_MODE_MASK (0x0030)
 #define DEC_CNFG_NFI           (0x0010)
+#define DEC_CNFG_AHB           (0x0000)
 //#define DEC_CNFG_META6         (0x10300000)
 //#define DEC_CNFG_META8         (0x10400000)
 
@@ -315,6 +336,7 @@
 #define DEC_CNFG_TYPE_MASK     (0x03000)
 
 #define DEC_CNFG_EMPTY_EN      (0x80000000)
+#define DEC_CNFG_DEC_BURST_EN  (0x00000100)
 
 #define DEC_CNFG_CODE_MASK     (0x1FFF0000)
 #define DEC_CNFG_CODE_SHIFT    (0x10)
@@ -381,7 +403,16 @@ struct nfi_saved_para
     u32 sECC_ENCCNFG_REG32;
     u32 sECC_FDMADDR_REG32;
     u32 sECC_DECCNFG_REG32;
+
+    u32 sSNAND_MISC_CTL;
+    u32 sSNAND_MISC_CTL2;
+    u32 sSNAND_DLY_CTL1;
+    u32 sSNAND_DLY_CTL2;
+    u32 sSNAND_DLY_CTL3;
+    u32 sSNAND_DLY_CTL4;
+    u32 sSNAND_CNFG;
 };
+
 struct mtk_nand_host
 {
 	struct nand_chip		nand_chip;

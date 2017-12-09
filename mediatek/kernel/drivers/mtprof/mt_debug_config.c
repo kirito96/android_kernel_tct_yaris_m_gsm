@@ -15,7 +15,6 @@
 #include <linux/stacktrace.h>
 
 #include <mach/mt_storage_logger.h>
-#include <mach/mt_io_logger.h>
 #include <linux/ftrace.h>
 #include <linux/debug_locks.h>
 #include <linux/printk.h>
@@ -103,10 +102,8 @@ static ssize_t mt_debug_config_write(struct file *filp, const char *ubuf,
     ret = strict_strtoul(buf, 10, (unsigned long*)&val);
     if(val == 0){
         printk("MTK debug disable:\n");
-        printk("1.ftrace\n");
-        mt_ftrace_enable_disable(0);
-        printk("2.io_logger\n");
-        mt_disable_io_logger();
+ //       printk("1.ftrace\n");
+//        mt_ftrace_enable_disable(0);
         printk("3.storage_logger\n");
         storage_logger_switch(0);
         printk("4.memory\n");

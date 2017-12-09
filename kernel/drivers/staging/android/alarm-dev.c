@@ -160,13 +160,7 @@ static long alarm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	struct timespec new_alarm_time;
 	struct timespec new_rtc_time;
 	struct timespec tmp_time;
-	struct timespec wall_time;	
-	struct timespec rtc_delta;
 	struct rtc_time new_rtc_tm;
-	struct rtc_time now_rtc_tm;
-	struct rtc_time wall_tm;
-	struct rtc_time alarm_tm;
-	unsigned long  lrtc_current_time;
 	struct rtc_device *rtc_dev;
 	struct rtc_wkalrm pwron_alm;
 	enum android_alarm_type alarm_type = ANDROID_ALARM_IOCTL_TO_TYPE(cmd);
@@ -234,49 +228,6 @@ static long alarm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 from_old_alarm_set:
 		pr_alarm(IO, "alarm %d set %ld.%09ld\n", alarm_type,
 			new_alarm_time.tv_sec, new_alarm_time.tv_nsec);
-		
-//		if ((alarm_type == ANDROID_ALARM_POWER_ON)|| (alarm_type == ANDROID_ALARM_POWER_ON_LOGO)) {
-//			rtc_time_to_tm(new_alarm_time.tv_sec, &alarm_tm);
-//			pr_alarm(IO, "alarm set power on - alarm %02d:%02d:%02d %02d/%02d/%04d\n",
-//			alarm_tm.tm_hour, alarm_tm.tm_min,
-//			alarm_tm.tm_sec,  alarm_tm.tm_mon + 1,
-//			alarm_tm.tm_mday,
-//			alarm_tm.tm_year + 1900);
-//	
-//			//toy add for cover system time and HW RTC tick are different
-//			rtc_dev = alarmtimer_get_rtcdev();
-//	
-//			spin_lock_irqsave(&alarm_slock, flags); //avoid get rtc and wall time delay too long
-//			rtc_read_time(rtc_dev, &now_rtc_tm); //get current HW RTC tick
-//			getnstimeofday(&wall_time);         //get android system time
-//			spin_unlock_irqrestore(&alarm_slock, flags);
-//	
-//			pr_alarm(IO, "alarm set power on - rtc %02d:%02d:%02d %02d/%02d/%04d\n",
-//			now_rtc_tm.tm_hour, now_rtc_tm.tm_min,
-//			now_rtc_tm.tm_sec, now_rtc_tm.tm_mon + 1,
-//			now_rtc_tm.tm_mday,
-//			now_rtc_tm.tm_year + 1900);
-//	
-//			rtc_time_to_tm(wall_time.tv_sec, &wall_tm);
-//			pr_alarm(IO, "alarm set power on - wall %02d:%02d:%02d %02d/%02d/%04d\n",
-//			wall_tm.tm_hour, wall_tm.tm_min,
-//			wall_tm.tm_sec, wall_tm.tm_mon + 1,
-//			wall_tm.tm_mday,
-//			wall_tm.tm_year + 1900);
-//			rtc_tm_to_time(&now_rtc_tm, &lrtc_current_time); //transform data type
-//			set_normalized_timespec(&rtc_delta,       //get the delta of system time and HW rtc time
-//					wall_time.tv_sec - lrtc_current_time,
-//					wall_time.tv_nsec);
-//			new_alarm_time.tv_sec = timespec_sub(new_alarm_time, rtc_delta).tv_sec; //compensate the alarm time with the delta.
-//			pr_alarm(IO, "alarm set power on - delta %d\n",rtc_delta.tv_sec);
-//			rtc_time_to_tm(new_alarm_time.tv_sec, &alarm_tm);
-//			pr_alarm(IO, "alarm set power on - new alarm %02d:%02d:%02d %02d/%02d/%04d\n",
-//			alarm_tm.tm_hour, alarm_tm.tm_min,
-//			alarm_tm.tm_sec,  alarm_tm.tm_mon + 1,
-//			alarm_tm.tm_mday,
-//			alarm_tm.tm_year + 1900);
-//		}
-
 
 		if (alarm_type == ANDROID_ALARM_POWER_ON) {
 			alarm_set_power_on(new_alarm_time, false);

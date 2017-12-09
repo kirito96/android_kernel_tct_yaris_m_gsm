@@ -36,7 +36,9 @@ struct bsg_job;
 #define BLKDEV_MIN_RQ	4
 #define BLKDEV_MAX_RQ	128	/* Default maximum */
 
+//enable storage pid log in user load
 #if !defined(FEATURE_STORAGE_PERF_INDEX) && !defined(USER_BUILD_KERNEL)
+//#if !defined(FEATURE_STORAGE_PERF_INDEX)
 enum METADATA_OPERATION_MODE {
 	WAIT_READ_CNT	= 0,
 	NOWAIT_READ_CNT,
@@ -80,8 +82,9 @@ static inline void clear_metadata_rw_status(int mmc_index)
 #endif
 
 
-
+//enable storage pid log in user load
 #if !defined(FEATURE_STORAGE_PID_LOGGER) && !defined(USER_BUILD_KERNEL)
+//#if !defined(FEATURE_STORAGE_PID_LOGGER)
 #define FEATURE_STORAGE_PID_LOGGER
 struct page_pid_logger {
         unsigned short pid1;
@@ -102,7 +105,7 @@ struct struct_pid_logger {
 	unsigned int pid_logger_length[PID_LOGGER_COUNT];
 	unsigned short pid_logger_r_counter[PID_LOGGER_COUNT];
 	unsigned int pid_logger_r_length[PID_LOGGER_COUNT];
-	char pid_buffer [512];
+	char pid_buffer [1024];
 };
 
 #define PAGE_LOCKER_SHIFT	0
@@ -1143,10 +1146,9 @@ static inline int queue_alignment_offset(struct request_queue *q)
 static inline int queue_limit_alignment_offset(struct queue_limits *lim, sector_t sector)
 {
 	unsigned int granularity = max(lim->physical_block_size, lim->io_min);
-	unsigned int alignment = (sector << 9) & (granularity - 1);
+	unsigned int alignment = sector_div(sector, granularity >> 9) << 9;
 
-	return (granularity + lim->alignment_offset - alignment)
-		& (granularity - 1);
+	return (granularity + lim->alignment_offset - alignment) % granularity;
 }
 
 static inline int bdev_alignment_offset(struct block_device *bdev)

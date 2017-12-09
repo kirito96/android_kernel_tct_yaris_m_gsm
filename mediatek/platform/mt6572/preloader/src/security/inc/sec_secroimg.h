@@ -1,7 +1,46 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ * 
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ * 
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #ifndef AC_REGION_H
 #define AC_REGION_H
 
+/**************************************************************************
+ * [AC REGION ID]
+ **************************************************************************/
 #define ROM_SEC_AC_REGION_ID            "AND_AC_REGION"
 #define ROM_SEC_AC_REGION_ID_LEN        (13)
 
@@ -9,6 +48,9 @@
 #define ROM_SEC_AC_SEARCH_LEN           0x100000 // 1MB
 
 
+/**************************************************************************
+ * [AC-REGION HEADER FORNAT]
+ **************************************************************************/
 #define AC_H_MAGIC                      (0x48484848)
  
 typedef struct {
@@ -33,6 +75,9 @@ typedef struct {
 } AND_AC_HEADER_T;
 
 
+/**************************************************************************
+ * [Software Secure Boot Format]
+ **************************************************************************/
 #define SW_SEC_BOOT_MAGIC                  (0x57575757) //WWWW
     
 typedef enum {
@@ -90,6 +135,9 @@ typedef struct {
 } AND_SW_SEC_BOOT_T;
 
 
+/**************************************************************************
+ * [AC-REGION ANDRO FORNAT]
+ **************************************************************************/
 #define AC_ANDRO_MAGIC                  (0x41414141)
 #define AP_SECRO_MAX_LEN                (2672)
 
@@ -106,6 +154,9 @@ typedef struct {
     unsigned char                       reserve2[AP_SECRO_MAX_LEN];
 } AND_AC_ANDRO_T;
 
+/**************************************************************************
+ * [AC-REGION SV5 FORNAT]
+ **************************************************************************/
 #define AC_SV5_MAGIC                    (0x35353535)
 #define SV5_SECRO_MAX_LEN               (8188)
 
@@ -116,6 +167,9 @@ typedef struct {
     
 } AND_AC_SV5_T;
 
+/**************************************************************************
+ * [SECROIMG FORNAT]
+ **************************************************************************/
 #define AND_SECROIMG_SIZE              (0x2C00)
 typedef struct {
     

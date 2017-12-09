@@ -1,3 +1,17 @@
+/*
+ * Copyright (C) 2010 MediaTek, Inc.
+ *
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -141,6 +155,9 @@ static u16 kpd_keymap_state[4] = {
 
 
 
+/* Function: fpga_kpd_auto_test
+ * par: count stands for test time 
+ */
 int fpga_kpd_auto_test(int count) 
 {
 		u16 a;

@@ -30,7 +30,7 @@ MODULE_LICENSE("Dual BSD/GPL");
 #define COMBO_IOC_MAGIC        0xb0
 #define COMBO_IOCTL_FW_ASSERT  _IOWR(COMBO_IOC_MAGIC, 0, void*)
 
-unsigned int gDbgLevel = BT_LOG_INFO;
+static unsigned int gDbgLevel = BT_LOG_INFO;
 
 #define BT_DBG_FUNC(fmt, arg...)    if(gDbgLevel >= BT_LOG_DBG){ printk(PFX "%s: "  fmt, __FUNCTION__ ,##arg);}
 #define BT_INFO_FUNC(fmt, arg...)   if(gDbgLevel >= BT_LOG_INFO){ printk(PFX "%s: "  fmt, __FUNCTION__ ,##arg);}
@@ -52,7 +52,7 @@ static struct semaphore wr_mtx, rd_mtx;
 static wait_queue_head_t inq;    /* read queues */
 static DECLARE_WAIT_QUEUE_HEAD(BT_wq);
 static int flag = 0;
-volatile int retflag = 0;
+static volatile int retflag = 0;
 
 unsigned char g_bt_bd_addr[10]={0x01,0x1a,0xfc,0x06,0x00,0x55,0x66,0x77,0x88,0x00};
 unsigned char g_nvram_btdata[8];
@@ -342,8 +342,8 @@ long BT_unlocked_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
         case COMBO_IOCTL_FW_ASSERT:
             /* BT trigger fw assert for debug*/
-            BT_INFO_FUNC("BT Set fw assert......\n");
-            bRet = mtk_wcn_wmt_assert();
+            BT_INFO_FUNC("BT Set fw assert......,arg(%ld)\n",arg);
+            bRet = mtk_wcn_wmt_assert(WMTDRV_TYPE_BT, arg);
             if (bRet == MTK_WCN_BOOL_TRUE) {
                 BT_INFO_FUNC("BT Set fw assert OK\n");
                 retval = 0;
@@ -504,7 +504,27 @@ static void BT_exit(void)
     BT_INFO_FUNC("%s driver removed.\n", BT_DRIVER_NAME);
 }
 
+#ifdef MTK_WCN_REMOVE_KERNEL_MODULE
+	
+int mtk_wcn_stpbt_drv_init(void)
+{
+	return BT_init();
+
+}
+
+void mtk_wcn_stpbt_drv_exit (void)
+{
+	return BT_exit();
+}
+
+
+EXPORT_SYMBOL(mtk_wcn_stpbt_drv_init);
+EXPORT_SYMBOL(mtk_wcn_stpbt_drv_exit);
+#else
+	
 module_init(BT_init);
 module_exit(BT_exit);
 
+	
+#endif
 

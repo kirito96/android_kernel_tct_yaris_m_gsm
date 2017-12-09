@@ -109,11 +109,12 @@ enum fullness_group {
  */
 static const int fullness_threshold_frac = 4;
 
-struct mapping_area {
-	char *vm_buf; /* copy buffer for objects that span pages */
-	char *vm_addr; /* address of kmap_atomic()'ed pages */
-	enum zs_mapmode vm_mm; /* mapping mode */
-};
+/*
+ * https://git.kernel.org/
+ * f553646a67cb215577402cb702b67c8cf8fdb46f
+ * move definition of mapping_area to zsmalloc-main.c
+ */
+
 
 struct size_class {
 	/*

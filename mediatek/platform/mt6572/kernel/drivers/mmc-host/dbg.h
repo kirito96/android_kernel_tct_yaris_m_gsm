@@ -71,12 +71,14 @@ extern msdc_mode drv_mode[HOST_MAX_NUM];
 extern u32 dma_size[HOST_MAX_NUM];
 extern struct msdc_host *mtk_msdc_host[HOST_MAX_NUM]; //for fpga early porting
 extern unsigned char msdc_clock_src[HOST_MAX_NUM];
-//BEGIN Light for adjusting clock divisor
 extern unsigned int msdc_clock_divisor[HOST_MAX_NUM];
-//END Light
+extern unsigned char msdc_clock_ddr_sdr_select[HOST_MAX_NUM];
+extern u32 msdc_perf_dbg[HOST_MAX_NUM]; //Depend on setting DBG_EVT_PERF_DBG
+extern u32 msdc_enable_met_log[HOST_MAX_NUM]; //Depend on setting DBG_EVT_MET
 extern drv_mod msdc_drv_mode[HOST_MAX_NUM];
 extern u32 msdc_host_mode[HOST_MAX_NUM]; /*SD/eMMC mode (HS/DDR/UHS)*/
 extern int g_dma_debug[HOST_MAX_NUM];
+extern int msdc_enable_print_all_msdc_send_stop;
 
 extern transfer_mode msdc_latest_transfer_mode[HOST_MAX_NUM];
 extern operation_type msdc_latest_operation_type[HOST_MAX_NUM];
@@ -121,6 +123,10 @@ extern u32 sdio_tune_flag;
 //====================================================
 #define DBG_EVT_RW          (1 << 12) /* Trace the Read/Write Command */
 #define DBG_EVT_NRW         (1 << 13) /* Trace other Command */
+#define DBG_EVT_REP_STOP    (1 << 14)
+//====================================================
+#define DBG_EVT_PERF_DBG    (1 << 16) /* Trace the Read/Write Command */
+#define DBG_EVT_MET         (1 << 17) /* Trace the Read/Write Command */
 #define DBG_EVT_ALL         (0xffffffff)
 
 #define DBG_EVT_MASK        (DBG_EVT_ALL)
@@ -168,7 +174,6 @@ do { \
 
 int msdc_debug_proc_init(void); 
 
-void msdc_init_gpt(void);
 extern void GPT_GetCounter64(UINT32 *cntL32, UINT32 *cntH32);
 u32 msdc_time_calc(u32 old_L32, u32 old_H32, u32 new_L32, u32 new_H32);
 void msdc_performance(u32 opcode, u32 sizes, u32 bRx, u32 ticks);   

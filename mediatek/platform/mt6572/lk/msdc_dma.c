@@ -1,3 +1,37 @@
+/*****************************************************************************
+*  Copyright Statement:
+*  --------------------
+*  This software is protected by Copyright and the information contained
+*  herein is confidential. The software may not be copied and the information
+*  contained herein may not be used or disclosed except with the written
+*  permission of MediaTek Inc. (C) 2010
+*
+*  BY OPENING THIS FILE, BUYER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+*  THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+*  RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO BUYER ON
+*  AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+*  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+*  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+*  NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+*  SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+*  SUPPLIED WITH THE MEDIATEK SOFTWARE, AND BUYER AGREES TO LOOK ONLY TO SUCH
+*  THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. MEDIATEK SHALL ALSO
+*  NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE RELEASES MADE TO BUYER'S
+*  SPECIFICATION OR TO CONFORM TO A PARTICULAR STANDARD OR OPEN FORUM.
+*
+*  BUYER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND CUMULATIVE
+*  LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+*  AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+*  OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY BUYER TO
+*  MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+*
+*  THE TRANSACTION CONTEMPLATED HEREUNDER SHALL BE CONSTRUED IN ACCORDANCE
+*  WITH THE LAWS OF THE STATE OF CALIFORNIA, USA, EXCLUDING ITS CONFLICT OF
+*  LAWS PRINCIPLES.  ANY DISPUTES, CONTROVERSIES OR CLAIMS ARISING THEREOF AND
+*  RELATED THERETO SHALL BE SETTLED BY ARBITRATION IN SAN FRANCISCO, CA, UNDER
+*  THE RULES OF THE INTERNATIONAL CHAMBER OF COMMERCE (ICC).
+*
+*****************************************************************************/
 
 #include "msdc.h"
 
@@ -8,7 +42,7 @@
 #endif
 
 #if defined(MMC_MSDC_DRV_LK)
-//For memset() is defined in bootable/bootloader/include/string.h
+#include <arch/ops.h>
 //For arch_clean_invalidate_cache_range() is defined in bootable/bootloader/include/arch/ops.h
 #endif
 
@@ -42,7 +76,7 @@ void msdc_init_gpd_bd(struct mmc_host *host)
 void msdc_flush_membuf(void *buf, u32 len)
 {
     #if defined(MMC_MSDC_DRV_LK)
-    arch_clean_invalidate_cache_range(buf,len);
+    arch_clean_invalidate_cache_range((addr_t)buf,len);
 
     #elif defined(MMC_MSDC_DRV_CTP)
     cache_clean_invalidate();
@@ -294,7 +328,11 @@ int msdc_dma_config(struct mmc_host *host, struct dma_config *cfg)
 {
     u32 base = host->base;
     u32 sglen = cfg->sglen;
-    u32 i, j, num, bdlen, arg, xfersz;
+    //u32 i;
+    u32 j;
+#ifdef FEATURE_MSDC_ENH_DMA_MODE
+    u32 num, bdlen, arg, xfersz;
+#endif
     u8  blkpad, dwpad, chksum;
     struct scatterlist *sg = cfg->sg;
     gpd_t *gpd;
@@ -488,7 +526,6 @@ void msdc_dma_stop(struct mmc_host *host)
 int msdc_dma_wait_done(struct mmc_host *host, u32 timeout)
 {
     u32 base = host->base;
-    u32 tmo = timeout;
     msdc_priv_t *priv = (msdc_priv_t*)host->priv;
     struct dma_config *cfg = &priv->cfg;
     u32 status;
@@ -601,6 +638,10 @@ end:
 
 #if defined(FEATURE_MMC_SDIO)
 #if 0
+/*
+int msdc_dma_iorw(struct mmc_card *card, int write, unsigned fn,
+    unsigned addr, int incr_addr, u8 *buf, unsigned blocks, unsigned blksz)
+*/
 #else
 int msdc_dma_iorw(struct mmc_card *card, int write,
     u8 *buf, unsigned blocks, unsigned blksz)
@@ -729,7 +770,6 @@ int msdc_dma_transfer(struct mmc_host *host, struct mmc_command *cmd, struct mmc
     u32 blksz = host->blklen;
     msdc_priv_t *priv = (msdc_priv_t*)host->priv;
     struct dma_config *cfg = &priv->cfg;
-    struct mmc_command stop;
     uchar *buf = data->buf;
     ulong nblks = data->blks;
 
@@ -902,7 +942,7 @@ int msdc_dma_bread(struct mmc_host *host, uchar *dst, ulong src, ulong nblks)
 
     BUG_ON(nblks > host->max_phys_segs);
 
-    MSG(OPS, "[SD%d] Read DMA data %d blks from 0x%x\n", host->id, nblks, src);
+    MSG(OPS, "[SD%d] Read DMA data %u blks from 0x%x\n", host->id, (unsigned int)nblks, (unsigned int)src);
 
     multi = nblks > 1 ? 1 : 0;
 
@@ -928,7 +968,7 @@ int msdc_dma_bwrite(struct mmc_host *host, ulong dst, uchar *src, ulong nblks)
 
     BUG_ON(nblks > host->max_phys_segs);
 
-    MSG(OPS, "[SD%d] Write data %d blks to 0x%x\n", host->id, nblks, dst);
+    MSG(OPS, "[SD%d] Write data %d blks to 0x%x\n", host->id, (unsigned int)nblks, (unsigned int)dst);
 
     multi = nblks > 1 ? 1 : 0;
 

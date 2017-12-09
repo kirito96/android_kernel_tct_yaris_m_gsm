@@ -19,7 +19,7 @@ extern int g_R_I_SENSE;
 extern int g_R_CHARGER_1;
 extern int g_R_CHARGER_2;
 
-
+ 
 void pmic_lock(void){    
 }
 
@@ -142,6 +142,12 @@ int pmic_detect_powerkey(void)
                              (U32)(PMIC_PWRKEY_DEB_MASK),
                              (U32)(PMIC_PWRKEY_DEB_SHIFT)
                              );
+    if (ret!=0)
+    {
+       printf("LK pmic read PMIC_PWRKEY_DEB fail\n");
+    }
+
+
     if (val==1){     
         printf("LK pmic powerkey Release\n");
         return 0;
@@ -153,7 +159,26 @@ int pmic_detect_powerkey(void)
 
 int pmic_detect_homekey(void)
 {
+    U32 ret=0;
+    U32 val=0;
+
+    ret=pmic_read_interface( (U32)(CHRSTATUS),
+                             (&val),
+                             (U32)(PMIC_FCHRKEY_DEB_MASK),
+                             (U32)(PMIC_FCHRKEY_DEB_SHIFT)
+                             );
+
+    if (ret!=0)
+        printf("LK pmic homekey read fail\n");
+
+    if (val==1){     
+        printf("LK pmic homekey Release\n");
     return 0;
+    }else{
+        printf("LK pmic homekey Press\n");
+        return 1;
+    }    
+    return val;
 }
 
 kal_uint32 upmu_get_reg_value(kal_uint32 reg)
@@ -188,7 +213,7 @@ void PMIC_DUMP_ALL_Register(void)
 void PMIC_INIT_SETTING_V1(void)
 {
     U32 chip_version = 0;
-    U32 ret=0;
+    //U32 ret=0;
 
     chip_version = upmu_get_cid();
 
@@ -238,14 +263,14 @@ U32 pmic_init (void)
 int PMIC_IMM_GetOneChannelValue(int dwChannel, int deCount, int trimd)
 {
 	kal_int32 ret_data;	
-	kal_int32 count=0;
+//	kal_int32 count=0;
 	kal_int32 u4Sample_times = 0;
 	kal_int32 u4channel=0;	
 	kal_int32 adc_result_temp=0;
        kal_int32 r_val_temp=0;   
 	kal_int32 adc_result=0;   
     kal_int32 ret=0;
-    kal_int32 adc_reg_val=0;
+    U32 adc_reg_val=0;
 	
     /*
         0 : BATON2
@@ -270,9 +295,12 @@ int PMIC_IMM_GetOneChannelValue(int dwChannel, int deCount, int trimd)
     adc_reg_val = adc_reg_val | (1<<dwChannel);
     ret=pmic_config_interface(AUXADC_CON22,adc_reg_val,PMIC_RG_AP_RQST_LIST_MASK,PMIC_RG_AP_RQST_LIST_SHIFT);
 
+    if(ret!=0)
+       return -1;
+
 	do
 	{
-	    count=0;
+	    //count=0;
 	    ret_data=0;
 
 	    switch(dwChannel){         

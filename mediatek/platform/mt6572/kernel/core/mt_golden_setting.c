@@ -1,4 +1,3 @@
-#if 0
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -51,7 +50,7 @@ u32 MT6589_Suspend_Golden[] = {
 0xF0012050, 0xffffffff, 0xBE510026,
 };
 
-u32 MT6320_E1_Suspend_Golden[] = {
+u32 MT6320_E1_Suspend_Golden[] = {	
 0x714, 0xffff, 0x992   ,
 0x71A, 0x9000, 0x9000  ,
 //0x422, 0xc000, 0x0     ,
@@ -87,7 +86,7 @@ u32 MT6320_E1_Suspend_Golden[] = {
 };
 
 
-u32 MT6320_E2_Suspend_Golden[] = {
+u32 MT6320_E2_Suspend_Golden[] = {	
 0x714, 0xffff, 0x192   ,
 0x71A, 0x9000, 0x8000  ,
 //0x422, 0xc000, 0x0     ,
@@ -122,12 +121,12 @@ u32 MT6320_E2_Suspend_Golden[] = {
 0x700, 0x000f, 0x0     ,
 };
 
-char pmic_6320_reg_0x13e[][10] = {
+char pmic_6320_reg_0x13e[][10] = { 
  "Vproc", "Vsram", "Vcore", "Vm", "Vio18", "Vpa", "Vrf18", "Vrf18_2",
 "Vusb", "Vtcxo", "Vtcxo_2", "Vsim2", "Vsim1", "Vrf28", "Vrf28_2", "Vrtc"
 };
 
-char pmic_6320_reg_0x140[][10] = {
+char pmic_6320_reg_0x140[][10] = { 
 "Vmc", "Vmc1", "Vio28", "Vibr", "Vgp6", "Vgp5", "Vgp4", "Vgp3",
 "Vgp2", "Vgp1", "Vemc_3v3", "Vemc_1v8", "Vcama", "Va", "Vast", "Va28"
 };
@@ -182,8 +181,8 @@ static void Golden_Setting_Compare_PLL(void)
 #endif
 }
 
-static void Golden_Setting_Compare_PMIC_LDO(void)
-{
+static void Golden_Setting_Compare_PMIC_LDO(void)                                         
+{                 
 #if 0
     u16 temp_value, temp_i;
 
@@ -194,10 +193,10 @@ static void Golden_Setting_Compare_PMIC_LDO(void)
     {
         if( (temp_value & (0x1<<temp_i)) == (0x1<<temp_i) )
         {
-            clc_notice("PMIC %s : On.\n", pmic_6320_reg_0x13e[temp_i]);
+            clc_notice("PMIC %s : On.\n", pmic_6320_reg_0x13e[temp_i]);      
         }
     }
-
+    
     // PMIC 0x140 ==========================================
     temp_value = gs_pmic_read(0x140);
 
@@ -205,7 +204,7 @@ static void Golden_Setting_Compare_PMIC_LDO(void)
     {
         if( (temp_value & (0x1<<temp_i)) == (0x1<<temp_i) )
         {
-            clc_notice("PMIC %s : On.\n", pmic_6320_reg_0x140[temp_i]);
+            clc_notice("PMIC %s : On.\n", pmic_6320_reg_0x140[temp_i]);      
         }
     }
 #endif
@@ -218,9 +217,9 @@ void Golden_Setting_Compare_for_Suspend(void)
     u32 MT_6589_Len, MT_6320_Len;
     u32 chip_version = 0;
     u32 *MT6320_Suspend_Golden_ptr;
-
+    
     // check MT6320_E1 or MT6320_E2
-    chip_version = upmu_get_cid();
+    chip_version = upmu_get_cid();    
     if(chip_version == PMIC6320_E1_CID_CODE)
     {
         MT_6320_Len = sizeof(MT6320_E1_Suspend_Golden) / sizeof(u32);
@@ -274,7 +273,7 @@ void Golden_Setting_Compare_for_Suspend(void)
     }
 
     Golden_Setting_Compare_PMIC_LDO();
-
+    
     // ============================================================================================================
 #endif
 }
@@ -355,13 +354,13 @@ static int __init golden_setting_init(void)
     }
 
     golden_setting_err = platform_driver_register(&mtk_golden_setting_driver);
-
+    
     if (golden_setting_err)
     {
         clc_notice("golden setting driver callback register failed..\n");
         return golden_setting_err;
     }
-#endif
+#endif    
     return 0;
 }
 
@@ -369,4 +368,4 @@ static int __init golden_setting_init(void)
 MODULE_DESCRIPTION("MT6589 golden setting compare v0.1");
 
 late_initcall(golden_setting_init);
-#endif
+

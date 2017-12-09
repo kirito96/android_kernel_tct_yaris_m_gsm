@@ -1,26 +1,23 @@
 #ifndef __HAL_BTIFD_DMA_PUB_H_
 #define __HAL_BTIFD_DMA_PUB_H_
 
-
 #include <linux/dma-mapping.h>
 
 #include "hal_pub.h"
 
-typedef enum _ENUM_DMA_CTRL_{
-    DMA_CTRL_DISABLE = 0,
-    DMA_CTRL_ENABLE = DMA_CTRL_DISABLE + 1,
-    DMA_CTRL_BOTH,
-}ENUM_DMA_CTRL;
-
-
+typedef enum _ENUM_DMA_CTRL_ {
+	DMA_CTRL_DISABLE = 0,
+	DMA_CTRL_ENABLE = DMA_CTRL_DISABLE + 1,
+	DMA_CTRL_BOTH,
+} ENUM_DMA_CTRL;
 
 /*****************************************************************************
 * FUNCTION
 *  hal_tx_dma_info_get
 * DESCRIPTION
-*  get btif tx dma channel's information 
+*  get btif tx dma channel's information
 * PARAMETERS
-* dma_dir        [IN]         DMA's direction 
+* dma_dir        [IN]         DMA's direction
 * RETURNS
 *  pointer to btif dma's information structure
 *****************************************************************************/
@@ -38,7 +35,6 @@ P_MTK_DMA_INFO_STR hal_btif_dma_info_get(ENUM_DMA_DIR dma_dir);
 *****************************************************************************/
 int hal_btif_dma_hw_init(P_MTK_DMA_INFO_STR p_dma_info);
 
-
 /*****************************************************************************
 * FUNCTION
 *  hal_btif_clk_ctrl
@@ -51,8 +47,6 @@ int hal_btif_dma_hw_init(P_MTK_DMA_INFO_STR p_dma_info);
 *****************************************************************************/
 int hal_btif_dma_clk_ctrl(P_MTK_DMA_INFO_STR p_dma_info, ENUM_CLOCK_CTRL flag);
 
-
-
 /*****************************************************************************
 * FUNCTION
 *  hal_tx_dma_ctrl
@@ -61,13 +55,11 @@ int hal_btif_dma_clk_ctrl(P_MTK_DMA_INFO_STR p_dma_info, ENUM_CLOCK_CTRL flag);
 * PARAMETERS
 * p_dma_info   [IN]        pointer to BTIF dma channel's information
 * ctrl_id          [IN]        enable/disable ID
-* dma_dir        [IN]         DMA's direction 
+* dma_dir        [IN]         DMA's direction
 * RETURNS
 *  0 means success; negative means fail
 *****************************************************************************/
 int hal_btif_dma_ctrl(P_MTK_DMA_INFO_STR p_dma_info, ENUM_DMA_CTRL ctrl_id);
-
-
 
 /*****************************************************************************
 * FUNCTION
@@ -80,35 +72,33 @@ int hal_btif_dma_ctrl(P_MTK_DMA_INFO_STR p_dma_info, ENUM_DMA_CTRL ctrl_id);
 * RETURNS
 *  0 means success; negative means fail
 *****************************************************************************/
-int hal_btif_dma_rx_cb_reg(P_MTK_DMA_INFO_STR p_dma_info, dma_rx_buf_write rx_cb);
-
+int hal_btif_dma_rx_cb_reg(P_MTK_DMA_INFO_STR p_dma_info,
+			   dma_rx_buf_write rx_cb);
 
 /*****************************************************************************
 * FUNCTION
 *  hal_tx_vfifo_reset
 * DESCRIPTION
-*  reset tx virtaul fifo information, except memory information 
+*  reset tx virtaul fifo information, except memory information
 * PARAMETERS
 * p_dma_info   [IN]        pointer to BTIF dma channel's information
-* dma_dir  [IN]         DMA's direction 
+* dma_dir  [IN]         DMA's direction
 * RETURNS
 *  0 means success, negative means fail
 *****************************************************************************/
 int hal_btif_vfifo_reset(P_MTK_DMA_INFO_STR p_dma_info);
 
-
-
 /*****************************************************************************
 * FUNCTION
 *  hal_tx_dma_irq_handler
 * DESCRIPTION
-*  lower level tx interrupt handler 
+*  lower level tx interrupt handler
 * PARAMETERS
 * p_dma_info   [IN]        pointer to BTIF dma channel's information
 * RETURNS
 *  0 means success, negative means fail
 *****************************************************************************/
-int hal_tx_dma_irq_handler (P_MTK_DMA_INFO_STR p_dma_info);
+int hal_tx_dma_irq_handler(P_MTK_DMA_INFO_STR p_dma_info);
 
 /*****************************************************************************
 * FUNCTION
@@ -122,8 +112,8 @@ int hal_tx_dma_irq_handler (P_MTK_DMA_INFO_STR p_dma_info);
 * RETURNS
 *  0 means success, negative means fail
 *****************************************************************************/
-int hal_dma_send_data(P_MTK_DMA_INFO_STR p_dma_info, const unsigned char* p_buf, const unsigned int buf_len);
-
+int hal_dma_send_data(P_MTK_DMA_INFO_STR p_dma_info,
+		      const unsigned char *p_buf, const unsigned int buf_len);
 
 /*****************************************************************************
 * FUNCTION
@@ -161,12 +151,11 @@ int hal_dma_get_ava_room(P_MTK_DMA_INFO_STR p_dma_info);
 *****************************************************************************/
 bool hal_dma_is_tx_allow(P_MTK_DMA_INFO_STR p_dma_info);
 
-
 /*****************************************************************************
 * FUNCTION
 *  hal_rx_dma_irq_handler
 * DESCRIPTION
-*  lower level rx interrupt handler 
+*  lower level rx interrupt handler
 * PARAMETERS
 * p_dma_info   [IN]        pointer to BTIF dma channel's information
 * p_buf     [IN/OUT] pointer to rx data buffer
@@ -174,9 +163,8 @@ bool hal_dma_is_tx_allow(P_MTK_DMA_INFO_STR p_dma_info);
 * RETURNS
 *  0 means success, negative means fail
 *****************************************************************************/
-int hal_rx_dma_irq_handler(P_MTK_DMA_INFO_STR p_dma_info, unsigned char* p_buf, const unsigned int max_len);
-
-
+int hal_rx_dma_irq_handler(P_MTK_DMA_INFO_STR p_dma_info,
+			   unsigned char *p_buf, const unsigned int max_len);
 
 /*****************************************************************************
 * FUNCTION
@@ -191,9 +179,6 @@ int hal_rx_dma_irq_handler(P_MTK_DMA_INFO_STR p_dma_info, unsigned char* p_buf, 
 *****************************************************************************/
 int hal_dma_dump_reg(P_MTK_DMA_INFO_STR p_dma_info, ENUM_BTIF_REG_ID flag);
 
-
 int hal_dma_pm_ops(P_MTK_DMA_INFO_STR p_dma_info, MTK_BTIF_PM_OPID opid);
 
-
 #endif /*__HAL_BTIFD_DMA_PUB_H_*/
-

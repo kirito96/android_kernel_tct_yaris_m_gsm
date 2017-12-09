@@ -10,7 +10,8 @@ namespace android
 {
 
 // for loopback
-enum loopback_t {
+enum loopback_t
+{
     NO_LOOPBACK                                 = 0,
 
     // AFE Loopback
@@ -29,16 +30,13 @@ enum loopback_t {
     AP_BT_LOOPBACK                              = 30,
     MD_BT_LOOPBACK                              = 31,
 
-	// BT Loopback without codec
-	AP_BT_LOOPBACK_NO_CODEC						= 32,  
-	MD_BT_LOOPBACK_NO_CODEC						= 33,
-    
-    //I2S In->DAC and ADC->I2S Out
-    AP_I2S_IN_DAC_AND_ADC_IN_TO_I2S_OUT         = 40,
-    
+    // BT Loopback without codec
+    AP_BT_LOOPBACK_NO_CODEC                     = 32,
+    MD_BT_LOOPBACK_NO_CODEC                     = 33,
 };
 
-enum loopback_output_device_t {
+enum loopback_output_device_t
+{
     LOOPBACK_OUTPUT_RECEIVER = 1,
     LOOPBACK_OUTPUT_EARPHONE = 2,
     LOOPBACK_OUTPUT_SPEAKER  = 3,
@@ -54,7 +52,9 @@ class LoopbackManager
         loopback_t GetLoopbackType();
 
         status_t SetLoopbackOn(loopback_t loopback_type, loopback_output_device_t loopback_output_device);
+#if 0        
         status_t SetLoopbackOn(loopback_t loopback_type, loopback_output_device_t loopback_output_device, uint32 ul_samplerate, uint32 dl_samplerate);
+#endif
         status_t SetLoopbackOff();
 
     protected:
@@ -75,6 +75,8 @@ class LoopbackManager
         sph_enh_mask_struct_t mMaskCopy;
 
         modem_index_t mWorkingModemIndex;
+
+        bool mBtHeadsetNrecOnCopy;
 
     private:
         static LoopbackManager *mLoopbackManager; // singleton

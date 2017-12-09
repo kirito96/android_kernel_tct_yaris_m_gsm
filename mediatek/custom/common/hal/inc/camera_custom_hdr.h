@@ -5,7 +5,21 @@
 
 #define CUST_HDR_DEBUG          0   // Enable this will dump HDR Debug Information into SDCARD
 #define HDR_DEBUG_OUTPUT_FOLDER		"/storage/sdcard1/"	// For ALPS.JB.
+/**************************************************************************
+ *                      D E F I N E S / M A C R O S                       *
+ **************************************************************************/
 // For HDR Customer Parameters
+
+// [capture policy]
+//     - When CUST_HDR_CAPTURE_POLICY==0,
+//          The capture size of each frame will be as same as the HDR output image size.
+//          If no special reason (ex. memory issues), this one will be a good choise.
+//     - When CUST_HDR_CAPTURE_POLICY==1,
+//          Use the sensor size as the maximum frame size.
+//          The HDR result will be scaled up to fit JPEG size later.
+//          This option can save memory when capture size is larger than sensor size.
+//          But the cost is a HDR with worse quality.
+#define CUST_HDR_CAPTURE_POLICY	0
 
 // [Core Number]
 //     - Value Range: 1(For single-core)/2(For multi-core).
@@ -20,7 +34,7 @@
 //     - When CUST_HDR_CAPTURE_ALGORITHM==2,
 //          Always take 2 pictures
 #define CUST_HDR_CAPTURE_ALGORITHM   1
-#define CUST_HDR_NEOverExp_Percent   15
+#define CUST_HDR_NEOverExp_Percent   10
 
 // [Prolonged VD]
 //     - Value Range: 1(default)~ (depend on sensor characteristics).
@@ -76,8 +90,17 @@
 #define CUST_HDR_TARGET_LEVEL_SUB		0
 
 
+/**************************************************************************
+ *     E N U M / S T R U C T / T Y P E D E F    D E C L A R A T I O N     *
+ **************************************************************************/
 
+/**************************************************************************
+ *                 E X T E R N A L    R E F E R E N C E S                 *
+ **************************************************************************/
 
+/**************************************************************************
+ *        P U B L I C    F U N C T I O N    D E C L A R A T I O N         *
+ **************************************************************************/
 MUINT32 CustomHdrCoreNumberGet(void);
 MUINT32 CustomHdrProlongedVdGet(void);
 MUINT32 CustomHdrBRatioGet(void);
@@ -90,6 +113,9 @@ MINT32 CustomHdrThHighGet(void);
 MINT32 CustomHdrThLowGet(void);
 MUINT32 CustomHdrTargetLevelSubGet(void);
 
+/*******************************************************************************
+* HDR exposure setting
+*******************************************************************************/
 typedef struct HDRExpSettingInputParam_S
 {
     MUINT32 u4MaxSensorAnalogGain; // 1x=1024
@@ -116,6 +142,9 @@ typedef struct HDRExpSettingOutputParam_S
 
 MVOID getHDRExpSetting(const HDRExpSettingInputParam_T& rInput, HDRExpSettingOutputParam_T& rOutput);
 
+/**************************************************************************
+ *                   C L A S S    D E C L A R A T I O N                   *
+ **************************************************************************/
 
 
 

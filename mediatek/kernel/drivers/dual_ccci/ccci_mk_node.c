@@ -13,7 +13,7 @@
 #include <linux/uaccess.h>
 #include <linux/platform_device.h>
 #include <linux/proc_fs.h>
-#include <ccci_common.h>
+#include <ccci.h>
 
 typedef struct _ccci_node
 {
@@ -46,14 +46,18 @@ static ccci_node_t ccci1_node_list[] = {
 	{"ccci_uem_tx",		"std chr",		19,		0},
 	{"ccci_md_log_rx",	"std chr",		42,		0},
 	{"ccci_md_log_tx",	"std chr",		43,		0},
-
+#ifdef MTK_ICUSB_SUPPORT
+	{"ttyC",			"tty",			0,		4},
+#else
+	{"ttyC",			"tty",			0,		3},
+#endif
 	{"ccci_ipc_1220_0",	"ipc",			0,		0}, //used by AGPS
 	{"ccci_ipc_2",		"ipc",			2,		0}, //used by GPS
 
 	{"ccci_fs",			"fs",			0,		0},
 
 	{"ccci_monitor",	"vir chr",		0,		0},
-	{"ccci_ioctl",		"vir chr",		1,		2},
+	{"ccci_ioctl",		"vir chr",		1,		5},
 };
 
 static ccci_node_t ccci2_node_list[] = {
@@ -66,18 +70,22 @@ static ccci_node_t ccci2_node_list[] = {
 	{"ccci2_md_log_rx",	"std chr",		42,		0}, 
 	{"ccci2_md_log_tx",	"std chr",		43,		0},
 
+#ifdef MTK_ICUSB_SUPPORT
+	{"ccci2_tty",			"tty",			0,		4},
+#else
+	{"ccci2_tty",			"tty",			0,		3},
+#endif
+
 	{"ccci2_ipc_",		"ipc",			0,		1}, 
 
 	{"ccci2_fs",		"fs",			0,		0},
 
 	{"ccci2_monitor",	"vir chr",		0,		0},
-	{"ccci2_ioctl",		"vir chr",		1,		2},
+	{"ccci2_ioctl",		"vir chr",		1,		5},
 };
 
 static ccci_node_type_table_t	ccci_node_type_table[MAX_MD_NUM];
 static void						*dev_class = NULL;
-
-
 
 
 static void init_ccci_node_type_table(void)
@@ -256,7 +264,10 @@ ssize_t ccci_attr_store(struct kobject *kobj, struct attribute *attr, const char
 
 ssize_t show_attr_md1_postfix(char *buf);
 ssize_t show_attr_md2_postfix(char *buf);
-
+ssize_t show_attr_version(char *buf)
+{
+	return snprintf(buf, 16, "%d\n", 2); // hardcode
+}
 
 /* global vars */
 static ccci_info_t *ccci_sys_info = NULL;
@@ -269,12 +280,14 @@ CCCI_ATTR(boot, 0660, NULL, NULL);
 CCCI_ATTR(modem_info, 0644, NULL, NULL);
 CCCI_ATTR(md1_postfix, 0644, show_attr_md1_postfix, NULL);
 CCCI_ATTR(md2_postfix, 0644, show_attr_md2_postfix, NULL);
+CCCI_ATTR(version, 0644, show_attr_version, NULL);
 
 struct attribute *ccci_default_attrs[] = {
 	&ccci_attr_boot.attr,
 	&ccci_attr_modem_info.attr,
 	&ccci_attr_md1_postfix.attr,
 	&ccci_attr_md2_postfix.attr,
+	&ccci_attr_version.attr,
 	NULL
 };
 
@@ -369,7 +382,7 @@ int register_ccci_attr_func(const char *buf, ssize_t (*show)(char*), ssize_t (*s
 		if (!strncmp(ccci_default_attrs[i]->name, buf, strlen(ccci_default_attrs[i]->name))) {
 			ccci_attr_temp = container_of(ccci_default_attrs[i], ccci_attribute_t, attr);
 			break;
-	}
+		}
 		i++;
 	}
 	if (ccci_attr_temp) {

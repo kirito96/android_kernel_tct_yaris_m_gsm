@@ -27,13 +27,6 @@
  * OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
  * SUCH DAMAGE.
  */
-/*
- *
- date     |author      |bug#      |summary
- -----------------------------------------------------------------------------------
- 20130507 |sunjiaojiao |FR 436997 |stop charging when battery id error for IEEE1725
- *
- */
 
 #include <debug.h>
 #include <dev/uart.h>
@@ -46,6 +39,8 @@
 #include <platform/mt_pmic.h>
 #include <platform/mt_i2c.h>
 #include <video.h>
+#include <stdlib.h>
+#include <string.h>
 #include <target/board.h>
 #include <platform/mt_logo.h>
 #include <platform/mt_gpio.h>
@@ -57,7 +52,13 @@
 #include <platform/mt_rtc.h>
 #include <platform/mt_leds.h>
 #endif
+#include <dev/mrdump.h>
 #include <platform/env.h>
+#include <platform/mtk_wdt.h>
+#include <platform/disp_drv.h>
+#include <platform/mt_disp_drv.h>
+#include <platform/mmc_common_inter.h>
+#include <target/cust_key.h>    //MT65XX_MENU_OK_KEY
 
 #ifdef LK_DL_CHECK
 /*block if check dl fail*/
@@ -65,6 +66,15 @@
 #endif
 
 extern void platform_early_init_timer();
+extern void isink0_init(void);
+extern int mboot_common_load_logo(unsigned long logo_addr, char* filename);
+extern int sec_func_init(int dev_type);
+extern int sec_usbdl_enabled (void);
+extern void mtk_wdt_disable(void);
+extern void platform_deinit_interrupts(void);
+
+void platform_uninit(void);
+
 /* Transparent to DRAM customize */
 int g_nr_bank;
 int g_rank_size[4];
@@ -106,14 +116,23 @@ int clk_init(void)
 
         #define CLK_MUX_SEL                 (TOP_CLOCK_CTRL_BASE + 0x0000)
         #define CLK_GATING_CTRL0            (TOP_CLOCK_CTRL_BASE + 0x0020)
+#ifdef CLK_GATING_CTRL1
+        #undef CLK_GATING_CTRL1
+#endif
         #define CLK_GATING_CTRL1            (TOP_CLOCK_CTRL_BASE + 0x0024)
         #define MPLL_FREDIV_EN              (TOP_CLOCK_CTRL_BASE + 0x0030)
         #define UPLL_FREDIV_EN              (TOP_CLOCK_CTRL_BASE + 0x0034)
         #define SET_CLK_GATING_CTRL0        (TOP_CLOCK_CTRL_BASE + 0x0050)
+#ifdef SET_CLK_GATING_CTRL1
+        #undef SET_CLK_GATING_CTRL1
+#endif
         #define SET_CLK_GATING_CTRL1        (TOP_CLOCK_CTRL_BASE + 0x0054)
         #define SET_MPLL_FREDIV_EN          (TOP_CLOCK_CTRL_BASE + 0x0060)
         #define SET_UPLL_FREDIV_EN          (TOP_CLOCK_CTRL_BASE + 0x0064)
         #define CLR_CLK_GATING_CTRL0        (TOP_CLOCK_CTRL_BASE + 0x0080)
+#ifdef CLR_CLK_GATING_CTRL1
+        #undef CLR_CLK_GATING_CTRL1
+#endif
         #define CLR_CLK_GATING_CTRL1        (TOP_CLOCK_CTRL_BASE + 0x0084)
         #define CLR_MPLL_FREDIV_EN          (TOP_CLOCK_CTRL_BASE + 0x0090)
         #define CLR_UPLL_FREDIV_EN          (TOP_CLOCK_CTRL_BASE + 0x0094)
@@ -330,9 +349,9 @@ int clk_init(void)
                               | AUX_SW_CG_ADC_BIT       \
                               | AUX_SW_CG_TP_BIT)
 
-                              // | AUX_SW_CG_MD_BIT        \
-                              // | PMIC_SW_CG_MD_BIT       \
-                              // | PMIC_SW_CG_CONN_BIT     \
+                              // | AUX_SW_CG_MD_BIT        
+                              // | PMIC_SW_CG_MD_BIT       
+                              // | PMIC_SW_CG_CONN_BIT     
 
 // CG_MMSYS0
 #define SMI_COMMON_SW_CG_BIT        BIT(0)
@@ -426,7 +445,7 @@ int clk_init(void)
         #define spm_read(addr)              (*(volatile unsigned int *)(addr))
         #define clk_writel                  spm_write
 
-        int i;
+        unsigned int i;
 
         clk_writel(CLR_CLK_GATING_CTRL0,
                    0
@@ -481,6 +500,13 @@ int clk_init(void)
                    );
 // NAND
 #else
+    #ifdef MTK_SPI_NAND_SUPPORT // SPI-NAND
+        clk_writel(CLR_CLK_GATING_CTRL1,
+                   0
+                 | SPINFI_SW_CG_BIT         // enable
+                   );
+    #endif
+
         clk_writel(SET_CLK_GATING_CTRL1,
                    0
                  | MSDC0_SW_CG_BIT          // disable
@@ -556,7 +582,7 @@ int clk_init(void)
 
 int dram_init(void)
 {
-    int i, index, num_record;
+    int i;
     unsigned int dram_rank_num;
 
     /* Get parameters from pre-loader. Get as early as possible
@@ -617,6 +643,7 @@ int dram_init(void)
         while (1) ;
     }
 #endif
+    return 0;
 }
 
 /*******************************************************
@@ -637,11 +664,13 @@ u32 memory_size(void)
 
 void sw_env()
 {
-    int dl_status = 0;
-
 #ifdef LK_DL_CHECK
+    int dl_status = 0;
 #ifdef MTK_EMMC_SUPPORT
     dl_status = mmc_get_dl_info();
+#else
+    dl_status = nand_get_dl_info();
+#endif
     printf("mt65xx_sw_env--dl_status: %d\n", dl_status);
     if (dl_status != 0)
     {
@@ -652,7 +681,6 @@ void sw_env()
         while (1) ;
 #endif
     }
-#endif
 #endif
 
 #ifndef USER_BUILD
@@ -699,7 +727,7 @@ void sw_env()
       default:
           video_printf(" => UNKNOWN BOOT\n");
     }
-    return 0;
+    return;
 #endif
 
 #ifdef USER_BUILD
@@ -714,10 +742,9 @@ void platform_init_mmu_mappings(void)
   /* configure available RAM banks */
   dram_init();
 
-  /* Enable D-cache  */
+/* Enable D-cache  */
 
   unsigned int offset;
-  unsigned int i = 0;
   unsigned int dram_size = 0;
 
   dram_size = memory_size();
@@ -764,9 +791,8 @@ void platform_early_init(void)
 
 #ifdef LK_PROFILING
     printf("[PROFILE] ------- set clock takes %d ms -------- \n", get_timer(time_set_clock));
-    time_disp_preinit = get_timer(0);
+    time_misc_init = get_timer(0);
 #endif
-
 
     platform_init_interrupts();
     platform_early_init_timer();
@@ -793,17 +819,14 @@ void platform_early_init(void)
     time_wdt_init = get_timer(0);
 #endif
 
-    // do not enable WDT in memory preserved mode
-    if ( !mtk_wdt_is_mem_preserved() ) {
-        mtk_wdt_init();
-    }
+    mtk_wdt_init();
 
 #ifdef LK_PROFILING
     printf("[PROFILE] ------- wdt init takes %d ms -------- \n", get_timer(time_wdt_init));
-    time_led_init = get_timer(0);
+    time_disp_preinit = get_timer(0);
 #endif
 
-/* initialize the frame buffet information */
+    /* initialize the frame buffet information */
     g_fb_size = mt_disp_get_vram_size();
     g_fb_base = memory_size() - g_fb_size + DRAM_PHY_ADDR;
 
@@ -811,7 +834,7 @@ void platform_early_init(void)
 
 #ifdef LK_PROFILING
     printf("[PROFILE] -------disp preinit takes %d ms -------- \n", get_timer(time_disp_preinit));
-    time_misc_init = get_timer(0);
+    time_led_init = get_timer(0);
 #endif
 
 #ifndef MACH_FPGA
@@ -932,7 +955,6 @@ void platform_init(void)
 	printf("[PROFILE] ------- ENV init takes %d ms -------- \n", get_timer(time_env));
 	time_load_logo = get_timer(0);
 #endif
-
 #if defined(MEM_PRESERVED_MODE_ENABLE)
     // only init eMMC/NAND driver in normal boot, not in memory dump
     if (TRUE != mtk_wdt_is_mem_preserved())
@@ -953,18 +975,19 @@ void platform_init(void)
     /*for kpd pmic mode setting*/
     set_kpd_pmic_mode();
 
-#ifndef DISABLE_FOR_BRING_UP
-    mdelay(200);//zhao.li@tcl keep it for bug 492713
-    mt65xx_backlight_on(); //[TODO] workaround
-#endif
 
 #ifdef LK_PROFILING
     printf("[PROFILE] ------- backlight takes %d ms -------- \n", get_timer(time_backlight));
     time_boot_mode = get_timer(0);
 #endif
     enable_PMIC_kpd_clock();
-    boot_mode_select();
-
+#if defined(MEM_PRESERVED_MODE_ENABLE)
+    // when memory preserved mode, do not check KPOC (in boot_mode_selec()), which will power off the target
+    if (TRUE != mtk_wdt_is_mem_preserved())
+#endif
+    {
+        boot_mode_select();
+    }
 #ifdef LK_PROFILING
     printf("[PROFILE] ------- boot mode select takes %d ms -------- \n", get_timer(time_boot_mode));
     time_sec_init = get_timer(0);
@@ -988,7 +1011,7 @@ void platform_init(void)
 	printf("[LK] boot mode is DOWNLOAD_BOOT\n");
 	/* verify da before jumping to da*/
 	if (sec_usbdl_enabled()) {
-	    u8  *da_addr = g_boot_arg->da_info.addr;
+	    u8  *da_addr = (unsigned char *)g_boot_arg->da_info.addr;
 	    u32 da_sig_len = DRV_Reg32(SRAMROM_BASE + 0x30);
 	    u32 da_len   = da_sig_len >> 10;
 	    u32 sig_len  = da_sig_len & 0x3ff;
@@ -1038,7 +1061,7 @@ void platform_init(void)
     printf("[PROFILE] ------- download boot check takes %d ms -------- \n", get_timer(time_download_boot_check));
     time_bat_init = get_timer(0);
 #endif
-    mt65xx_bat_init();//20130816 return FR506563 
+    mt65xx_bat_init();
 #ifdef LK_PROFILING
     printf("[PROFILE] ------- battery init takes %d ms -------- \n", get_timer(time_bat_init));
     time_rtc_check = get_timer(0);
@@ -1054,36 +1077,45 @@ void platform_init(void)
     time_show_logo = get_timer(0);
 #endif
 
+#if defined(MEM_PRESERVED_MODE_ENABLE)
+    // when memory preserved mode, do not check KPOC (in boot_mode_selec()), which will power off the target
+    if (TRUE != mtk_wdt_is_mem_preserved())
+#endif
+    {
 #ifdef MTK_KERNEL_POWER_OFF_CHARGING
-	if(kernel_charging_boot() == 1)
-	{
+    	if(kernel_charging_boot() == 1)
+    	{
 
-		mt_disp_power(TRUE);
-		//20130528 changed by wangxingxing for FR 460121 start
-		mt_disp_show_low_battery();
-		//show_logo(35);
-		//20130528 changed by wangxingxing for FR 460121  end
-		mt_disp_wait_idle();
+    		mt_disp_power(TRUE);
+    		//mt_disp_show_low_battery();
+    		mt_disp_show_boot_logo();   //20140401 jiangtao for pr 623653
+    		mt_disp_wait_idle();
 #ifndef DISABLE_FOR_BRING_UP
-		mt65xx_leds_brightness_set(6, 110);
+    		mt65xx_leds_brightness_set(6, 110);
 #endif
-	}
-	else if(g_boot_mode != KERNEL_POWER_OFF_CHARGING_BOOT && g_boot_mode != LOW_POWER_OFF_CHARGING_BOOT)
-	{
+    	}
+    	else if(g_boot_mode != KERNEL_POWER_OFF_CHARGING_BOOT && g_boot_mode != LOW_POWER_OFF_CHARGING_BOOT)
+    	{
 #ifndef MACH_FPGA
-		if (g_boot_mode != ALARM_BOOT && (g_boot_mode != FASTBOOT))
-		{
-			mt_disp_show_boot_logo();
-		}
+    		if (g_boot_mode != ALARM_BOOT && (g_boot_mode != FASTBOOT))
+    		{
+    			mt_disp_show_boot_logo();
+    		}
 #endif
-	}
+    	}
 #else
 #ifndef MACH_FPGA
-	if (g_boot_mode != ALARM_BOOT && (g_boot_mode != FASTBOOT))
-	{
-		mt_disp_show_boot_logo();
-	}
+    	if (g_boot_mode != ALARM_BOOT && (g_boot_mode != FASTBOOT))
+    	{
+    		mt_disp_show_boot_logo();
+    	}
 #endif
+#endif
+    }   //if (TRUE != mtk_wdt_is_mem_preserved())
+
+/*ersen.shang move backlight operation after draw logo*/
+#ifndef DISABLE_FOR_BRING_UP
+    mt65xx_backlight_on();
 #endif
 
 #ifdef LK_PROFILING
@@ -1229,11 +1261,12 @@ void platform_mem_preserved_config(unsigned int enable)
     printf("REG(0x%X)=0x%X\n", SRAMROM_BASE + 0x28, DRV_Reg32(SRAMROM_BASE + 0x28));
 */
 }
-
 void platform_mem_preserved_load_img(void)
 {
     //enter memory preserved mode
-    if ((TRUE == mtk_wdt_mem_preserved_is_enabled()) && (TRUE != mtk_wdt_is_mem_preserved()))
+    //if ((TRUE == mtk_wdt_mem_preserved_is_enabled()) && (TRUE != mtk_wdt_is_mem_preserved()))
+    //always load sram/mem preloader when sysfs decide enter memory preserved mode
+    if (TRUE != mtk_wdt_is_mem_preserved())
     {
         char * name;
         unsigned int start_addr;
@@ -1285,17 +1318,71 @@ void platform_mem_preserved_dump_mem(void)
     //enter memory preserved mode
     if (TRUE == mtk_wdt_is_mem_preserved())
     {
-        unsigned int tmp;
+        struct mrdump_regset per_cpu_regs[NR_CPUS];
+        struct mrdump_regpair regpairs[9];
+
+        unsigned int tmp, i, reg_addr;
+
+#if 0
+        // do not disable WDT
         tmp = DRV_Reg32(TOP_RGU_BASE);
         tmp = (tmp & ~(0x1));
         tmp = (tmp | 0x22000000);
         DRV_WriteReg32(TOP_RGU_BASE,tmp);
+#endif
         printf ("wdt_flag=0x%x\n",mtk_wdt_is_mem_preserved());
         mtk_wdt_clear_mem_preserved_status();
         printf ("after clear wdt_flag=0x%x\n",mtk_wdt_is_mem_preserved());
+
+        memset(per_cpu_regs, 0, sizeof(per_cpu_regs));
+        per_cpu_regs[0].pc = DRV_Reg32(DBG_CORE0_PC);
+        per_cpu_regs[0].fp = DRV_Reg32(DBG_CORE0_FP);
+        per_cpu_regs[0].sp = DRV_Reg32(DBG_CORE0_SP);
+
+        per_cpu_regs[1].pc = DRV_Reg32(DBG_CORE1_PC);
+        per_cpu_regs[1].fp = DRV_Reg32(DBG_CORE1_FP);
+        per_cpu_regs[1].sp = DRV_Reg32(DBG_CORE1_SP);
+
+        //dump AHBABT Monitor register
+        memset(regpairs, 0, sizeof(regpairs));
+
+        for ( i = 0 ; i < 8 ; i++)
+        {
+            reg_addr = AHBABT_ADDR1 + (i*4);
+            regpairs[0].addr = reg_addr;
+            regpairs[0].val = DRV_Reg32(reg_addr);
+        }
+        // end of regpairs, set addr and val to 0
+        regpairs[8].addr = 0;
+        regpairs[8].val = 0;
+
         printf ("==== 72we are in memory preserved mode====\n");
-        aee_mrdump_wdt_handle();
+
+        mt_set_gpio_mode(CARD_DETECT_PIN,4);
+        // if no card is insert, remind inser sd card
+        if (0 != mt_get_gpio_in(CARD_DETECT_PIN))
+        {
+            printf("Please Insert SD card for dump\n");
+            printf("Press[VOL DOWN] to continue\n");
+#if defined(MEM_PRESERVED_MODE_VIDEO_PRINT)
+            video_printf("Please Insert SD card for dump\n");
+            video_printf("Press[VOL DOWN] to continue\n");
+#endif
+            mtk_wdt_restart();
+
+            while(1) {
+                // VOL_DOWN
+                if (mtk_detect_key(MT65XX_MENU_OK_KEY)) {
+                    break;
+                }
+//                printf ("card status=0x%x\n",mt_get_gpio_in(CARD_DETECT_PIN));
+            }
+        }
+
+#if defined(MEM_PRESERVED_MODE_VIDEO_PRINT)
+        video_printf("[MEM_PRE]Start Dump\n");
+#endif
+        mrdump_run(&per_cpu_regs, regpairs);
     }
 }
 #endif ////#if defined(MEM_PRESERVED_MODE_ENABLE)
-

@@ -1,36 +1,4 @@
-ifeq (MT5192_FM, $(strip $(MTK_FM_CHIP)))
-  ifeq (no, $(strip $(MTK_MT519X_FM_SUPPORT)))
-    $(call dep-err-seta-or-setb,MTK_MT519X_FM_SUPPORT,yes,MTK_FM_CHIP,non MT519X_FM)
-  endif
-endif
-
-ifeq (MT6620_FM, $(strip $(MTK_FM_CHIP)))
-  ifeq (yes, $(strip $(MTK_MT519X_FM_SUPPORT)))
-    $(call dep-err-seta-or-setb,MTK_MT519X_FM_SUPPORT,no,MTK_FM_CHIP,non MT6620_FM)
-  endif
-endif
-
-#Mark for early porting
-#ifeq (MT6620_FM, $(strip $(MTK_FM_CHIP)))
-#  ifneq (mt6620, $(strip $(CUSTOM_KERNEL_FM)))
-#    $(call dep-err-seta-or-setb,CUSTOM_KERNEL_FM,mt6620,MTK_FM_CHIP,MT6620_FM)
-#  endif
-#endif
-
-ifeq (MT5192_FM, $(strip $(MTK_FM_CHIP)))
-  ifneq (, $(strip $(CUSTOM_KERNEL_FM)))
-    $(call dep-err-seta-or-setb,MTK_FM_CHIP,non MT5192_FM,CUSTOM_KERNEL_FM,)
-  endif
-endif
-
 #################################################################
-# for camera feature
-#Mark for early porting
-#ifneq ($(strip $(CUSTOM_HAL_CAMERA)), $(strip $(CUSTOM_KERNEL_CAMERA)))
-#    $(call dep-err-seta-or-setb,CUSTOM_HAL_CAMERA,$(CUSTOM_KERNEL_CAMERA),CUSTOM_KERNEL_CAMERA,$(CUSTOM_HAL_CAMERA))
-#endif
-
-##################################################################
 # dependency between AST TD modem & MMSYS1
 ##################################################################
 ifeq (AST_TL1_TDD, $(strip $(MODEM_L1_3GSOLUTION)))
@@ -72,28 +40,6 @@ ifeq (no,$(strip $(GEMINI)))
   endif
 endif
 
-ifeq (yes,$(strip $(EVB)))
-  ifeq (yes,$(strip $(MTK_GEMINI_3G_SWITCH)))
-    $(call dep-err-common, please turn off MTK_GEMINI_3G_SWITCH when EVB=yes)
-  endif
-endif
-
-#ifeq ($(findstring modem_3g,$(MTK_MODEM_SUPPORT)),)
-#  ifeq (yes,$(strip $(MTK_GEMINI_3G_SWITCH)))
-#    $(call dep-err-common, please turn off MTK_GEMINI_3G_SWITCH when MTK_MODEM_SUPPORT is not 3g)
-#  endif
-#endif
-
-#ifeq (yes,$(strip $(GEMINI)))
-#  ifeq (no,$(strip $(EVB)))
-#    ifneq ($(findstring modem_3g,$(MTK_MODEM_SUPPORT)),)
-#      ifeq (no,$(strip $(MTK_GEMINI_3G_SWITCH)))
-#        $(call dep-err-common, please turn on MTK_GEMINI_3G_SWITCH when GEMINI=yes, EVB=no and MTK_MODEM_SUPPORT is modem_3g_tdd/modem_3g_fdd)
-#      endif
-#    endif
-#  endif
-#endif
-
 ##############################################################
 # for share modem
 
@@ -117,9 +63,18 @@ ifneq ($(strip $(MTK_DT_SUPPORT)),yes)
   endif
 endif
 
-ifeq (no,$(strip $(GEMINI)))
-  ifneq (1,$(strip $(MTK_SHARE_MODEM_CURRENT)))
-    $(call dep-err-common, please set MTK_SHARE_MODEM_CURRENT=1 when GEMINI=no)
+ifeq (yes,$(strip $(MTK_LTE_DC_SUPPORT)))
+  ifneq (2,$(strip $(MTK_SHARE_MODEM_SUPPORT)))
+    $(call dep-err-seta-or-offb,MTK_SHARE_MODEM_SUPPORT,2,MTK_LTE_DC_SUPPORT)
+  endif
+  ifneq (2,$(strip $(MTK_SHARE_MODEM_CURRENT)))
+    $(call dep-err-seta-or-offb,MTK_SHARE_MODEM_CURRENT,2,MTK_LTE_DC_SUPPORT)
+  endif
+else
+  ifeq (no,$(strip $(GEMINI)))
+    ifneq (1,$(strip $(MTK_SHARE_MODEM_CURRENT)))
+      $(call dep-err-common, please set MTK_SHARE_MODEM_CURRENT=1 when GEMINI=no)
+    endif
   endif
 endif
 

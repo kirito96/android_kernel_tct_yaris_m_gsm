@@ -5,7 +5,7 @@
  *                              Include Files
  *===========================================================================*/
 
-#include "val_types.h"
+#include "val_types_private.h"
 #include "vcodec_if.h"
 #include "rv_format_info.h"
 #include "wmc_type.h"
@@ -25,14 +25,14 @@ extern "C" {
  *                              Definition
  *===========================================================================*/
 #define MAX_BUFFER_SIZE 21
-typedef struct
+/*typedef struct
 {
     // for speedy mode
     VAL_UINT32_T    nBufferStatus;
     VAL_INT64_T     llLastVideoTime;
     VAL_INT64_T     llCurrentPlayTime;
 } DRIVER_HANDLER_T;
-
+*/
 typedef struct __RV9_DRV_DATA_T
 {
     VAL_UINT32_T            uStreamHdrWidth;
@@ -60,6 +60,11 @@ typedef struct __VP8_DRV_DATA_T
 {
     VP8_DEC_CUSTOM_SETTING_T        VP8CustSetting;
 } VP8_DRV_DATA_T, *P_VP8_DRV_DATA_T;
+
+typedef struct __VP9_DRV_DATA_T
+{
+    VP9_DEC_CUSTOM_SETTING_T        VP9CustSetting;
+} VP9_DRV_DATA_T, *P_VP9_DRV_DATA_T;
 
 typedef struct __VC1_DRV_DATA_T
 {
@@ -138,6 +143,7 @@ typedef struct __VDEC_HANDLE_T
     VAL_VOID_T              *pDrvModule;    ///< used for dlopen and dlclose
 // ]
 #endif
+    VAL_BOOL_T              fgValInitFlag; ///< hValHandle is available or not
 } VDEC_HANDLE_T;
 
 /*=============================================================================

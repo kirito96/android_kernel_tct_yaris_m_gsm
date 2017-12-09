@@ -57,8 +57,12 @@
 
 #else
 
+#ifndef spm_read
 #define spm_read(addr)          (*(volatile U32 *)(addr))
+#endif
+#ifndef spm_write
 #define spm_write(addr, val)    mt65xx_reg_sync_writel(val, addr)
+#endif
 
 #endif
 
@@ -73,7 +77,7 @@
 #define SRAM_CKISO      (1U << 5)
 #define PWR_CLK_DIS     (1U << 4)
 #define PWR_ON_S        (1U << 3)
-#define PWR_ON          (1U << 2)
+#define PWR_ON_         (1U << 2)
 #define PWR_ISO         (1U << 1)
 #define PWR_RST_B       (1U << 0)
 
@@ -101,7 +105,7 @@ void spm_mtcmos_cpu_unlock(unsigned long *flags)
     spin_unlock_irqrestore(&spm_cpu_lock, *flags);
 }
 
-int spm_mtcmos_ctrl_cpu0(int state)
+int spm_mtcmos_ctrl_cpu0(int state, int chkWfiBeforePdn)
 {
     if (state == STA_POWER_DOWN) {
 
@@ -112,7 +116,7 @@ int spm_mtcmos_ctrl_cpu0(int state)
     return 0;
 }
 
-int spm_mtcmos_ctrl_cpu1(int state)
+int spm_mtcmos_ctrl_cpu1(int state, int chkWfiBeforePdn)
 {
     unsigned long flags;
 
@@ -123,7 +127,10 @@ int spm_mtcmos_ctrl_cpu1(int state)
 
     if (state == STA_POWER_DOWN)
     {
-        while ((spm_read(SPM_SLEEP_TIMER_STA) & APMCU1_SLEEP) == 0);
+        if (chkWfiBeforePdn)
+        {
+            while ((spm_read(SPM_SLEEP_TIMER_STA) & APMCU1_SLEEP) == 0);
+        }
 
         spm_write(SPM_FC1_PWR_CON, spm_read(SPM_FC1_PWR_CON) | PWR_CLK_DIS);
         spm_write(SPM_FC1_PWR_CON, spm_read(SPM_FC1_PWR_CON) | SRAM_CKISO);
@@ -134,7 +141,7 @@ int spm_mtcmos_ctrl_cpu1(int state)
         spm_write(SPM_CPU_FC1_L1_PDN, spm_read(SPM_CPU_FC1_L1_PDN) | FC1_L1_PDN);
         while ((spm_read(SPM_CPU_FC1_L1_PDN) & FC1_L1_PDN_ACK) == 0);
 
-        spm_write(SPM_FC1_PWR_CON, spm_read(SPM_FC1_PWR_CON) & ~PWR_ON);
+        spm_write(SPM_FC1_PWR_CON, spm_read(SPM_FC1_PWR_CON) & ~PWR_ON_);
         udelay(1);
         spm_write(SPM_FC1_PWR_CON, spm_read(SPM_FC1_PWR_CON) & ~PWR_ON_S);
         udelay(1);
@@ -142,7 +149,7 @@ int spm_mtcmos_ctrl_cpu1(int state)
     }
     else /* STA_POWER_ON */
     {
-        spm_write(SPM_FC1_PWR_CON, spm_read(SPM_FC1_PWR_CON) | PWR_ON);
+        spm_write(SPM_FC1_PWR_CON, spm_read(SPM_FC1_PWR_CON) | PWR_ON_);
         udelay(1);
         spm_write(SPM_FC1_PWR_CON, spm_read(SPM_FC1_PWR_CON) | PWR_ON_S);
         udelay(3);
@@ -331,7 +338,7 @@ int spm_mtcmos_ctrl_general(subsys_id id,
                && ((spm_read(spm_pwr_con) & spm_sram_pdn_ack) != spm_sram_pdn_ack) // wait until SRAM_PDN_ACK all 1
                );
 
-        spm_write(spm_pwr_con, spm_read(spm_pwr_con) & ~(PWR_ON_BIT|PWR_ON_S_BIT)); // PWR_ON = 0 & PWR_ON_S = 0
+        spm_write(spm_pwr_con, spm_read(spm_pwr_con) & ~(PWR_ON_BIT|PWR_ON_S_BIT)); // PWR_ON_ = 0 & PWR_ON_S = 0
         udelay(1);                                                          // delay 1 us
 
         while (   (spm_read(SPM_PWR_STATUS)   & spm_pwr_sta_mask)           // wait until PWR_ACK = 0
@@ -340,7 +347,7 @@ int spm_mtcmos_ctrl_general(subsys_id id,
     }
     else /* STA_POWER_ON */
     {
-        spm_write(spm_pwr_con, spm_read(spm_pwr_con) | PWR_ON_BIT);         // PWR_ON = 1
+        spm_write(spm_pwr_con, spm_read(spm_pwr_con) | PWR_ON_BIT);         // PWR_ON_ = 1
         udelay(1);                                                          // delay 1 us
         spm_write(spm_pwr_con, spm_read(spm_pwr_con) | PWR_ON_S_BIT);       // PWR_ON_S = 1
         udelay(1);                                                          // delay 1 us

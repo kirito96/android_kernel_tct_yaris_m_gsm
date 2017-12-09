@@ -68,7 +68,20 @@
 #include <mach/mt_pm_ldo.h>
 #endif
 
-#define  GPIO_ALS_EINT_PIN    EINT2_PS_N
+#define  GPIO_ALS_EINT_PIN    GPIO28
+#define EINT2_PS_N_M_EINT GPIO_MODE_02
+
+#if 1 //yfpan  
+ #define CUST_EINT_POLARITY_LOW         0
+ #define CUST_EINT_LEVEL_SENSITIVE      1
+ #define CUST_EINT_DEBOUNCE_DISABLE     0
+  	
+ #define CUST_EINT_ALS_NUM              2
+ #define CUST_EINT_ALS_DEBOUNCE_CN      0
+ #define CUST_EINT_ALS_POLARITY         CUST_EINT_POLARITY_LOW
+ #define CUST_EINT_ALS_SENSITIVE        CUST_EINT_LEVEL_SENSITIVE
+ #define CUST_EINT_ALS_DEBOUNCE_EN      CUST_EINT_DEBOUNCE_DISABLE
+#endif //yfpan
 
 #if ((defined MT6573) || (defined MT6575) || (defined MT6577) || (defined MT6589)  || (defined MT6572))	
 extern void mt65xx_eint_unmask(unsigned int line);
@@ -137,9 +150,9 @@ extern void MT6516_EINT_Registration(kal_uint8 eintno, kal_bool Dbounce_En,
 #define STK3211_STK3311_PID	0x12
 
 #ifdef STK_TUNE0
-	#define STK_MAX_MIN_DIFF	300
-	#define STK_HT_N_CT	180
-	#define STK_LT_N_CT	100
+	#define STK_MAX_MIN_DIFF	150
+	#define STK_HT_N_CT	90
+	#define STK_LT_N_CT	60
 #endif /* #ifdef STK_TUNE0 */
 
 #define STK_IRC_MAX_ALS_CODE		20000
@@ -181,11 +194,11 @@ static struct sensor_init_info stk3x1x_init_info = {
 		.uninit = stk3x1x_remove,
 	
 };
-static int stk3x1x_init_flag = 0;
-extern int hwmsen_alsps_add(struct sensor_init_info* obj);
+//static int stk3x1x_init_flag = 0;
+extern int hwmsen_alsps_sensor_add(struct sensor_init_info* obj);
 
 #endif//#if defined(MTK_AUTO_DETECT_ALSPS)
-
+static int stk3x1x_init_flag = 0;
 /*----------------------------------------------------------------------------*/
 typedef enum {
     STK_TRC_ALS_DATA= 0x0001,
@@ -202,6 +215,10 @@ typedef enum {
     STK_BIT_ALS    = 1,
     STK_BIT_PS     = 2,
 } STK_BIT;
+typedef enum {
+    CMC_BIT_ALS    = 1,
+    CMC_BIT_PS     = 2,
+} CMC_BIT;
 /*----------------------------------------------------------------------------*/
 struct stk3x1x_i2c_addr {    
 /*define a series of i2c slave address*/
@@ -293,7 +310,9 @@ struct stk3x1x_priv {
 #ifdef STK_TUNE0
 	uint16_t psa;
 	uint16_t psi;	
-	uint16_t psi_set;	
+	uint16_t psi_set;
+	uint16_t ps_high_thd_boot;
+	uint16_t ps_low_thd_boot;	
 	struct hrtimer ps_tune0_timer;	
 	struct workqueue_struct *stk_ps_tune0_wq;
     struct work_struct stk_ps_tune0_work;
@@ -346,6 +365,230 @@ static int stk_ps_tune_zero_func_fae(struct stk3x1x_priv *obj);
 struct wake_lock ps_lock;
 
 /*----------------------------------------------------------------------------*/
+/***********************************************/ 
+struct tmd2771_priv {
+    struct alsps_hw  *hw;
+    struct i2c_client *client;
+    struct work_struct  eint_work;
+
+    /*i2c address group*/
+  //  struct tmd2771_i2c_addr  addr;
+    
+    /*misc*/
+    u16		    als_modulus;
+    atomic_t    i2c_retry;
+    atomic_t    als_suspend;
+    atomic_t    als_debounce;   /*debounce time after enabling als*/
+    atomic_t    als_deb_on;     /*indicates if the debounce is on*/
+    atomic_t    als_deb_end;    /*the jiffies representing the end of debounce*/
+    atomic_t    ps_mask;        /*mask ps: always return far away*/
+    atomic_t    ps_debounce;    /*debounce time after enabling ps*/
+    atomic_t    ps_deb_on;      /*indicates if the debounce is on*/
+    atomic_t    ps_deb_end;     /*the jiffies representing the end of debounce*/
+    atomic_t    ps_suspend;
+
+
+    /*data*/
+    u16         als;
+    u16          ps;
+    u8          _align;
+    u16         als_level_num;
+    u16         als_value_num;
+    u32         als_level[C_CUST_ALS_LEVEL-1];
+    u32         als_value[C_CUST_ALS_LEVEL];
+
+    atomic_t    als_cmd_val;    /*the cmd value can't be read, stored in ram*/
+    atomic_t    ps_cmd_val;     /*the cmd value can't be read, stored in ram*/
+    atomic_t    ps_thd_val_high;     /*the cmd value can't be read, stored in ram*/
+	atomic_t    ps_thd_val_low;     /*the cmd value can't be read, stored in ram*/
+    ulong       enable;         /*enable mask*/
+    ulong       pending_intr;   /*pending interrupt*/
+
+    /*early suspend*/
+#if defined(CONFIG_HAS_EARLYSUSPEND)
+    struct early_suspend    early_drv;
+#endif     
+};
+static struct tmd2771_priv *tmd2771_obj = NULL;
+static struct platform_driver tmd2771_alsps_driver;
+extern   int mstar2133_pls_enable(void);
+ 
+extern  int mstar2133_pls_disable(void);
+
+extern  int  get_msg2133_data(void);
+
+extern int ft6306_pls_enable(void);
+ 
+extern int ft6306_pls_disable(void);
+
+extern int  get_ft6306_data(void);
+
+int tp_pls_status=-1;
+
+static int pls_enable(void)
+{
+	if(tp_pls_status==0) //tp is msg2133;
+		return mstar2133_pls_enable();
+	else if(tp_pls_status==1)//tp is ft6306;
+		return ft6306_pls_enable();
+	else
+		return -1;
+	if(tp_pls_status==1)//tp is ft6306;
+		return ft6306_pls_enable();
+	else
+		return -1;
+}
+
+static int pls_disable(void)
+{
+	if(tp_pls_status==0) //tp is msg2133;
+		return mstar2133_pls_disable();
+	else if(tp_pls_status==1)//tp is ft6306;
+		return ft6306_pls_disable();
+	else
+		return -1;
+	if(tp_pls_status==1)//tp is ft6306;
+		return ft6306_pls_disable();
+	else
+		return -1;
+}
+
+static int get_data(void)
+{
+	int alsps_value=-1;
+	if(tp_pls_status==0) //tp is msg2133;
+		alsps_value= get_msg2133_data();
+	if(tp_pls_status==1)//tp is ft6306;
+		alsps_value= get_ft6306_data();
+	if(alsps_value<0)
+		return 1 ;//1 is far;
+	else
+		return alsps_value;
+}
+int tmd2771_ps_operate(void* self, uint32_t command, void* buff_in, int size_in,
+		void* buff_out, int size_out, int* actualout)
+{
+	int err=0;
+		int value;
+	hwm_sensor_data* sensor_data;
+	struct tmd2771_priv *obj = (struct tmd2771_priv *)self;
+	switch (command)
+	{
+		case SENSOR_DELAY:
+					printk("[FT6306_PS] SENSOR_DELAY  \n");
+
+			break;
+
+		case SENSOR_ENABLE:
+			printk("[FT6306_PS] SENSOR_ENABLE  \n");
+
+			if((buff_in == NULL) || (size_in < sizeof(int)))
+			{
+				printk("Enable sensor parameter error!\n");
+				err = -EINVAL;
+			}
+			else
+			{		
+				value = *(int *)buff_in;
+				if(value)
+				{
+					if(err != pls_enable())
+					{
+						printk("enable ps fail: %d\n", err); 
+						return -1;
+					}
+					set_bit(CMC_BIT_PS, &obj->enable);
+
+				}
+				else
+				{
+					if(err != pls_disable())
+					{
+						printk("disable ps fail: %d\n", err); 
+						return -1;
+					}
+					clear_bit(CMC_BIT_PS, &obj->enable);
+
+				}
+			}
+			break;
+
+		case SENSOR_GET_DATA:
+			//printk("[FT6306_PS] SENSOR_GET_DATA  \n");
+			if((buff_out == NULL) || (size_out< sizeof(hwm_sensor_data)))
+			{
+				printk("get sensor data parameter error!\n");
+				err = -EINVAL;
+			}
+			else
+			{
+				sensor_data = (hwm_sensor_data *)buff_out;	
+                                //mdelay(160);
+				printk("[FT6306_PS] tmd2772_ps_operate ps data=%d!\n",get_data());
+				sensor_data->values[0] = get_data();
+				sensor_data->value_divide = 1;
+				sensor_data->status = SENSOR_STATUS_ACCURACY_MEDIUM;			
+			}
+			
+			break;
+		default:
+			
+			break;
+	}
+	
+	return 0;
+}
+/*----------------------------------------------------------------------------*/
+static int tmd2771_probe(struct platform_device *pdev) 
+{	
+	struct tmd2771_priv *obj;
+	struct hwmsen_object obj_ps, obj_als;
+	int err = 0;
+	return 0;
+	printk(KERN_ALERT "####%s######\n",__func__);
+	if(!(obj = kzalloc(sizeof(*obj), GFP_KERNEL)))
+	{
+		err = -ENOMEM;
+		goto exit;
+	}
+	memset(obj, 0, sizeof(*obj));
+	tmd2771_obj = obj;
+	
+	obj_ps.self = tmd2771_obj;
+	/*for interrup work mode support -- by liaoxl.lenovo 12.08.2011*/
+	
+	obj_ps.polling = 1;
+	
+
+	obj_ps.sensor_operate = tmd2771_ps_operate;
+	if(err = hwmsen_attach(ID_PROXIMITY, &obj_ps))
+	{
+		printk("attach fail = %d\n", err);
+		goto exit;
+	}
+		printk("wwwlllllll7");
+
+	return 0;
+
+exit :
+	return -1;
+}
+/*----------------------------------------------------------------------------*/
+static int tmd2771_remove(struct platform_device *pdev)
+{
+	APS_FUN();    
+	return 0;
+}
+/*----------------------------------------------------------------------------*/
+static struct platform_driver tmd2771_alsps_driver = {
+	.probe      = tmd2771_probe,
+	.remove     = tmd2771_remove,    
+	.driver     = {
+		.name  = "tmd2771",
+		.owner = THIS_MODULE,
+	}
+};
+/*******************************/
 int stk3x1x_get_addr(struct stk_alsps_hw *hw, struct stk3x1x_i2c_addr *addr)
 {
 	if(!hw || !addr)
@@ -1148,7 +1391,30 @@ static int stk3x1x_enable_ps(struct i2c_client *client, int enable)
 	//	obj->psa = 0;
 	//	obj->psi = 0xFFFF;	
 		if (!(obj->psi_set))
-			hrtimer_start(&obj->ps_tune0_timer, obj->ps_tune0_delay, HRTIMER_MODE_REL);			
+		{
+			obj->psa = 0;
+			obj->psi = 0xFFFF;
+			
+			atomic_set(&obj->ps_high_thd_val,
+				   obj->ps_high_thd_boot);
+			atomic_set(&obj->ps_low_thd_val,
+				   obj->ps_low_thd_boot);
+			if ((err =
+				 stk3x1x_write_ps_high_thd(obj->client,atomic_read(&obj->ps_high_thd_val)))) {
+				APS_ERR("write high thd error: %d\n", err);
+				return err;
+			}
+			if ((err =
+				 stk3x1x_write_ps_low_thd(obj->client,atomic_read(&obj->ps_low_thd_val))))
+			{
+				APS_ERR("write low thd error: %d\n", err);
+				return err;
+			}
+			APS_LOG("%s: set HT=%d,LT=%d\n", __func__,
+				atomic_read(&obj->ps_high_thd_val),
+				atomic_read(&obj->ps_low_thd_val));
+			hrtimer_start(&obj->ps_tune0_timer, obj->ps_tune0_delay, HRTIMER_MODE_REL);	
+		}		
 #endif		
 		if(obj->hw->polling_mode_ps)
 		{
@@ -1339,9 +1605,13 @@ static int stk_ps_tune_zero_final(struct stk3x1x_priv *obj)
 	}	
 	
 	obj->psa = obj->ps_stat_data[0];
-	obj->psi = obj->ps_stat_data[2];							
-	atomic_set(&obj->ps_high_thd_val, obj->ps_stat_data[1] + STK_HT_N_CT); 
-	atomic_set(&obj->ps_low_thd_val, obj->ps_stat_data[1] + STK_LT_N_CT); 		
+	obj->psi = obj->ps_stat_data[2];
+	obj->ps_high_thd_boot = obj->ps_stat_data[1] + STK_HT_N_CT*3;
+	obj->ps_low_thd_boot = obj->ps_stat_data[1] + STK_LT_N_CT*3;							
+	atomic_set(&obj->ps_high_thd_val,
+		   obj->ps_high_thd_boot);
+	atomic_set(&obj->ps_low_thd_val,
+		   obj->ps_low_thd_boot); 		
 	if((err = stk3x1x_write_ps_high_thd(obj->client, atomic_read(&obj->ps_high_thd_val))))
 	{
 		APS_ERR("write high thd error: %d\n", err);
@@ -3272,9 +3542,9 @@ static int stk3x1x_i2c_probe(struct i2c_client *client, const struct i2c_device_
 #endif
 
 	APS_LOG("%s: OK\n", __FUNCTION__);
-#if defined(MTK_AUTO_DETECT_ALSPS)
+//#if defined(MTK_AUTO_DETECT_ALSPS)
     	stk3x1x_init_flag = 0;
-#endif
+//#endif
 	return 0;
 
 	exit_create_attr_failed:
@@ -3290,9 +3560,9 @@ static int stk3x1x_i2c_probe(struct i2c_client *client, const struct i2c_device_
 	MT6516_EINTIRQMask(CUST_EINT_ALS_NUM);  /*mask interrupt if fail*/
 	#endif
 	APS_ERR("%s: err = %d\n", __FUNCTION__, err);
-#if defined(MTK_AUTO_DETECT_ALSPS)
+//#if defined(MTK_AUTO_DETECT_ALSPS)
     stk3x1x_init_flag = -1;
-#endif
+//#endif
 	return err;
 }
 /*----------------------------------------------------------------------------*/
@@ -3341,12 +3611,42 @@ static int stk3x1x_probe(struct platform_device *pdev)
 		APS_ERR("add driver error\n");
 		return -1;
 	} 
-#if defined(MTK_AUTO_DETECT_ALSPS)
+//#if defined(MTK_AUTO_DETECT_ALSPS)
+    printk(KERN_ALERT "The stk3x1x_init_flag is %d\n",stk3x1x_init_flag);
     if(stk3x1x_init_flag)
     {
-        return -1;
+	struct tmd2771_priv *obj;
+	struct hwmsen_object obj_ps, obj_als;
+	int err = 0;
+	printk(KERN_ALERT "####%s######\n",__func__);
+	if(!(obj = kzalloc(sizeof(*obj), GFP_KERNEL)))
+	{
+		err = -ENOMEM;
+		goto exit;
+	}
+	memset(obj, 0, sizeof(*obj));
+	tmd2771_obj = obj;
+	
+	obj_ps.self = tmd2771_obj;
+	
+	
+	obj_ps.polling = 1;
+	
+
+	obj_ps.sensor_operate = tmd2771_ps_operate;
+	if(err = hwmsen_attach(ID_PROXIMITY, &obj_ps))
+	{
+		printk("attach fail = %d\n", err);
+		goto exit;
+	}
+		printk("wwwlllllll7");
+
+	return 0;
+
+exit :
+	return -1;
     }
-#endif
+//#endif
 	return 0;
 }
 /*----------------------------------------------------------------------------*/
@@ -3381,9 +3681,10 @@ static int __init stk3x1x_init(void)
 #endif
 	APS_FUN();
 #if defined(MTK_AUTO_DETECT_ALSPS)
-	hwmsen_alsps_add(&stk3x1x_init_info);
+	hwmsen_alsps_sensor_add(&stk3x1x_init_info);
 printk("wwl 1\n");
 #else	
+	printk("Don't define auto detect\n");
 	if(platform_driver_register(&stk3x1x_alsps_driver))
 	{
 		APS_ERR("failed to register driver");

@@ -441,7 +441,7 @@ fm_s32 mt6627_pwrup_digital_init(fm_u8 *buf, fm_s32 buf_size)
 	//FM RF&ADPLL divider setting
 	//D2.1 set cell mode
     //wr 30 D3:D2 00:FDD(default),01:both.10: TDD, 11 FDD
-    pkt_size += fm_bop_modify(0x30, 0xFFF3, 0x0000, &buf[pkt_size], buf_size - pkt_size);
+    //pkt_size += fm_bop_modify(0x30, 0xFFF3, 0x0000, &buf[pkt_size], buf_size - pkt_size);
     //D2.2 set ADPLL divider
     pkt_size += fm_bop_write(0x21, 0xE000, &buf[pkt_size], buf_size - pkt_size);//wr 21 E000
     //D2.3 set SDM coeff0_H
@@ -531,21 +531,30 @@ fm_s32 mt6627_pwrdown(fm_u8 *buf, fm_s32 buf_size)
     buf[0] = FM_TASK_COMMAND_PKT_TYPE;
     buf[1] = FM_ENABLE_OPCODE;
     pkt_size = 4;
-
-    //Disable HW clock control
-    pkt_size += fm_bop_write(0x60, 0x330F, &buf[pkt_size], buf_size - pkt_size);//wr 60 330F
-    //Reset ASIP
+	//A1:set audio output I2S Tx mode:
+    pkt_size += fm_bop_modify(0x9B, 0xFFF8, 0x0000, &buf[pkt_size], buf_size - pkt_size);//wr 9B[0~2] 0
+    
+    //B0:Disable HW clock control
+    pkt_size += fm_bop_top_write(0x50, 0x330F, &buf[pkt_size], buf_size - pkt_size);//wr top50 330F
+    //B1:Reset ASIP
     pkt_size += fm_bop_write(0x61, 0x0001, &buf[pkt_size], buf_size - pkt_size);//wr 61 0001
-    //digital core + digital rgf reset
+    //B2:digital core + digital rgf reset
     pkt_size += fm_bop_modify(0x6E, 0xFFF8, 0x0000, &buf[pkt_size], buf_size - pkt_size);//wr 6E[0~2] 0
     pkt_size += fm_bop_modify(0x6E, 0xFFF8, 0x0000, &buf[pkt_size], buf_size - pkt_size);//wr 6E[0~2] 0
     pkt_size += fm_bop_modify(0x6E, 0xFFF8, 0x0000, &buf[pkt_size], buf_size - pkt_size);//wr 6E[0~2] 0
     pkt_size += fm_bop_modify(0x6E, 0xFFF8, 0x0000, &buf[pkt_size], buf_size - pkt_size);//wr 6E[0~2] 0
-    //Disable all clock
-    pkt_size += fm_bop_write(0x60, 0x0000, &buf[pkt_size], buf_size - pkt_size);//wr 60 0000
-    //Reset rgfrf
-    pkt_size += fm_bop_write(0x60, 0x4000, &buf[pkt_size], buf_size - pkt_size);//wr 60 4000
-    pkt_size += fm_bop_write(0x60, 0x0000, &buf[pkt_size], buf_size - pkt_size);//wr 60 0000
+    //B3:Disable all clock
+    pkt_size += fm_bop_top_write(0x50, 0x0000, &buf[pkt_size], buf_size - pkt_size);//wr top50 0000
+    //B4:Reset rgfrf
+    pkt_size += fm_bop_top_write(0x50, 0x4000, &buf[pkt_size], buf_size - pkt_size);//wr top50 4000
+    pkt_size += fm_bop_top_write(0x50, 0x0000, &buf[pkt_size], buf_size - pkt_size);//wr top50 0000
+    //MTCMOS power off
+    //C0:disable MTCMOS
+    pkt_size += fm_bop_top_write(0x60, 0x0005, &buf[pkt_size], buf_size - pkt_size);//wr top60 0005
+    pkt_size += fm_bop_top_write(0x60, 0x0015, &buf[pkt_size], buf_size - pkt_size);//wr top60 0015
+    pkt_size += fm_bop_top_write(0x60, 0x0035, &buf[pkt_size], buf_size - pkt_size);//wr top60 0035
+    pkt_size += fm_bop_top_write(0x60, 0x0030, &buf[pkt_size], buf_size - pkt_size);//wr top60 0030
+    pkt_size += fm_bop_top_rd_until(0x60, 0x0000000A, 0x0, &buf[pkt_size], buf_size - pkt_size);//Poll 60[1]=0,[3]= 0
 
     buf[2] = (fm_u8)((pkt_size - 4) & 0x00FF);
     buf[3] = (fm_u8)(((pkt_size - 4) >> 8) & 0x00FF);
@@ -605,13 +614,13 @@ fm_s32 mt6627_tune(fm_u8 *buf, fm_s32 buf_size, fm_u16 freq, fm_u16 chan_para)
     if (buf_size < TX_BUF_SIZE) {
         return (-1);
     }
-
+/*
     if (0 == fm_get_channel_space(freq)) {
         freq *= 10;
     }
     
     freq = (freq - 6400) * 2 / 10;
-
+*/
     buf[0] = FM_TASK_COMMAND_PKT_TYPE;
     buf[1] = FM_TUNE_OPCODE;
     pkt_size = 4;
@@ -621,9 +630,9 @@ fm_s32 mt6627_tune(fm_u8 *buf, fm_s32 buf_size, fm_u16 freq, fm_u16 chan_para)
     pkt_size += fm_bop_write(0x6A, 0x0000, &buf[pkt_size], buf_size - pkt_size);
     pkt_size += fm_bop_write(0x6B, 0x0000, &buf[pkt_size], buf_size - pkt_size);
 #endif
-    pkt_size += fm_bop_modify(FM_CHANNEL_SET, 0xFC00, freq, &buf[pkt_size], buf_size - pkt_size);// set 0x65[9:0] = 0x029e, => ((97.5 - 64) * 20)
+    //pkt_size += fm_bop_modify(FM_CHANNEL_SET, 0xFC00, freq, &buf[pkt_size], buf_size - pkt_size);// set 0x65[9:0] = 0x029e, => ((97.5 - 64) * 20)
     //channel para setting, D15~D12, D15: ATJ, D13: HL, D12: FA
-    pkt_size += fm_bop_modify(FM_CHANNEL_SET, 0x0FFF, (chan_para << 12), &buf[pkt_size], buf_size - pkt_size);
+    //pkt_size += fm_bop_modify(FM_CHANNEL_SET, 0x0FFF, (chan_para << 12), &buf[pkt_size], buf_size - pkt_size);
     //Enable hardware controlled tuning sequence
     pkt_size += fm_bop_modify(FM_MAIN_CTRL, 0xFFF8, TUNE, &buf[pkt_size], buf_size - pkt_size);// set 0x63[0] = 1
     //Wait for STC_DONE interrupt
@@ -996,7 +1005,7 @@ fm_s32 mt6627_host_set_reg(fm_u8 *buf, fm_s32 buf_size, fm_u32 addr, fm_u32 valu
     buf[10] = (fm_u8)((value >> 16) & 0x00FF);
     buf[11] = (fm_u8)((value >> 24) & 0x00FF);
 
-    WCN_DBG(FM_DBG | CHIP, "%02x %02x %02x %02x %02x %02x %02x \n", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8], buf[9], buf[10], buf[11]);
+    WCN_DBG(FM_DBG | CHIP, "%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7], buf[8], buf[9], buf[10], buf[11]);
     return 12;
 }
 

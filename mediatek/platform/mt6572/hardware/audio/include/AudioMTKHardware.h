@@ -19,7 +19,6 @@
 #include "AudioAnalogControlInterface.h"
 #include "AudioDigitalType.h"
 
-#include "AudioMTKStreamInManager.h"
 #include "AudioMTKStreamManager.h"
 #include "AudioMTKStreamManagerInterface.h"
 
@@ -32,78 +31,16 @@
 #include "AudioBTCVSDControl.h"
 
 #include "AudioParamTuning.h"
-#if defined(MTK_VIBSPK_SUPPORT)
+
+#include "AudioFMController.h"
+#include "AudioMTKHardwareCommand.h"
+//#if defined(MTK_VIBSPK_SUPPORT)
 #include "AudioVIBSPKControl.h"
-#endif
+//#endif
+
 
 namespace android
 {
-
-enum AudioCommand {
-    AUDIOCOMMAND_NONE = 0,
-    SETOUTPUTFIRINDEX = 1,
-    GETOUTPUTFIRINDEX = 2,
-    SETMEDDATA = 3,
-    GETMEDDATA = 4,
-    GETAUDIOCUSTOMDATASIZE = 5,
-    SETAUDIOCUSTOMDATA = 6,
-    GETAUDIOCUSTOMDATA = 7,
-    START_FMTX_SINEWAVE = 8,
-    STOP_FMTX_SINEWAVE  = 9,
-    // use for MED output FIR
-    GETNORMALOUTPUTFIRINDEX = 0x10,
-    GETHEADSETOUTPUTFIRINDEX = 0x11,
-    GETSPEAKEROUTPUTFIRINDEX = 0x12,
-    SETNORMALOUTPUTFIRINDEX = 0x20,
-    SETHEADSETOUTPUTFIRINDEX = 0x21,
-    SETSPEAKEROUTPUTFIRINDEX = 0x22,
-    GET_DUAL_MIC_PARAMETER   = 0x30,
-    SET_DUAL_MIC_PARAMETER   = 0x31,
-    GET_WB_SPEECH_PARAMETER   = 0x40,
-    SET_WB_SPEECH_PARAMETER   = 0x41,
-    SET_LOAD_VOLUME_SETTING    = 0x50,
-    // used for Speech Logger
-    SET_SPEECH_VM_ENABLE       = 0x60,
-    SET_DUMP_SPEECH_DEBUG_INFO = 0x61,
-    // used for Audio Logger
-    SET_DUMP_AUDIO_DEBUG_INFO  = 0x62,
-    SET_DUMP_AUDIO_STREAM_OUT  = 0x63,
-    GET_DUMP_AUDIO_STREAM_OUT  = 0x64,
-    SET_DUMP_AUDIO_MIXER_BUF   = 0x65,
-    GET_DUMP_AUDIO_MIXER_BUF   = 0x66,
-    SET_DUMP_AUDIO_TRACK_BUF   = 0x67,
-    GET_DUMP_AUDIO_TRACK_BUF   = 0x68,
-    SET_DUMP_A2DP_STREAM_OUT   = 0x69,
-    GET_DUMP_A2DP_STREAM_OUT   = 0x6A,
-    SET_DUMP_AUDIO_STREAM_IN   = 0x6B,
-    GET_DUMP_AUDIO_STREAM_IN   = 0x6C,
-    SET_DUMP_IDLE_VM_RECORD    = 0x6D,
-    GET_DUMP_IDLE_VM_RECORD    = 0x6E,
-    // for audio taste tool
-    AUD_TASTE_TUNING = 0x70,
-    HOOK_FM_DEVICE_CALLBACK    = 0x71,
-    UNHOOK_FM_DEVICE_CALLBACK  = 0x72,
-    //used for Gain Table in advanced meta
-    GET_GAIN_TABLE_CTRPOINT_NUM     = 0x80,
-    GET_GAIN_TABLE_CTRPOINT_BITS    = 0x81,
-    GET_GAIN_TABLE_CTRPOINT_TABLE   = 0x82,
-    // used for test case
-    AUDIO_USER_TEST = 0x90,
-    AUDIO_SET_PMIC_REG = 0x91,
-    // audio data
-    GET_AUDIO_VER1_DATA = 0x100,
-    SET_AUDIO_VER1_DATA = 0x101,
-    // used for voice ui and unlock
-    GET_VOICE_CUST_PARAM = 0x200,
-    GET_VOICE_FIR_COEF = 0x201,
-    GET_VOICE_GAIN = 0x202, 
-    SET_CUREENT_SENSOR_ENABLE = 0x210, 
-    SET_CURRENT_SENSOR_RESET = 0x211,
-};
-
-typedef struct _AUDIO_DEVICE_CHANGE_CALLBACK_STRUCT {
-    void (*callback)(void *data);
-} AUDIO_DEVICE_CHANGE_CALLBACK_STRUCT;
 
 class AudioMTKHardware : public android_audio_legacy::AudioHardwareBase
 {
@@ -134,7 +71,6 @@ class AudioMTKHardware : public android_audio_legacy::AudioHardwareBase
          * when a call is in progress.
          */
         virtual status_t    setMode(int mode);
-        virtual status_t    doSetMode();
 
         // mic mute
         virtual status_t    setMicMute(bool state);
@@ -191,32 +127,35 @@ class AudioMTKHardware : public android_audio_legacy::AudioHardwareBase
         virtual int xWayRec_Stop(void);
         virtual int xWayRec_Read(void *buffer, int size_bytes);
         //added by wendy
-        int ReadRefFromRing(void*buf, uint32_t datasz,void* DLtime);
-        int GetVoiceUnlockULTime(void* DLtime);
-        int SetVoiceUnlockSRC(uint outSR, uint outChannel);
-        bool startVoiceUnlockDL();
-        bool stopVoiceUnlockDL();
-        void freeVoiceUnlockDLInstance();
-        int GetVoiceUnlockDLLatency();
-        bool getVoiceUnlockDLInstance();
+        virtual int ReadRefFromRing(void *buf, uint32_t datasz, void *DLtime);
+        virtual int GetVoiceUnlockULTime(void *DLtime);
+        virtual int SetVoiceUnlockSRC(uint outSR, uint outChannel);
+        virtual bool startVoiceUnlockDL();
+        virtual bool stopVoiceUnlockDL();
+        virtual void freeVoiceUnlockDLInstance();
+        virtual int GetVoiceUnlockDLLatency();
+        virtual bool getVoiceUnlockDLInstance();
 
+
+
+    protected:
+        /** returns true if the given mode maps to a telephony or VoIP call is in progress */
+        virtual bool     isModeInCall(int mode)
+        {
+            return ((mode == AUDIO_MODE_IN_CALL)
+                    || (mode == AUDIO_MODE_IN_CALL_2)
+                    || (mode == AUDIO_MODE_IN_CALL_EXTERNAL)
+                    || (mode == AUDIO_MODE_IN_COMMUNICATION));
+        }
+        /** returns true if a telephony or VoIP call is in progress */
+        virtual bool     isInCall() { return isModeInCall(mMode); }
+
+    private:
         status_t ForceAllStandby(void);
         status_t SetOutputSuspend(bool bEnable);
         status_t SetInputSuspend(bool bEnable);
         bool ModeInCall(audio_mode_t mode);
-
         // this will base on Mode and Audiohardware's mMode to check
-
-// caorongxing add start for PTT 
-   // pcm4way related function
-   virtual status_t startVoiceBuffer(int duration);
-   virtual status_t stopVoiceBuffer(void);
-   virtual status_t playVoiceBuffer(void);
-   virtual status_t cleanVoiceBuffer(void);
-   virtual status_t voiceBufferDisable(void);
-   virtual status_t dealWithAbnormalCallHangup(void);
-   virtual status_t initStartVoiceBufferWithoutPTTCall(void);
-// caorongxing add end
         bool ModeEnterCall(audio_mode_t Mode);
         bool ModeLeaveCall(audio_mode_t Mode);
         bool ModeEnterSipCall(audio_mode_t Mode);
@@ -229,58 +168,22 @@ class AudioMTKHardware : public android_audio_legacy::AudioHardwareBase
 
         bool IsOutPutStreamActive();
         bool IsInPutStreamActive();
-        status_t DoDeviceChangeCallback(uint32_t device);
-        status_t SetFmDigitalFmHw(uint32_t pre_device, uint32_t new_device);
 
         status_t HardwareInit(bool BenableSpeech);
 
         bool UpdateOutputFIR(int mode , int index);
-        bool ReadAuxadcData(int channel, int *value);
         status_t GetDefaultDcCalibrationParam(AUDIO_BUFFER_DC_CALIBRATION_STRUCT *cali_param);
         status_t DcCalibrationProcess(AUDIO_BUFFER_DC_CALIBRATION_STRUCT *cali_param);
         status_t SetDcCalibration(AUDIO_BUFFER_DC_CALIBRATION_STRUCT *cali_param);
-    #if defined(MTK_VIBSPK_SUPPORT)
-        status_t SetVibSpkCalibrationParam(AUDIO_ACF_CUSTOM_PARAM_STRUCT *cali_param);
-        uint32_t GetVibSpkCalibrationStatus();
-        void     SetVibSpkEnable(bool enable, uint32_t freq);
-        void     SetVibSpkRampControl(uint8_t rampcontrol);
-    #endif
 
-    protected:
-        /** returns true if the given mode maps to a telephony or VoIP call is in progress */
-        virtual bool     isModeInCall(int mode) {
-            return ((mode == AUDIO_MODE_IN_CALL)
-                    || (mode == AUDIO_MODE_IN_CALL_2)
-                    || (mode == AUDIO_MODE_IN_COMMUNICATION));
-        }
-        /** returns true if a telephony or VoIP call is in progress */
-        virtual bool     isInCall() { return isModeInCall(mMode); }
-
-        virtual status_t dump(int fd, const Vector<String16> &args);
-        virtual status_t SetFmEnable(bool enable);
-        virtual bool     GetFmRxStatus(void);
-        virtual bool     GetFmPowerInfo(void);
-        virtual status_t SetFmPinmux(bool enable);
-        virtual status_t SetFmDigitalEnable(bool enable);
-        virtual status_t SetFmDirectConnection(bool enable,bool bforce);
-
-		virtual status_t SetMatvAnalogEnable(bool enable);
-        virtual status_t SetMatvDigitalEnable(bool enable);
-        //virtual status_t SetMatvPinmux(bool enable);
+        status_t dump(int fd, const Vector<String16> &args);
 
         void             UpdateKernelState();
-        void (*mFmDeviceCallback)(void *data);
 
         audio_mode_t     mMode;
-        audio_mode_t     mNextMode;
 
         int              mFd;
-        bool             mFmStatus;
-        bool             mFmDigitalStatus;
         bool             mHardwareInit;
-
-		bool             mMatvAnalogStatus;
-		bool             mMatvDigitalStatus;
 
         bool             mMicMute;
 
@@ -290,35 +193,24 @@ class AudioMTKHardware : public android_audio_legacy::AudioHardwareBase
 
         SpeechDriverFactory *mSpeechDriverFactory;
 
-        AudioMTKStreamInManager *mStreamInManager;
         AudioResourceManagerInterface *mAudioResourceManager;
         AudioMTKStreamManagerInterface *mAudioMTKStreamManager;
         AudioFtm *mAudioFtmInstance;
-        AudioAnalogReg *mAudioAnaRegInstance;;
         AudioSpeechEnhanceInfo *mAudioSpeechEnhanceInfoInstance;
-        #ifdef BT_SW_CVSD
-        AudioBTCVSDControlInterface *mAudioBTCVSDControl;
-        #endif 
+        AudioBTCVSDControl *mAudioBTCVSDControl;
 
         SPH_Control     mAudio_Control_State;
 
         AudioParamTuning *mAudioTuningInstance;
-        AUDIO_BUFFER_DC_CALIBRATION_STRUCT mDcCaliParam;
-        
+
         pthread_mutex_t setParametersMutex;  // use for setParameters
-        int mIsFmDirectConnectionMode;
-
-        AudioLock mSetModeLock; // Add mutex for setMode() to avoid CallManager call setMode() frequently.
-        // caorongxing add start for PTT
-        int        mPcm4Way_Enable;
-        int        mPTT_Stuts;
-        // caorongxing add end
-
-	//modify for dual mic cust by yi.zheng.hz begin
-#if defined(JRD_HDVOICE_CUST)
-	bool mbMtkDualMicSupport;
-#endif
-	//modify for dual mic cust by yi.zheng.hz end
+        AUDIO_BUFFER_DC_CALIBRATION_STRUCT mDcCaliParam;
+        status_t SetAudioCommonCommand(int par1, int par2);
+        status_t GetAudioCommonCommand(int parameters1);
+        status_t SetAudioCommonData(int par1, size_t len, void *ptr);
+        status_t GetAudioCommonData(int par1, size_t len, void *ptr);
+        String8 getCommonParameters(AudioParameter &param, AudioParameter &returnParam);
+        status_t setCommonParameters(const String8 &keyValuePairs);
 };
 
 }

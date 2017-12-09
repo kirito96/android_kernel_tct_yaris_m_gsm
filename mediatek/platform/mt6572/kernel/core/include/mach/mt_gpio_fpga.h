@@ -12,26 +12,4 @@ typedef enum GPIO_PIN
 }GPIO_PIN;    
 #endif
 
-/*---------------------------------------------------------------------------*/
-int mt_set_gpio_dir_base(unsigned long pin, unsigned long dir);
-int mt_get_gpio_dir_base(unsigned long pin);
-int mt_set_gpio_pull_enable_base(unsigned long pin, unsigned long enable);
-int mt_get_gpio_pull_enable_base(unsigned long pin);
-int mt_set_gpio_ies_base(unsigned long pin, unsigned long enable);
-int mt_get_gpio_ies_base(unsigned long pin);
-int mt_set_gpio_pull_select_base(unsigned long pin, unsigned long select);
-int mt_get_gpio_pull_select_base(unsigned long pin);
-int mt_set_gpio_inversion_base(unsigned long pin, unsigned long enable);
-int mt_get_gpio_inversion_base(unsigned long pin);
-int mt_set_gpio_out_base(unsigned long pin, unsigned long output);
-int mt_get_gpio_out_base(unsigned long pin);
-int mt_get_gpio_in_base(unsigned long pin);
-int mt_set_gpio_mode_base(unsigned long pin, unsigned long mode);
-int mt_get_gpio_mode_base(unsigned long pin);
-#ifdef CONFIG_PM
-void mt_gpio_suspend(void);
-void mt_gpio_resume(void);
-#endif /*CONFIG_PM*/
-/*---------------------------------------------------------------------------*/
-
 #endif //_MT_GPIO_FPGA_H_

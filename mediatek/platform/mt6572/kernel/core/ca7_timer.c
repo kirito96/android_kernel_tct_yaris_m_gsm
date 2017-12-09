@@ -138,6 +138,9 @@ do {    \
 #define CNTP_CTL_IMASK      (1 << 1)
 #define CNTP_CTL_ISTATUS    (1 << 2)
 
+#define MT_LOCAL_TIMER_DEBUG
+static void save_localtimer_info(unsigned long evt, int ext);
+
 static unsigned long generic_timer_rate;
 
 static struct clock_event_device __percpu **timer_evt;
@@ -168,18 +171,17 @@ static int generic_timer_set_next_event(unsigned long evt,
     write_cntp_tval(evt);
     write_cntp_ctl(CNTP_CTL_ENABLE);
 
-#ifdef LOCAL_TIME_DEBUG
-	save_localtimer_register(evt, ctrl, 0);
-#endif
+    save_localtimer_info(evt, 0);
+
 	return 0;
 }
 
 int localtimer_set_next_event(unsigned long evt)
 {
 	generic_timer_set_next_event(evt, NULL);
-#ifdef LOCAL_TIME_DEBUG	
-	save_localtimer_register(evt, 0, 1);
-#endif
+
+    save_localtimer_info(evt, 1);
+
 	return 0;
 }
 
@@ -352,51 +354,85 @@ out_exit:
 	return err;
 }
 
-//#include <linux/mt_sched_mon.h>
-//#define LOCAL_TIME_DEBUG
-#ifdef LOCAL_TIME_DEBUG
-unsigned long long sched_clock(void);
-static unsigned long long save_data[4][4] = {{0},{0},{0},{0}};//max cpu 4
-void save_localtimer_register(unsigned long count, unsigned long ctrl, unsigned long dpidle)
+#ifdef MT_LOCAL_TIMER_DEBUG
+#include <linux/sched.h>
+
+struct localtimer_info {
+    unsigned long evt;
+    unsigned int ctrl;
+    int ext;
+    unsigned long long timestamp;
+};
+
+static struct localtimer_info save_data[NR_CPUS];
+
+static void save_localtimer_info(unsigned long evt, int ext)
 {
-	int cpu = smp_processor_id();
-	save_data[cpu][0] = count;
-	save_data[cpu][1] = ctrl;
-	save_data[cpu][2] = dpidle;
-	save_data[cpu][3] = sched_clock();
+    int cpu;
+    unsigned int ctrl; 
+
+    cpu = smp_processor_id();
+    read_cntp_ctl(ctrl);
+
+    save_data[cpu].evt = evt;
+    save_data[cpu].ctrl = ctrl;
+    save_data[cpu].ext = ext;
+    save_data[cpu].timestamp = sched_clock();
 }
 
 int dump_localtimer_register(char* buffer, int size)
 {
 	int i;
 	int len = 0;
-	if (!buffer) {
-	    return -1;
+#define LOCAL_LEN   256
+    char fmt[LOCAL_LEN];
+
+    unsigned int cntp_ctl;
+    unsigned int cntp_tval;
+    unsigned int cntp_cval_lo, cntp_cval_hi;
+    unsigned int cntpct_lo, cntpct_hi;
+
+    if (!buffer || size <= 1) {
+        return 0;
 	}
 	
+    len += snprintf(fmt + len, LOCAL_LEN - len, "[localtimer]cpu evt ctl ext time\n");
+
 	for (i = 0; i < nr_cpu_ids; i++) {
-        len += snprintf(buffer+len, size, 
-                "[local timer]old:cpu:%d,count:0x%x, ctrl:0x%x,dpidle:%d, time:%llu\n", 
-                i, (int)save_data[i][0], (int)save_data[i][1], (int)save_data[i][2], save_data[i][3]);
+        len += snprintf(fmt + len, LOCAL_LEN - len, "%d %lx %x %d %llx\n",
+                i, save_data[i].evt, save_data[i].ctrl, 
+                save_data[i].ext, save_data[i].timestamp);
 	}
 
-	len += snprintf(buffer+len, size, 
-                "[local timer]new: count:0x%x,control:0x%x,load:0x%x\n", 
-                *((volatile u32*)(TWD_TIMER_COUNTER)), 
-                *((volatile u32*)(TWD_TIMER_CONTROL)), 
-                *((volatile u32*)(TWD_TIMER_LOAD)));
+    read_cntp_ctl(cntp_ctl);
+    read_cntp_cval(cntp_cval_lo, cntp_cval_hi);
+    read_cntp_tval(cntp_tval);
+    read_cntpct(cntpct_lo, cntpct_hi);
 
-	len += snprintf(buffer+len, size, "[local timer]NTSTAT:0x%x\n",
-                *((volatile u32*)(TWD_TIMER_INTSTAT)));
-	len += snprintf(buffer+len, size, "[local timer]generic_timer_rate:%lu\n", 
-                generic_timer_rate);
+    len += snprintf(fmt + len, LOCAL_LEN - len, "cpu ctl tval cval pct\n");
+    len += snprintf(fmt + len, LOCAL_LEN - len, 
+                "%d %x %x (%x,%x) (%x,%x)\n", 
+                smp_processor_id(), cntp_ctl, cntp_tval, 
+                cntp_cval_lo, cntp_cval_hi, cntpct_lo, cntpct_hi);
 
-    if (len >= size) {
-        return -2;// buffer is full
+    len = min(len, size - 1);
+    memcpy(buffer, fmt, len);
+    *(buffer + len) = '\0';
+
+    return len;
+    }
+#else
+
+static inline void save_localtimer_info(unsigned long evt, int ext)
+{
+    return ;
     }
 	  
-	return len;
+int dump_localtimer_register(char* buffer, int size)
+{
+    return 0;
 }
+
 #endif
 
 

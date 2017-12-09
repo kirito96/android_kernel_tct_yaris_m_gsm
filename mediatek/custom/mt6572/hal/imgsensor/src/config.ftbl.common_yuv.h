@@ -1,4 +1,3 @@
-
 #ifndef _MTK_CUSTOM_PROJECT_HAL_IMGSENSOR_SRC_CONFIGFTBLCOMMONYUV_H_
 #define _MTK_CUSTOM_PROJECT_HAL_IMGSENSOR_SRC_CONFIGFTBLCOMMONYUV_H_
 #if 1
@@ -6,6 +5,9 @@
 #define SENSOR_DRVNAME_COMMON_YUV   "common.yuv"
 
 
+/*******************************************************************************
+ *
+ ******************************************************************************/
 FTABLE_DEFINITION(SENSOR_DRVNAME_COMMON_YUV)
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 FTABLE_SCENE_INDEP()
@@ -204,10 +206,13 @@ FTABLE_SCENE_INDEP()
         SCENE_AS_DEFAULT_SCENE(
             ITEM_AS_DEFAULT_(MtkCameraParameters::CAPTURE_MODE_NORMAL), 
             ITEM_AS_VALUES_(
-                MtkCameraParameters::CAPTURE_MODE_NORMAL,
+                MtkCameraParameters::CAPTURE_MODE_NORMAL, 
+                MtkCameraParameters::CAPTURE_MODE_FACE_BEAUTY, 
                 MtkCameraParameters::CAPTURE_MODE_CONTINUOUS_SHOT,
-                MtkCameraParameters::CAPTURE_MODE_SMILE_SHOT,
-                MtkCameraParameters::CAPTURE_MODE_AUTO_PANORAMA_SHOT, 
+                MtkCameraParameters::CAPTURE_MODE_SMILE_SHOT, 
+                MtkCameraParameters::CAPTURE_MODE_BEST_SHOT, 
+                MtkCameraParameters::CAPTURE_MODE_AUTO_PANORAMA_SHOT,
+//                MtkCameraParameters::CAPTURE_MODE_MAV_SHOT, 
             )
         ), 
     )
@@ -215,6 +220,9 @@ FTABLE_SCENE_INDEP()
     //==========================================================================
 END_FTABLE_SCENE_INDEP()
 //------------------------------------------------------------------------------
+/*******************************************************************************
+ *
+ ******************************************************************************/
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 FTABLE_SCENE_DEP()
     //==========================================================================
@@ -345,6 +353,9 @@ END_FTABLE_SCENE_DEP()
 END_FTABLE_DEFINITION()
 
 
+/*******************************************************************************
+ *
+ ******************************************************************************/
 #endif
 #endif //_MTK_CUSTOM_PROJECT_HAL_IMGSENSOR_SRC_CONFIGFTBLCOMMONYUV_H_
 

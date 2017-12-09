@@ -1,3 +1,10 @@
+/* linux/include/asm-arm/arch-mt6575/debug-macro.S
+ *
+ * Debugging macro include header
+ *
+ *  Copyright (C) 2006 MediaTek Inc.
+ *
+ */
 
 @#include <asm/arch/hardware.h>
 

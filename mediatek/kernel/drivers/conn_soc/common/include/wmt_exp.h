@@ -12,6 +12,7 @@
 #include <mach/mtk_wcn_cmb_stub.h>
 #include "osal.h"
 #include "wmt_plat.h"
+#include "wmt_stp_exp.h"
 //not to reference to internal wmt
 //#include "wmt_core.h"
 /*******************************************************************************
@@ -23,7 +24,7 @@
 *                                 M A C R O S
 ********************************************************************************
 */
-#if 0 /* moved from wmt_lib.h */
+#if 1 /* moved from wmt_lib.h */
 #ifndef DFT_TAG
 #define DFT_TAG         "[WMT-DFT]"
 #endif
@@ -40,7 +41,7 @@
 *                    E X T E R N A L   R E F E R E N C E S
 ********************************************************************************
 */
-#if 0 /* moved from wmt_lib.h */
+#if 1 /* moved from wmt_lib.h */
 extern UINT32 gWmtDbgLvl ;
 #endif
 extern OSAL_BIT_OP_VAR gBtWifiGpsState;
@@ -50,7 +51,7 @@ extern UINT32 gWifiProbed;
 *                              C O N S T A N T S
 ********************************************************************************
 */
-#if 0 /* moved from wmt_lib.h */
+#if 1 /* moved from wmt_lib.h */
 #define WMT_LOG_LOUD    4
 #define WMT_LOG_DBG     3
 #define WMT_LOG_INFO    2
@@ -63,6 +64,7 @@ extern UINT32 gWifiProbed;
 *                             D A T A   T Y P E S
 ********************************************************************************
 */
+#ifndef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
 typedef enum _ENUM_WMTDRV_TYPE_T {
     WMTDRV_TYPE_BT = 0,
     WMTDRV_TYPE_FM = 1,
@@ -79,24 +81,15 @@ typedef enum _ENUM_WMTDRV_TYPE_T {
 // TODO: how do we extend for new chip and newer revision?
 // TODO: This way is hard to extend
 typedef enum _ENUM_WMTHWVER_TYPE_T{
-    WMTHWVER_SOC_E1 = 0x0,
-    WMTHWVER_SOC_E2 = 0x1,
-    WMTHWVER_SOC_E3 = 0x2,
-    WMTHWVER_SOC_E4 = 0x3,
-    WMTHWVER_SOC_E5 = 0x4,
-    WMTHWVER_SOC_E6 = 0x5,
-    WMTHWVER_SOC_MAX,
+    WMTHWVER_E1 = 0x0,
+    WMTHWVER_E2 = 0x1,
+    WMTHWVER_E3 = 0x2,
+    WMTHWVER_E4 = 0x3,
+    WMTHWVER_E5 = 0x4,
+    WMTHWVER_E6 = 0x5,
+    WMTHWVER_MAX,
     WMTHWVER_INVALID = 0xff
 } ENUM_WMTHWVER_TYPE_T, *P_ENUM_WMTHWVER_TYPE_T;
-
-typedef enum _ENUM_WMTCHIN_TYPE_T{
-   WMTCHIN_CHIPID = 0x0,
-   WMTCHIN_HWVER = WMTCHIN_CHIPID + 1,
-   WMTCHIN_MAPPINGHWVER = WMTCHIN_HWVER + 1,
-   WMTCHIN_FWVER = WMTCHIN_MAPPINGHWVER + 1,
-   WMTCHIN_MAX,
-   
-}ENUM_WMT_CHIPINFO_TYPE_T, *P_ENUM_WMT_CHIPINFO_TYPE_T;
 
 typedef enum _ENUM_WMTDSNS_TYPE_T{
     WMTDSNS_FM_DISABLE = 0,
@@ -123,22 +116,6 @@ typedef enum _ENUM_WMTMSG_TYPE_T {
     WMTMSG_TYPE_MAX
 } ENUM_WMTMSG_TYPE_T, *P_ENUM_WMTMSG_TYPE_T;
 
-typedef enum _ENUM_WMTRSTMSG_TYPE_T{
-    WMTRSTMSG_RESET_START = 0x0,
-    WMTRSTMSG_RESET_END = 0x1,
-    WMTRSTMSG_RESET_MAX,
-    WMTRSTMSG_RESET_INVALID = 0xff
-} ENUM_WMTRSTMSG_TYPE_T, *P_ENUM_WMTRSTMSG_TYPE_T;
-
-typedef enum _ENUM_BT_GPS_ONOFF_STATE_T{
-    WMT_BT_ON = 0,
-    WMT_GPS_ON = 1,
-    WMT_WIFI_ON = 2,
-    WMT_FM_ON = 3,
-    WMT_BT_GPS_STATE_MAX,
-    WMT_BT_GPS_STATE_INVALID = 0xff
-} ENUM_BT_GPS_ONOFF_STATE_T, *P_ENUM_BT_GPS_ONOFF_STATE_T;
-
 typedef void (*PF_WMT_CB)(
     ENUM_WMTDRV_TYPE_T, /* Source driver type */
     ENUM_WMTDRV_TYPE_T, /* Destination driver type */
@@ -156,6 +133,34 @@ typedef enum _SDIO_PS_OP{
 
 
 typedef INT32 (*PF_WMT_SDIO_PSOP)(SDIO_PS_OP);
+
+
+typedef enum _ENUM_WMTCHIN_TYPE_T{
+   WMTCHIN_CHIPID = 0x0,
+   WMTCHIN_HWVER = WMTCHIN_CHIPID + 1,
+   WMTCHIN_MAPPINGHWVER = WMTCHIN_HWVER + 1,
+   WMTCHIN_FWVER = WMTCHIN_MAPPINGHWVER + 1,
+   WMTCHIN_MAX,
+   
+}ENUM_WMT_CHIPINFO_TYPE_T, *P_ENUM_WMT_CHIPINFO_TYPE_T;
+
+#endif
+
+typedef enum _ENUM_WMTRSTMSG_TYPE_T{
+    WMTRSTMSG_RESET_START = 0x0,
+    WMTRSTMSG_RESET_END = 0x1,
+    WMTRSTMSG_RESET_MAX,
+    WMTRSTMSG_RESET_INVALID = 0xff
+} ENUM_WMTRSTMSG_TYPE_T, *P_ENUM_WMTRSTMSG_TYPE_T;
+
+typedef enum _ENUM_BT_GPS_ONOFF_STATE_T{
+    WMT_BT_ON = 0,
+    WMT_GPS_ON = 1,
+    WMT_WIFI_ON = 2,
+    WMT_FM_ON = 3,
+    WMT_BT_GPS_STATE_MAX,
+    WMT_BT_GPS_STATE_INVALID = 0xff
+} ENUM_BT_GPS_ONOFF_STATE_T, *P_ENUM_BT_GPS_ONOFF_STATE_T;
 
 #if 1 /* moved from wmt_core.h */
 typedef enum {
@@ -207,6 +212,10 @@ extern wmt_wlan_bus_cnt_clr_cb mtk_wcn_wlan_bus_tx_cnt_clr;
 ********************************************************************************
 */
 /*subsystem function ctrl APIs*/
+
+#ifndef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
+#define WMT_EXP_HID_API_EXPORT 0
+
 extern MTK_WCN_BOOL
 mtk_wcn_wmt_func_off (
     ENUM_WMTDRV_TYPE_T type
@@ -221,8 +230,8 @@ extern MTK_WCN_BOOL mtk_wcn_wmt_dsns_ctrl (
     ENUM_WMTDSNS_TYPE_T eType
     );
 
-extern MTK_WCN_BOOL mtk_wcn_wmt_assert (
-    VOID
+extern MTK_WCN_BOOL mtk_wcn_wmt_assert (ENUM_WMTDRV_TYPE_T type,
+    UINT32 reason
     );
 
 extern INT32 mtk_wcn_wmt_msgcb_reg (
@@ -257,6 +266,10 @@ mtk_wcn_wmt_therm_ctrl (
 extern ENUM_WMTHWVER_TYPE_T
 mtk_wcn_wmt_hwver_get (VOID);
 
+#else
+#define WMT_EXP_HID_API_EXPORT 1
+#endif
+
 extern INT32 wmt_lib_set_aif (
     CMB_STUB_AIF_X aif,
     MTK_WCN_BOOL share
@@ -269,6 +282,12 @@ mtk_wcn_wmt_func_ctrl_for_plat (UINT32 on,
     ENUM_WMTDRV_TYPE_T type);
 
 extern INT32 mtk_wcn_wmt_system_state_reset(VOID);
+
+#ifdef MTK_WCN_WMT_STP_EXP_SYMBOL_ABSTRACT
+extern VOID mtk_wcn_wmt_exp_init(VOID);
+extern VOID mtk_wcn_wmt_exp_deinit(VOID);
+#endif
+extern CHAR mtk_wcn_wmt_co_clock_flag_get(VOID);
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************

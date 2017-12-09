@@ -1,13 +1,5 @@
-#if defined(BUILD_UBOOT)
-#define ENABLE_LCD_INTERRUPT 0 
+#define ENABLE_LCD_INTERRUPT 1 
 
-#include <asm/arch/disp_drv_platform.h>
-#else
-    #if defined(CONFIG_MT6572_FPGA)
-        #define ENABLE_LCD_INTERRUPT 1
-    #else
-        #define ENABLE_LCD_INTERRUPT 1
-    #endif
 
 #include <linux/delay.h>
 #include <linux/sched.h>
@@ -16,6 +8,7 @@
 
 #include "ddp_reg.h"
 #include "ddp_debug.h"
+#include "ddp_hal.h"
 #include "lcd_reg.h"
 #include "lcd_drv.h"
 
@@ -29,7 +22,6 @@
 #include <linux/interrupt.h>
 #include <linux/wait.h>
 #include "ddp_drv.h"
-#include "ddp_debug.h"
 //#include <asm/tcm.h>
 #include <mach/irqs.h>
 #include "mtkfb.h"
@@ -45,7 +37,7 @@ unsigned int vsync_timer = 0;
 #include <asm/current.h>
 #include <asm/pgtable.h>
 #include <asm/page.h>
-#endif
+
 #define LCD_OUTREG32(addr, data)	\
    {\
    OUTREG32(addr, data);}
@@ -104,15 +96,25 @@ static UINT32 default_wst = 0;
 static bool limit_w2m_speed = false;
 static bool limit_w2tvr_speed = false;
 // UI layer, default set to 3
-unsigned int FB_LAYER = DISP_DEFAULT_UI_LAYER_ID;
 extern OVL_CONFIG_STRUCT cached_layer_config[DDP_OVL_LAYER_MUN];
 extern OVL_CONFIG_STRUCT* realtime_layer_config;
+extern LCM_PARAMS *lcm_params;
+extern LCM_DRIVER *lcm_drv;
 
-extern LCM_DRIVER *lcm_drv;//zhao.li@tcl bug 481348 P28
 
 // ---------------------------------------------------------------------------
 //  Local Functions
 // ---------------------------------------------------------------------------
+static long int get_current_time_us(void)
+{
+    struct timeval t;
+    
+    do_gettimeofday(&t);
+    
+    return (t.tv_sec & 0xFFF) * 1000000 + t.tv_usec;
+}
+
+
 LCD_STATUS LCD_Init_IO_pad(LCM_PARAMS *lcm_params)
 {
    //    #warning "LCD_Init_IO_pad not implement for 6589 yes"
@@ -126,19 +128,7 @@ LCD_STATUS LCD_Set_DrivingCurrent(LCM_PARAMS *lcm_params)
     kal_uint32 driving_current = 0;
 
 
-    if (lcm_params->type == LCM_TYPE_DPI)
-    {
-        driving_current = lcm_params->dpi.io_driving_current;
-    }
-    else if (lcm_params->type == LCM_TYPE_DBI)
-    {
-        driving_current = lcm_params->dbi.io_driving_current;
-    }
-    else
-    {
-        return LCD_STATUS_OK;
-    }
-    
+    driving_current = lcm_params->dbi.io_driving_current;
     data_driving = *((volatile u32 *)(IO_CFG_LEFT_BASE+0x0080));
     control_driving = *((volatile u32 *)(IO_CFG_RIGHT_BASE+0x0060));
 
@@ -178,6 +168,7 @@ static void _LCD_RDMA0_IRQ_Handler(unsigned int param)
         {
             // frame end interrupt
             MMProfileLogEx(MTKFB_MMP_Events.ScreenUpdate, MMProfileFlagEnd, param, 0);
+            _lcdContext.pIntCallback(DISP_LCD_SCREEN_UPDATE_END_INT);
         }
         if (param & 8)
         {
@@ -188,12 +179,13 @@ static void _LCD_RDMA0_IRQ_Handler(unsigned int param)
         {
             // frame start interrupt
             MMProfileLogEx(MTKFB_MMP_Events.ScreenUpdate, MMProfileFlagStart, param, 0);
-            _lcdContext.pIntCallback(DISP_LCD_VSYNC_INT);
+            _lcdContext.pIntCallback(DISP_LCD_SCREEN_UPDATE_START_INT);
         }
         if (param & 0x20)
         {
             // target line interrupt
             _lcdContext.pIntCallback(DISP_LCD_TARGET_LINE_INT);
+            _lcdContext.pIntCallback(DISP_LCD_VSYNC_INT);
         }
     }
 }
@@ -321,25 +313,42 @@ static void _WaitForLCDEngineComplete(void)
 }
 
 
-static void _WaitForEngineNotBusy(void)
+LCD_STATUS LCD_WaitForEngineNotBusy(void)
 {
+   int timeOut;
 #if ENABLE_LCD_INTERRUPT
    static const long WAIT_TIMEOUT = 2 * HZ;    // 2 sec
+#endif
    
+   timeOut = 200;
+   
+#if ENABLE_LCD_INTERRUPT
    if (in_interrupt())
    {
       // perform busy waiting if in interrupt context
-      if(disp_delay_timeout(((DISP_REG_GET(&LCD_REG->STATUS)& 0x10) != 0x10), 5)) {}
+      while(_IsEngineBusy()) {
+         msleep(1);
+
+         if (--timeOut < 0)	{
+            DISP_LOG_PRINT(ANDROID_LOG_ERROR, "LCD", " Wait for LCD engine not busy timeout!!!\n");
+            LCD_DumpRegisters();
+
+            LCD_SetSwReset();
+
+            return LCD_STATUS_ERROR;
+         }
+      }
    }
    else
    {
-      if(disp_delay_timeout(((DISP_REG_GET(&LCD_REG->STATUS)& 0x10) != 0x10), 5))
+      if (LCD_REG->STATUS.BUSY)
       {
          long ret = wait_event_interruptible_timeout(_lcd_wait_queue, 
-                                                                         !_IsEngineBusy(),
-                                                                         WAIT_TIMEOUT);
+                                                                          !_IsEngineBusy(),
+                                                                          WAIT_TIMEOUT);
+
          if (0 == ret) {
-            DISP_LOG_PRINT(ANDROID_LOG_WARN, "LCD", "[WARNING] Wait for LCD engine not busy timeout!!!\n"); 
+            DISP_LOG_PRINT(ANDROID_LOG_WARN, "LCD", " Wait for LCD engine not busy timeout!!!\n");
             LCD_DumpRegisters();
 
             if(LCD_REG->STATUS.WAIT_SYNC){
@@ -347,41 +356,49 @@ static void _WaitForEngineNotBusy(void)
                LCD_TE_Enable(FALSE);
             }
 
-            OUTREG16(&LCD_REG->START, 0);
-            OUTREG16(&LCD_REG->START, 0x1);
+            LCD_SetSwReset();
+
+            return LCD_STATUS_ERROR;
          }
       }
    }
 #else
-   if(disp_delay_timeout(((DISP_REG_GET(&LCD_REG->STATUS)& 0x10) != 0x10), 5)){
-      printk("[WARNING] Wait for LCD engine not busy timeout!!!\n");
-      LCD_DumpRegisters();
-      
-      if(LCD_REG->STATUS.WAIT_SYNC){
-         printk("reason is LCD can't wait TE signal!!!\n");
-         LCD_TE_Enable(FALSE);
-         return;
-      }
+   
+   while(_IsEngineBusy()) {
+      udelay(100);
+      /*printk("xuecheng, dsi wait\n");*/
 
-      OUTREG16(&LCD_REG->START, 0);
-      OUTREG16(&LCD_REG->START, 0x1);
+      if (--timeOut < 0) {
+         DISP_LOG_PRINT(ANDROID_LOG_ERROR, "LCD", " Wait for LCD engine not busy timeout!!!\n");
+         LCD_DumpRegisters();
+
+         if(LCD_REG->STATUS.WAIT_SYNC){
+            printk("reason is LCD can't wait TE signal!!!\n");
+            LCD_TE_Enable(FALSE);
+         }
+
+         LCD_SetSwReset();
+         OUTREG32(&LCD_REG->INT_STATUS, 0x0);
+
+         return LCD_STATUS_ERROR;
+      }
    }
+   OUTREG32(&LCD_REG->INT_STATUS, 0x0);
 #endif    
+
+   return LCD_STATUS_OK;
 }
 
 unsigned int vsync_wait_time = 0;
 void LCD_WaitTE(void)
 {
-#ifndef BUILD_UBOOT	
    wait_lcd_vsync = true;
    hrtimer_start(&hrtimer_vsync, ktime_set(0, VSYNC_US_TO_NS(vsync_timer)), HRTIMER_MODE_REL);
    wait_event_interruptible(_vsync_wait_queue, lcd_vsync);
    lcd_vsync = false;
    wait_lcd_vsync = false;
-#endif
 }
 
-#ifndef BUILD_UBOOT
 void LCD_GetVsyncCnt()
 {
 }
@@ -399,10 +416,9 @@ enum hrtimer_restart lcd_te_hrtimer_func(struct hrtimer *timer)
    //	printk("hrtimer callback\n");
    return HRTIMER_NORESTART;
 }
-#endif
+
 void LCD_InitVSYNC(unsigned int vsync_interval)
 {
-#ifndef BUILD_UBOOT
    ktime_t ktime;
 
    vsync_timer = vsync_interval;
@@ -410,97 +426,55 @@ void LCD_InitVSYNC(unsigned int vsync_interval)
    hrtimer_init(&hrtimer_vsync, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
    hrtimer_vsync.function = lcd_te_hrtimer_func;
    //	hrtimer_start(&hrtimer_vsync, ktime, HRTIMER_MODE_REL);
-#endif
 }
 void LCD_PauseVSYNC(bool enable)
 {
 }
 
-static void _BackupLCDRegisters(void)
+
+LCD_STATUS LCD_RestoreRegisters(void)
 {
-   //    memcpy((void*)&(_lcdContext.regBackup), (void*)LCD_REG, sizeof(LCD_REGS));
-   LCD_REGS *regs = &(_lcdContext.regBackup);
-   UINT32 i;
+    LCD_REGS *regs = &(_lcdContext.regBackup);
+    UINT32 i;
+ 
+    LCD_OUTREG32(&LCD_REG->INT_ENABLE, AS_UINT32(&regs->INT_ENABLE));
+    LCD_OUTREG32(&LCD_REG->SERIAL_CFG, AS_UINT32(&regs->SERIAL_CFG));
+    
+    for(i = 0; i < ARY_SIZE(LCD_REG->SIF_TIMING); ++i)
+    {
+        LCD_OUTREG32(&LCD_REG->SIF_TIMING[i], AS_UINT32(&regs->SIF_TIMING[i]));
+    }
+    
+    for(i = 0; i < ARY_SIZE(LCD_REG->PARALLEL_CFG); ++i)
+    {
+        LCD_OUTREG32(&LCD_REG->PARALLEL_CFG[i], AS_UINT32(&regs->PARALLEL_CFG[i]));
+    }
+    
+    LCD_OUTREG32(&LCD_REG->TEARING_CFG, AS_UINT32(&regs->TEARING_CFG));
+    LCD_OUTREG32(&LCD_REG->PARALLEL_DW, AS_UINT32(&regs->PARALLEL_DW));
+    LCD_OUTREG32(&LCD_REG->CALC_HTT, AS_UINT32(&regs->CALC_HTT));
+    LCD_OUTREG32(&LCD_REG->SYNC_LCM_SIZE, AS_UINT32(&regs->SYNC_LCM_SIZE));
+    LCD_OUTREG32(&LCD_REG->SYNC_CNT, AS_UINT32(&regs->SYNC_CNT));
+    LCD_OUTREG32(&LCD_REG->SMI_CON, AS_UINT32(&regs->SMI_CON));
+    
+    LCD_OUTREG32(&LCD_REG->WROI_CONTROL, AS_UINT32(&regs->WROI_CONTROL));
+    LCD_OUTREG32(&LCD_REG->WROI_CMD_ADDR, AS_UINT32(&regs->WROI_CMD_ADDR));
+    LCD_OUTREG32(&LCD_REG->WROI_DATA_ADDR, AS_UINT32(&regs->WROI_DATA_ADDR));
+    LCD_OUTREG32(&LCD_REG->WROI_SIZE, AS_UINT32(&regs->WROI_SIZE));
+    
+    //	LCD_OUTREG32(&LCD_REG->DITHER_CON, AS_UINT32(&regs->DITHER_CON));
+    
+    LCD_OUTREG32(&LCD_REG->SRC_CON, AS_UINT32(&regs->SRC_CON));
+    
+    LCD_OUTREG32(&LCD_REG->SRC_ADD, AS_UINT32(&regs->SRC_ADD));
+    LCD_OUTREG32(&LCD_REG->SRC_PITCH, AS_UINT32(&regs->SRC_PITCH));
+    
+    LCD_OUTREG32(&LCD_REG->ULTRA_CON, AS_UINT32(&regs->ULTRA_CON));
+    LCD_OUTREG32(&LCD_REG->DBI_ULTRA_TH, AS_UINT32(&regs->DBI_ULTRA_TH));
+    
+    LCD_OUTREG32(&LCD_REG->GMC_ULTRA_TH, AS_UINT32(&regs->GMC_ULTRA_TH));
 
-   LCD_OUTREG32(&regs->INT_ENABLE, AS_UINT32(&LCD_REG->INT_ENABLE));
-   LCD_OUTREG32(&regs->SERIAL_CFG, AS_UINT32(&LCD_REG->SERIAL_CFG));
-   
-   for(i = 0; i < ARY_SIZE(LCD_REG->SIF_TIMING); ++i)
-   {
-      LCD_OUTREG32(&regs->SIF_TIMING[i], AS_UINT32(&LCD_REG->SIF_TIMING[i]));
-   }
-   
-   for(i = 0; i < ARY_SIZE(LCD_REG->PARALLEL_CFG); ++i)
-   {
-      LCD_OUTREG32(&regs->PARALLEL_CFG[i], AS_UINT32(&LCD_REG->PARALLEL_CFG[i]));
-   }
-   
-   LCD_OUTREG32(&regs->TEARING_CFG, AS_UINT32(&LCD_REG->TEARING_CFG));
-   LCD_OUTREG32(&regs->PARALLEL_DW, AS_UINT32(&LCD_REG->PARALLEL_DW));
-   LCD_OUTREG32(&regs->CALC_HTT, AS_UINT32(&LCD_REG->CALC_HTT));
-   LCD_OUTREG32(&regs->SYNC_LCM_SIZE, AS_UINT32(&LCD_REG->SYNC_LCM_SIZE));
-   LCD_OUTREG32(&regs->SYNC_CNT, AS_UINT32(&LCD_REG->SYNC_CNT));
-   LCD_OUTREG32(&regs->SMI_CON, AS_UINT32(&LCD_REG->SMI_CON));
-   
-   LCD_OUTREG32(&regs->WROI_CONTROL, AS_UINT32(&LCD_REG->WROI_CONTROL));
-   LCD_OUTREG32(&regs->WROI_CMD_ADDR, AS_UINT32(&LCD_REG->WROI_CMD_ADDR));
-   LCD_OUTREG32(&regs->WROI_DATA_ADDR, AS_UINT32(&LCD_REG->WROI_DATA_ADDR));
-   LCD_OUTREG32(&regs->WROI_SIZE, AS_UINT32(&LCD_REG->WROI_SIZE));
-   
-   //	LCD_OUTREG32(&regs->DITHER_CON, AS_UINT32(&LCD_REG->DITHER_CON));
-   LCD_OUTREG32(&regs->SRC_CON, AS_UINT32(&LCD_REG->SRC_CON));
-   
-   LCD_OUTREG32(&regs->SRC_ADD, AS_UINT32(&LCD_REG->SRC_ADD));
-   LCD_OUTREG32(&regs->SRC_PITCH, AS_UINT32(&LCD_REG->SRC_PITCH));
-   
-   LCD_OUTREG32(&regs->ULTRA_CON, AS_UINT32(&LCD_REG->ULTRA_CON));
-   LCD_OUTREG32(&regs->DBI_ULTRA_TH, AS_UINT32(&LCD_REG->DBI_ULTRA_TH));
-   
-   LCD_OUTREG32(&regs->GMC_ULTRA_TH, AS_UINT32(&LCD_REG->GMC_ULTRA_TH));
-}
-
-
-static void _RestoreLCDRegisters(void)
-{
-   LCD_REGS *regs = &(_lcdContext.regBackup);
-   UINT32 i;
-
-   LCD_OUTREG32(&LCD_REG->INT_ENABLE, AS_UINT32(&regs->INT_ENABLE));
-   LCD_OUTREG32(&LCD_REG->SERIAL_CFG, AS_UINT32(&regs->SERIAL_CFG));
-   
-   for(i = 0; i < ARY_SIZE(LCD_REG->SIF_TIMING); ++i)
-   {
-      LCD_OUTREG32(&LCD_REG->SIF_TIMING[i], AS_UINT32(&regs->SIF_TIMING[i]));
-   }
-   
-   for(i = 0; i < ARY_SIZE(LCD_REG->PARALLEL_CFG); ++i)
-   {
-      LCD_OUTREG32(&LCD_REG->PARALLEL_CFG[i], AS_UINT32(&regs->PARALLEL_CFG[i]));
-   }
-   
-   LCD_OUTREG32(&LCD_REG->TEARING_CFG, AS_UINT32(&regs->TEARING_CFG));
-   LCD_OUTREG32(&LCD_REG->PARALLEL_DW, AS_UINT32(&regs->PARALLEL_DW));
-   LCD_OUTREG32(&LCD_REG->CALC_HTT, AS_UINT32(&regs->CALC_HTT));
-   LCD_OUTREG32(&LCD_REG->SYNC_LCM_SIZE, AS_UINT32(&regs->SYNC_LCM_SIZE));
-   LCD_OUTREG32(&LCD_REG->SYNC_CNT, AS_UINT32(&regs->SYNC_CNT));
-   LCD_OUTREG32(&LCD_REG->SMI_CON, AS_UINT32(&regs->SMI_CON));
-   
-   LCD_OUTREG32(&LCD_REG->WROI_CONTROL, AS_UINT32(&regs->WROI_CONTROL));
-   LCD_OUTREG32(&LCD_REG->WROI_CMD_ADDR, AS_UINT32(&regs->WROI_CMD_ADDR));
-   LCD_OUTREG32(&LCD_REG->WROI_DATA_ADDR, AS_UINT32(&regs->WROI_DATA_ADDR));
-   LCD_OUTREG32(&LCD_REG->WROI_SIZE, AS_UINT32(&regs->WROI_SIZE));
-   
-   //	LCD_OUTREG32(&LCD_REG->DITHER_CON, AS_UINT32(&regs->DITHER_CON));
-   
-   LCD_OUTREG32(&LCD_REG->SRC_CON, AS_UINT32(&regs->SRC_CON));
-   
-   LCD_OUTREG32(&LCD_REG->SRC_ADD, AS_UINT32(&regs->SRC_ADD));
-   LCD_OUTREG32(&LCD_REG->SRC_PITCH, AS_UINT32(&regs->SRC_PITCH));
-   
-   LCD_OUTREG32(&LCD_REG->ULTRA_CON, AS_UINT32(&regs->ULTRA_CON));
-   LCD_OUTREG32(&LCD_REG->DBI_ULTRA_TH, AS_UINT32(&regs->DBI_ULTRA_TH));
-   
-   LCD_OUTREG32(&LCD_REG->GMC_ULTRA_TH, AS_UINT32(&regs->GMC_ULTRA_TH));
+    return LCD_STATUS_OK;
 }
 
 
@@ -545,7 +519,7 @@ LCD_STATUS LCD_BackupRegisters(void)
     LCD_OUTREG32(&regs->DBI_ULTRA_TH, AS_UINT32(&LCD_REG->DBI_ULTRA_TH));
     LCD_OUTREG32(&regs->GMC_ULTRA_TH, AS_UINT32(&LCD_REG->GMC_ULTRA_TH));
 
-    return DSI_STATUS_OK;
+    return LCD_STATUS_OK;
 }
 
 
@@ -590,7 +564,6 @@ LCD_STATUS LCD_Init(BOOL isLcdPoweredOn)
        _LCD_InterruptHandler, IRQF_TRIGGER_LOW, MTKFB_DRIVER, NULL) < 0)
    {
       DBI_DRV_WRAN("[LCD][ERROR] fail to request LCD irq\n"); 
-      ASSERT(0);
       return LCD_STATUS_ERROR;
    }
 
@@ -617,47 +590,6 @@ LCD_STATUS LCD_Deinit(void)
 
 static BOOL s_isLcdPowerOn = FALSE;
 
-#ifdef BUILD_UBOOT
-LCD_STATUS LCD_PowerOn(void)
-{
-   if (!s_isLcdPowerOn)
-   {
-      LCD_MASKREG32(0xC0001040, 0x02, 0x0);
-      LCD_MASKREG32(0xC2080020, 0x80, 0x80);
-      LCD_MASKREG32(0xC2080028, 0x00000280, 0x00000280);
-      LCD_MASKREG32(0xC2080024, 0x00000020, 0x00000020);
-
-      printf("0x%8x,0x%8x,0x%8x\n", INREG32(0xC2080000), INREG32(0xC2080004), INREG32(0xC2080008));
-               _RestoreLCDRegisters();
-      s_isLcdPowerOn = TRUE;
-   }
-   
-   return LCD_STATUS_OK;
-}
-
-
-LCD_STATUS LCD_PowerOff(void)
-{
-   if (s_isLcdPowerOn)
-   {
-      _WaitForEngineNotBusy();
-      _BackupLCDRegisters();
-
-#if 0
-      LCD_MASKREG32(0xC0001040, 0x02, 0x02);
-      LCD_MASKREG32(0xC2080010, 0x80, 0x80);
-      LCD_MASKREG32(0xC2080018, 0x00000280, 0x00000280);
-      LCD_MASKREG32(0xC2080014, 0x00000020, 0x00000020);
-
-      printf("0x%8x,0x%8x,0x%8x\n", INREG32(0xC2080000), INREG32(0xC2080004), INREG32(0xC2080008));
-#endif
-               s_isLcdPowerOn = FALSE;
-   }
-   
-   return LCD_STATUS_OK;
-}
-
-#else
 LCD_STATUS LCD_PowerOn(void)
 {
     DBI_DRV_FUNC("[%s]:enter \n", __func__);
@@ -683,12 +615,12 @@ LCD_STATUS LCD_PowerOn(void)
             ret += enable_clock(MT_CG_DISP_DBI_ENGINE_SW_CG, "LCD");
         if (!clock_is_on(MT_CG_DISP_DBI_SMI_SW_CG))
             ret += enable_clock(MT_CG_DISP_DBI_SMI_SW_CG, "LCD");
+
         if(ret > 0)
         {
-            DBI_DRV_WRAN("[LCD]power manager API return FALSE\n");
-            ASSERT(0);
-        }      
-        _RestoreLCDRegisters();
+            DISP_LOG_PRINT(ANDROID_LOG_WARN, "LCD", "LCD power manager API return FALSE\n");
+        }
+
         s_isLcdPowerOn = TRUE;
     }
  
@@ -704,9 +636,6 @@ LCD_STATUS LCD_PowerOff(void)
     {
         int ret = 0;
         
-        _WaitForEngineNotBusy();
-        _BackupLCDRegisters();
-  
         DBI_DRV_INFO("lcd will be power off\n");
         if (clock_is_on(MT_CG_DISP_DBI_SMI_SW_CG))
             ret += disable_clock(MT_CG_DISP_DBI_SMI_SW_CG, "LCD");
@@ -724,22 +653,21 @@ LCD_STATUS LCD_PowerOff(void)
             ret += disable_clock(MT_CG_DISP_DBI_IF_SW_CG, "LCD");
         if (clock_is_on(MT_CG_DBI_BCLK_SW_CG))
             ret += disable_clock(MT_CG_DBI_BCLK_SW_CG, "LCD");
+
         if(ret > 0)
         {
-            DBI_DRV_WRAN("[LCD]power manager API return FALSE\n");
-            ASSERT(0);
-        } 			
+            DISP_LOG_PRINT(ANDROID_LOG_WARN, "LCD", "LCD power manager API return FALSE\n");
+        }
   
         s_isLcdPowerOn = FALSE;
     }
  
     return LCD_STATUS_OK;
 }
-#endif
 
 LCD_STATUS LCD_WaitForNotBusy(void)
 {
-    _WaitForEngineNotBusy();
+    LCD_WaitForEngineNotBusy();
     return LCD_STATUS_OK;
 }
 EXPORT_SYMBOL(LCD_WaitForNotBusy);
@@ -771,6 +699,14 @@ LCD_STATUS LCD_EnableInterrupt(DISP_INTERRUPT_EVENTS eventID)
          break;
 
       case DISP_LCD_VSYNC_INT:
+         disp_register_irq(DISP_MODULE_RDMA0, _LCD_RDMA0_IRQ_Handler);
+         break;
+
+      case DISP_LCD_SCREEN_UPDATE_START_INT:
+         disp_register_irq(DISP_MODULE_RDMA0, _LCD_RDMA0_IRQ_Handler);
+         break;
+
+      case DISP_LCD_SCREEN_UPDATE_END_INT:
          disp_register_irq(DISP_MODULE_RDMA0, _LCD_RDMA0_IRQ_Handler);
          break;
 
@@ -825,7 +761,7 @@ LCD_STATUS LCD_ConfigParallelIF(LCD_IF_ID id,
    if (0 == writeWait)   writeWait = 1;
    if (0 == readLatency) readLatency = 1;
    
-   _WaitForEngineNotBusy();
+   LCD_WaitForEngineNotBusy();
    
    // (1) Config Data Width
    {
@@ -922,7 +858,7 @@ LCD_STATUS LCD_ConfigSerialIF(LCD_IF_ID id,
    
    ASSERT(id >= LCD_IF_SERIAL_0 && id <= LCD_IF_SERIAL_1);
    
-   _WaitForEngineNotBusy();
+   LCD_WaitForEngineNotBusy();
    
    memset(&config, 0, sizeof(config));
    
@@ -954,7 +890,7 @@ LCD_STATUS LCD_ConfigSerialIF(LCD_IF_ID id,
    return LCD_STATUS_OK;
 }
 
-//zhao.li@tcl bug 481348 P28
+
 LCD_STATUS LCD_SetSwReset(void)
 {
    OUTREGBIT(LCD_REG_START,LCD_REG->START,RESET,1);
@@ -962,7 +898,8 @@ LCD_STATUS LCD_SetSwReset(void)
 
    return LCD_STATUS_OK;
 }
-//zhao.li@tcl bug 481348 P28 end
+
+
 LCD_STATUS LCD_SetResetSignal(BOOL high)
 {
    LCD_REG->RESET = high ? 1 : 0;
@@ -995,7 +932,7 @@ LCD_STATUS LCD_CmdQueueEnable(BOOL enabled)
 {
    LCD_REG_WROI_CON ctrl;
    
-   //    _WaitForEngineNotBusy();
+   //    LCD_WaitForEngineNotBusy();
    
    ctrl = LCD_REG->WROI_CONTROL;
    ctrl.ENC = enabled ? 1 : 0;
@@ -1011,7 +948,7 @@ LCD_STATUS LCD_CmdQueueWrite(UINT32 *cmds, UINT32 cmdCount)
 
    ASSERT(cmdCount < ARY_SIZE(LCD_REG->CMDQ));
     
-//    _WaitForEngineNotBusy();
+//    LCD_WaitForEngineNotBusy();
     ctrl = LCD_REG->WROI_CONTROL;
     ctrl.COMMAND = cmdCount - 1;
     LCD_OUTREG32(&LCD_REG->WROI_CONTROL, AS_UINT32(&ctrl));
@@ -1042,7 +979,7 @@ LCD_STATUS LCD_ConfigDither(int lrs, int lgs, int lbs, int dbr, int dbg, int dbb
    /*
       LCD_REG_DITHER_CON ctrl;
       
-      //	_WaitForEngineNotBusy();
+      //	LCD_WaitForEngineNotBusy();
       
       ctrl = LCD_REG->DITHER_CON;
       
@@ -1070,8 +1007,7 @@ LCD_STATUS LCD_LayerSetAddress(LCD_LAYER_ID id, UINT32 address)
 {
    cached_layer_config[id].addr = address;
    cached_layer_config[id].isDirty = true;
-   //	if(FB_LAYER == id || (FB_LAYER + 1) == id)
-   //		disp_path_config_layer_addr((unsigned int)id,address);
+
    return LCD_STATUS_OK;
 }
 
@@ -1256,7 +1192,6 @@ LCD_STATUS LCD_EnableHwTrigger(BOOL enable)
 
 LCD_STATUS LCD_SetBackgroundColor(UINT32 bgColor)
 {
-    //mt6583 not support
     return LCD_STATUS_OK;
 }
 
@@ -1267,11 +1202,10 @@ LCD_STATUS LCD_SetRoiWindow(UINT32 x, UINT32 y, UINT32 width, UINT32 height)
     
     size.WIDTH = (UINT16)width;
     size.HEIGHT = (UINT16)height;
-    
-    //    _WaitForEngineNotBusy();
+
     LCD_OUTREG32(&LCD_REG->WROI_SIZE, AS_UINT32(&size));
     _lcdContext.roiWndSize = size;
-     
+        
     return LCD_STATUS_OK;
 }
 
@@ -1566,66 +1500,21 @@ LCD_STATUS LCD_Dump_Layer_Info(void)
 }
 
 
-LCD_STATUS LCD_Dynamic_Change_FB_Layer(unsigned int isAEEEnabled)
-{
-    static int ui_layer_tdshp = 0;
-
-    printk("[DDP] LCD_Dynamic_Change_FB_Layer, isAEEEnabled=%d \n", isAEEEnabled);
-    LCD_Dump_Layer_Info();
-    
-    if(DISP_DEFAULT_UI_LAYER_ID==DISP_CHANGED_UI_LAYER_ID)
-    {
-        printk("[DDP] LCD_Dynamic_Change_FB_Layer, no dynamic switch \n");
-        return LCD_STATUS_OK;
-    }
-    
-    if(isAEEEnabled==1)
-    {
-        // change ui layer from DISP_DEFAULT_UI_LAYER_ID to DISP_CHANGED_UI_LAYER_ID
-        memcpy((void*)(&cached_layer_config[DISP_CHANGED_UI_LAYER_ID]), 
-                       (void*)(&cached_layer_config[DISP_DEFAULT_UI_LAYER_ID]), 
-                       sizeof(OVL_CONFIG_STRUCT));
-        ui_layer_tdshp = cached_layer_config[DISP_DEFAULT_UI_LAYER_ID].isTdshp;
-        cached_layer_config[DISP_DEFAULT_UI_LAYER_ID].isTdshp = 0;
-        disp_path_change_tdshp_status(DISP_DEFAULT_UI_LAYER_ID, 0); // change global variable value, else error-check will find layer 2, 3 enable tdshp together
-        FB_LAYER = DISP_CHANGED_UI_LAYER_ID;
-    }
-    else
-    {
-        memcpy((void*)(&cached_layer_config[DISP_DEFAULT_UI_LAYER_ID]), 
-                       (void*)(&cached_layer_config[DISP_CHANGED_UI_LAYER_ID]), 
-                       sizeof(OVL_CONFIG_STRUCT));
-        cached_layer_config[DISP_DEFAULT_UI_LAYER_ID].isTdshp = ui_layer_tdshp;
-        FB_LAYER = DISP_DEFAULT_UI_LAYER_ID;
-        memset((void*)(&cached_layer_config[DISP_CHANGED_UI_LAYER_ID]), 0, sizeof(OVL_CONFIG_STRUCT));
-    }
-
-    // no matter memcpy or memset, layer ID should not be changed
-    cached_layer_config[DISP_DEFAULT_UI_LAYER_ID].layer = DISP_DEFAULT_UI_LAYER_ID;
-    cached_layer_config[DISP_CHANGED_UI_LAYER_ID].layer = DISP_CHANGED_UI_LAYER_ID;
-    cached_layer_config[DISP_DEFAULT_UI_LAYER_ID].isDirty = 1;
-    cached_layer_config[DISP_CHANGED_UI_LAYER_ID].isDirty = 1;
-
-    printk("after dynamic change: \n");
-    LCD_Dump_Layer_Info();
-    
-    return LCD_STATUS_OK;
-}
-
-
 extern struct mutex OverlaySettingMutex;
 LCD_STATUS LCD_StartTransfer(BOOL blocking, BOOL isMutexLocked)
 {
     DBI_DRV_FUNC("[%s]:enter \n", __func__);
 
-    _WaitForEngineNotBusy();
+    LCD_WaitForEngineNotBusy();
     DBG_OnTriggerLcd();
 
     if (!isMutexLocked)
         disp_path_get_mutex();
     mutex_lock(&OverlaySettingMutex);
 
+#if !defined(MTK_OVL_DECOUPLE_SUPPORT)
     LCD_ConfigOVL();
+#endif
 
     LCD_OUTREG32(&LCD_REG->START, 0);
     LCD_OUTREG32(&LCD_REG->START, (1 << 15));
@@ -1728,12 +1617,6 @@ void LCD_DumpLayer()
 
 
 #if !defined(MTK_M4U_SUPPORT)
-#ifdef BUILD_UBOOT
-static unsigned long v2p(unsigned long va)
-{
-   return va;
-}
-#else
 static unsigned long v2p(unsigned long va)
 {
    unsigned long pageOffset = (va & (PAGE_SIZE - 1));
@@ -1749,7 +1632,6 @@ static unsigned long v2p(unsigned long va)
 
    return pa;
 }
-#endif
 #endif
 
 LCD_STATUS LCD_Get_VideoLayerSize(unsigned int id, unsigned int *width, unsigned int *height)
@@ -1947,10 +1829,10 @@ LCD_STATUS LCD_Change_WriteCycle(LCD_IF_ID id, unsigned int write_cycle)
 #if defined(MTK_M4U_SUPPORT)
 LCD_STATUS LCD_InitM4U()
 {
+#ifdef MTK_LCDC_ENABLE_M4U
    M4U_PORT_STRUCT M4uPort;
    DBI_DRV_INFO("[LCDC driver]%s\n", __func__);
 
-#ifdef MTK_LCDC_ENABLE_M4U
    M4uPort.ePortID = M4U_PORT_LCD_R;
    M4uPort.Virtuality = 1; 					   
    M4uPort.Security = 0;
@@ -2080,9 +1962,10 @@ LCD_STATUS LCD_M4U_On(bool enable)
    return LCD_STATUS_OK;
 }
 
-LCD_STATUS LCD_DumpM4U(){
+LCD_STATUS LCD_DumpM4U(void)
+{
     //	_m4u_lcdc_func.m4u_dump_reg(M4U_CLNTMOD_LCDC);
-    m4u_dump_info(M4U_CLNTMOD_LCDC_UI);
+    m4u_dump_info();
  
     return LCD_STATUS_OK;
 }
@@ -2104,40 +1987,41 @@ LCD_STATUS LCD_SetGMCThrottle()
 {
     return LCD_STATUS_OK;
 }
-//zhao.li@tcl bug 481348 P28
+
+
 LCD_STATUS LCD_read_lcm_fb(unsigned char *buffer)
 {
-   unsigned int array[2];
-
-   LCD_WaitForNotBusy();
-
-	// if read_fb not impl, should return info
-	if(lcm_drv->read_fb)
-		lcm_drv->read_fb(buffer);
-
-   return LCD_STATUS_OK;
+    LCD_WaitForNotBusy();
+    
+    // if read_fb not impl, should return info
+    if(lcm_drv->ata_check)
+        lcm_drv->ata_check(buffer);
+    
+    return LCD_STATUS_OK;
 }
+
 
 unsigned int LCD_Check_LCM(UINT32 color)
 {
-  unsigned int ret = 1;
-	unsigned char buffer[60];
-	unsigned int i=0;
-	
-	LCD_read_lcm_fb(buffer);
-	for(i=0;i<60;i++)
-		printk("%d\n",buffer[i]);	
+    unsigned int ret = 1;
+    unsigned char buffer[60];
+    unsigned int i=0;
+    
+    LCD_read_lcm_fb(buffer);
+    for(i=0;i<60;i++)
+        printk("%d\n",buffer[i]);	
+    
+    for(i=0;i<60;i+=3){
+        printk("read pixel = 0x%x,",(buffer[i]<<16)|(buffer[i+1]<<8)|(buffer[i+2]));
+        if(((buffer[i]<<16)|(buffer[i+1]<<8)|(buffer[i+2])) != (color&0xFFFFFF)){
+            ret = 0;
+            break;
+        }
+    }
 
-	for(i=0;i<60;i+=3){
-		printk("read pixel = 0x%x,",(buffer[i]<<16)|(buffer[i+1]<<8)|(buffer[i+2]));
-		if(((buffer[i]<<16)|(buffer[i+1]<<8)|(buffer[i+2])) != (color&0xFFFFFF)){
-			ret = 0;
-			break;
-		}
-	}
-	return ret;
+    return ret;
 }
-//zhao.li@tcl bug 481348 P28 end
+
 // called by "esd_recovery_kthread"
 BOOL LCD_esd_check(void)
 {
@@ -2178,4 +2062,5 @@ BOOL LCD_esd_check(void)
 #endif	
     return TRUE;
 }
+
 

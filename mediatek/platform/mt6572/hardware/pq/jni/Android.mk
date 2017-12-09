@@ -14,7 +14,8 @@ LOCAL_C_INCLUDES := $(JNI_H_INCLUDE)
 LOCAL_C_INCLUDES += \
         $(KERNEL_HEADERS) \
         $(TOP)/frameworks/base/include \
-        $(TOP)/mediatek/platform/mt6572/kernel/drivers/dispsys
+        $(TOP)/mediatek/platform/mt6572/kernel/drivers/dispsys \
+        $(MTK_PATH_PLATFORM)/../../hardware/dpframework/inc
 	
 LOCAL_SHARED_LIBRARIES := \
 	libcutils \

@@ -1,15 +1,19 @@
 #!usr/bin/perl
+
 my $prj = $ARGV[0];
 my $custom_dir = $ARGV[1];
 my $secro_ac = $ARGV[2];
 my $nand_page_size = $ARGV[3];
 my $fb_signature = "FB_SIG";
-my $dir = "out/target/product/$prj";
+my $dir = "$ENV{OUT_DIR}/target/product/$prj";
 my $cfg_dir = "mediatek/custom/$prj/security/image_auth";
 my $cfg_def = "IMG_AUTH_CFG.ini";
 my $cfg = "$cfg_dir/$cfg_def";
 my $key = "$cfg_dir/IMG_AUTH_KEY.ini";
 my $BUILD_UBOOT = $ENV{"BUILD_UBOOT"};
+my $MTK_IH_TEE_SUPPORT = $ENV{"MTK_IN_HOUSE_TEE_SUPPORT"};
+my $TRUSTONIC_TEE_SUPPORT = $ENV{TRUSTONIC_TEE_SUPPORT};
+my $MTK_PLATFORM = $ENV{MTK_PLATFORM};
 
 ##########################################################
 # Dump Parameter
@@ -38,22 +42,16 @@ my $command = "mediatek/build/tools/SignTool/SignTool.sh";
 ##########################################################
 # File Check
 ##########################################################
-#####modify for sign image,when compile new or perso######
-my @imgs_need_sign;
-if(-e $dir."/boot.img")
-{
-   print "\nexist boot.img";
-   @imgs_need_sign = ("boot.img", "logo_jrd.bin", "recovery.img", "secro.img", "system.img", "userdata.img", "lk.bin","custpack.img","mobile_info.img");
-}
-else
-{
-   print "\nno boot.img";
-   @imgs_need_sign = ("logo_jrd.bin","secro.img", "custpack.img");
-}
-####end modify for compile new or perso##################
-
+my @imgs_need_sign = ("boot.img", "logo.bin", "recovery.img", "secro.img", "system.img", "userdata.img", "lk.bin");
 if(${BUILD_UBOOT} eq "yes") {
         push (@imgs_need_sign, "uboot_${prj}.bin");
+}
+
+if(${MTK_IH_TEE_SUPPORT} eq "yes") {
+        push (@imgs_need_sign, "tz.img");
+}
+if(${TRUSTONIC_TEE_SUPPORT} eq "yes") {
+        push (@imgs_need_sign, "mobicore.bin");
 }
 
 foreach my $img (@imgs_need_sign) {
@@ -64,8 +62,8 @@ die "@miss_img\nall the imgs above is NOT exsit\n" if (@miss_img > 0);
 ##########################################################
 # BACKUP SECRO
 ##########################################################
-my $secro_out = "out/target/product/$prj/secro.img";
-my $secro_bak = "out/target/product/$prj/secro_bak.img";
+my $secro_out = "$ENV{OUT_DIR}/target/product/$prj/secro.img";
+my $secro_bak = "$ENV{OUT_DIR}/target/product/$prj/secro_bak.img";
 system("cp -rf $secro_out $secro_bak") == 0 or die "backup SECRO fail\n";
 
 ##########################################################
@@ -76,12 +74,21 @@ print "********************************************\n";
 print " SecRo Post Processing \n";
 print "********************************************\n";
 
-my $secro_def_cfg = "mediatek/custom/common/secro/SECRO_DEFAULT_LOCK_CFG.ini";
-my $secro_fac_lock_cfg = "mediatek/custom/common/secro/SECRO_FACTORY_LOCK_CFG.ini";
-my $secro_unlock_cfg = "mediatek/custom/common/secro/SECRO_UNLOCK_CFG.ini";
-my $secro_def_out = "out/target/product/$prj/secro.img";
-my $secro_fac_lock_out = "out/target/product/$prj/sro-lock.img";
-my $secro_unlock_out = "out/target/product/$prj/sro-unlock.img";
+if (${MTK_PLATFORM} eq "MT6575" || ${MTK_PLATFORM} eq "MT6577")
+{
+    $secro_def_cfg = "mediatek/custom/common/secro/SECRO_DEFAULT_LOCK_CFG_LEGACY.ini";
+    $secro_fac_lock_cfg = "mediatek/custom/common/secro/SECRO_FACTORY_LOCK_CFG_LEGACY.ini";
+    $secro_unlock_cfg = "mediatek/custom/common/secro/SECRO_UNLOCK_CFG_LEGACY.ini";
+}
+else
+{
+    $secro_def_cfg = "mediatek/custom/common/secro/SECRO_DEFAULT_LOCK_CFG.ini";
+    $secro_fac_lock_cfg = "mediatek/custom/common/secro/SECRO_FACTORY_LOCK_CFG.ini";
+    $secro_unlock_cfg = "mediatek/custom/common/secro/SECRO_UNLOCK_CFG.ini";
+}
+my $secro_def_out = "$ENV{OUT_DIR}/target/product/$prj/secro.img";
+my $secro_fac_lock_out = "$ENV{OUT_DIR}/target/product/$prj/sro-lock.img";
+my $secro_unlock_out = "$ENV{OUT_DIR}/target/product/$prj/sro-unlock.img";
 my $secro_script = "mediatek/build/tools/SecRo/secro_post.pl";
 if (${secro_ac} eq "yes")
 {
@@ -103,7 +110,7 @@ foreach my $img (@imgs_need_sign) {
 		next;
 	}
 	my $signed_img = $img;
-	$signed_img =~ s/\./-sign\./;
+	$signed_img =~ s/([^\.]*)(\.?.*)/$1-sign$2/;
 	my $signed_cfg = "$cfg_dir/$img.ini";
 	if ( ! -e "$signed_cfg" ) {
 		$signed_cfg = $cfg;
@@ -184,7 +191,8 @@ if (${secro_ac} eq "yes")
 ##########################################################
 # RESTORE SECRO
 ##########################################################
-my $secro_out = "out/target/product/$prj/secro.img";
-my $secro_bak = "out/target/product/$prj/secro_bak.img";
+my $secro_out = "$ENV{OUT_DIR}/target/product/$prj/secro.img";
+my $secro_bak = "$ENV{OUT_DIR}/target/product/$prj/secro_bak.img";
 system("cp -rf $secro_bak $secro_out") == 0 or die "restore SECRO fail\n";
 system("rm -rf $secro_bak") == 0 or die "remove backup SECRO fail\n";
+

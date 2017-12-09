@@ -35,6 +35,10 @@
 #include <mach/upmu_hw.h>
 #include <linux/xlog.h>
 #include <linux/delay.h>
+#include <mach/mt_sleep.h>
+#include <mach/mt_boot.h>
+#include <mach/system.h>
+#include <cust_charging.h>
 
 
  // ============================================================ //
@@ -48,13 +52,12 @@
  // ============================================================ //
  //global variable
  // ============================================================ //
-kal_bool charging_type_det_done = KAL_TRUE;
-#if 0
+#if 1
 int gpio_number   = GPIO_SWCHARGER_EN_PIN; 
 int gpio_off_mode = GPIO_SWCHARGER_EN_PIN_M_GPIO;
 int gpio_on_mode  = GPIO_SWCHARGER_EN_PIN_M_GPIO;
 #else
-int gpio_number   = 19; 
+int gpio_number   = 56; 
 int gpio_off_mode = 0;
 int gpio_on_mode  = 0;
 #endif
@@ -63,6 +66,7 @@ int gpio_off_out  = GPIO_OUT_ONE;
 int gpio_on_dir   = GPIO_DIR_OUT;
 int gpio_on_out   = GPIO_OUT_ZERO;
 
+kal_bool charging_type_det_done = KAL_TRUE;
 
 const kal_uint32 VBAT_CV_VTH[]=
 {
@@ -116,6 +120,7 @@ const kal_uint32 CS_VTH[]=
  extern bool mt_usb_is_device(void);
  extern void Charger_Detect_Init(void);
  extern void Charger_Detect_Release(void);
+ extern void mt_power_off(void);
  
  // ============================================================ //
  kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_uint32 array_size, const kal_uint32 val)
@@ -193,24 +198,21 @@ const kal_uint32 CS_VTH[]=
 
  static void hw_bc11_dump_register(void)
  {
-	kal_uint32 status = STATUS_OK;
-
 	kal_uint32 reg_val = 0;
-    kal_uint32 reg_num = CHR_CON18;
-    kal_uint32 i = 0;
+	kal_uint32 reg_num = CHR_CON18;
+	kal_uint32 i = 0;
 
-    for(i=reg_num ; i<=CHR_CON19 ; i+=2)
-    {
-        reg_val = upmu_get_reg_value(i);
-        battery_xlog_printk(BAT_LOG_FULL, "Chr Reg[0x%x]=0x%x \r\n", i, reg_val);
-    }
-
-	return status;
+	for(i=reg_num ; i<=CHR_CON19 ; i+=2)
+	{
+		reg_val = upmu_get_reg_value(i);
+		battery_xlog_printk(BAT_LOG_FULL, "Chr Reg[0x%x]=0x%x \r\n", i, reg_val);
+	}
  }
 	
 
  static void hw_bc11_init(void)
  {
+ 	 msleep(300);
 	 Charger_Detect_Init();
 		 
 	 //RG_BC11_BIAS_EN=1	
@@ -315,9 +317,11 @@ const kal_uint32 CS_VTH[]=
 	 U32 wChargerAvail = 0;
 	  
 	  //RG_BC11_IPU_EN[1.0] = 01
-	 upmu_set_rg_bc11_ipu_en(0x1);
-	  //RG_BC11_VREF_VTH = [1:0]=10
-	 upmu_set_rg_bc11_vref_vth(0x2);
+	//upmu_set_rg_bc11_ipu_en(0x1);
+	upmu_set_rg_bc11_ipd_en(0x1);      
+	//RG_BC11_VREF_VTH = [1:0]=10
+	//upmu_set_rg_bc11_vref_vth(0x2);
+	upmu_set_rg_bc11_vref_vth(0x0);
 	  //RG_BC11_CMP_EN[1.0] = 01
 	 upmu_set_rg_bc11_cmp_en(0x1);
  
@@ -473,11 +477,15 @@ const kal_uint32 CS_VTH[]=
  static kal_uint32 charging_hw_init(void *data)
  {
  	kal_uint32 status = STATUS_OK;
+	static bool charging_init_flag = KAL_FALSE;
 	
 	mt_set_gpio_mode(gpio_number,gpio_on_mode);  
     mt_set_gpio_dir(gpio_number,gpio_on_dir);
     mt_set_gpio_out(gpio_number,gpio_on_out);
+
+    battery_xlog_printk(BAT_LOG_FULL, "gpio_number=0x%x,gpio_on_mode=%d,gpio_off_mode=%d\n", gpio_number, gpio_on_mode, gpio_off_mode);
 	
+	upmu_set_rg_usbdl_set(0);       //force leave USBDL mode
 	upmu_set_rg_usbdl_rst(1);		//force leave USBDL mode
    
 	#if defined(HIGH_BATTERY_VOLTAGE_SUPPORT)
@@ -486,12 +494,13 @@ const kal_uint32 CS_VTH[]=
         fan5405_config_interface_liao(0x06,0x70);
 	#endif
 	    
-    fan5405_config_interface_liao(0x00,0x80);	//kick chip watch dog, EN_STAT=0
+    fan5405_config_interface_liao(0x00,0xC0);	//kick chip watch dog
     fan5405_config_interface_liao(0x01,0xb8);	//TE=1, CE=0, HZ_MODE=0, OPA_MODE=0
-    fan5405_config_interface_liao(0x05,0x04);
-    
-    fan5405_config_interface_liao(0x04,0x1B); //194mA
-	        
+    fan5405_config_interface_liao(0x05,0x03);
+	if ( !charging_init_flag ) {   
+    fan5405_config_interface_liao(0x04,0x1A); //146mA
+		charging_init_flag = KAL_TRUE;
+	}        
  	return status;
  }
 
@@ -540,20 +549,6 @@ const kal_uint32 CS_VTH[]=
  {
  	kal_uint32 status = STATUS_OK;
 	kal_uint16 register_value;
-	kal_uint32 cv_value = *(kal_uint32 *)(data);
-	
-	if(cv_value == BATTERY_VOLT_04_200000_V)
-	{
-		#if defined(HIGH_BATTERY_VOLTAGE_SUPPORT)
-		{
-			kal_uint32 pmic_cid = upmu_get_cid();
-			
-			if(pmic_cid != 0x1020)
-				cv_value = BATTERY_VOLT_04_340000_V
-
-		}			
-		#endif
- 	}
 	
 	register_value = charging_parameter_to_value(VBAT_CV_VTH, GETARRAYNUM(VBAT_CV_VTH) ,*(kal_uint32 *)(data));
 	fan5405_set_oreg(register_value); 
@@ -730,13 +725,17 @@ const kal_uint32 CS_VTH[]=
 			 /********* Step B1 ***************/
 			 if(1 == hw_bc11_stepB1())
 			 {
-				 *(CHARGER_TYPE*)(data) = NONSTANDARD_CHARGER;
-				 battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Non STANDARD CHARGER!\r\n");
+				 //*(CHARGER_TYPE*)(data) = NONSTANDARD_CHARGER;
+				 //battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Non STANDARD CHARGER!\r\n");				
+				 *(CHARGER_TYPE*)(data) = APPLE_2_1A_CHARGER;
+				 battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Apple 2.1A CHARGER!\r\n");
 			 }	 
 			 else
 			 {
-				 *(CHARGER_TYPE*)(data) = APPLE_2_1A_CHARGER;
-				 battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Apple 2.1A CHARGER!\r\n");
+				 //*(CHARGER_TYPE*)(data) = APPLE_2_1A_CHARGER;
+				 //battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Apple 2.1A CHARGER!\r\n");
+				 *(CHARGER_TYPE*)(data) = NONSTANDARD_CHARGER;
+				 battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Non STANDARD CHARGER!\r\n");
 			 }	 
 		 }
 		 else
@@ -788,6 +787,51 @@ const kal_uint32 CS_VTH[]=
 	 return status;
 }
 
+static kal_uint32 charging_get_is_pcm_timer_trigger(void *data)
+{
+    kal_uint32 status = STATUS_OK;
+
+    if(slp_get_wake_reason() == WR_PCM_TIMER)
+        *(kal_bool*)(data) = KAL_TRUE;
+    else
+        *(kal_bool*)(data) = KAL_FALSE;
+
+    battery_xlog_printk(BAT_LOG_CRTI, "slp_get_wake_reason=%d\n", slp_get_wake_reason());
+       
+    return status;
+}
+
+static kal_uint32 charging_set_platform_reset(void *data)
+{
+    kal_uint32 status = STATUS_OK;
+
+    battery_xlog_printk(BAT_LOG_CRTI, "charging_set_platform_reset\n");
+ 
+    arch_reset(0,NULL);
+        
+    return status;
+}
+
+static kal_uint32 charging_get_platfrom_boot_mode(void *data)
+{
+    kal_uint32 status = STATUS_OK;
+  
+    *(kal_uint32*)(data) = get_boot_mode();
+
+    battery_xlog_printk(BAT_LOG_CRTI, "get_boot_mode=%d\n", get_boot_mode());
+         
+    return status;
+}
+
+static kal_uint32 charging_set_power_off(void *data)
+{
+    kal_uint32 status = STATUS_OK;
+  
+    battery_xlog_printk(BAT_LOG_CRTI, "charging_set_power_off=%d\n");
+    mt_power_off();
+         
+    return status;
+}
 
  static kal_uint32 (* const charging_func[CHARGING_CMD_NUMBER])(void *data)=
  {
@@ -805,6 +849,10 @@ const kal_uint32 CS_VTH[]=
 	,charging_get_battery_status
 	,charging_get_charger_det_status
 	,charging_get_charger_type
+	,charging_get_is_pcm_timer_trigger
+	,charging_set_platform_reset
+	,charging_get_platfrom_boot_mode
+	,charging_set_power_off
  };
 
  

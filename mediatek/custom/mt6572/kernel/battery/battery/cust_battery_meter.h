@@ -32,27 +32,16 @@
 #define FG_METER_RESISTANCE 	0
 
 /* Qmax for battery  */
-#ifdef HZ_SOUL45_SUPPORT
-#define Q_MAX_POS_50	1812
-#define Q_MAX_POS_25	1800
-#define Q_MAX_POS_0	1680
-#define Q_MAX_NEG_10	1600
+#define Q_MAX_POS_50	1399
+#define Q_MAX_POS_25	1499
+#define Q_MAX_POS_0		1377
+#define Q_MAX_NEG_10	1237
 
-#define Q_MAX_POS_50_H_CURRENT	1783
-#define Q_MAX_POS_25_H_CURRENT	1749
-#define Q_MAX_POS_0_H_CURRENT	1518
-#define Q_MAX_NEG_10_H_CURRENT	825
-#else
-#define Q_MAX_POS_50	1309//1399
-#define Q_MAX_POS_25	1300//1499
-#define Q_MAX_POS_0	1213//1377
-#define Q_MAX_NEG_10	1156//1237
+#define Q_MAX_POS_50_H_CURRENT	1377
+#define Q_MAX_POS_25_H_CURRENT	1473
+#define Q_MAX_POS_0_H_CURRENT	1247
+#define Q_MAX_NEG_10_H_CURRENT	819
 
-#define Q_MAX_POS_50_H_CURRENT	1288//1377
-#define Q_MAX_POS_25_H_CURRENT	1263//1473
-#define Q_MAX_POS_0_H_CURRENT	1096//1247
-#define Q_MAX_NEG_10_H_CURRENT	596//819
-#endif
 
 /* Discharge Percentage */
 #define OAM_D5		 1		//  1 : D5,   0: D2
@@ -60,10 +49,14 @@
 
 /* battery meter parameter */
 #define CUST_TRACKING_POINT  14
-#define CUST_R_SENSE         200
 #define CUST_HW_CC 		     0
 #define AGING_TUNING_VALUE   103
 #define CUST_R_FG_OFFSET    0
+#ifdef MTK_FAN5405_SUPPORT
+#define CUST_R_SENSE         68
+#else
+#define CUST_R_SENSE         200
+#endif
 
 #define OCV_BOARD_COMPESATE	0 //mV 
 #define R_FG_BOARD_BASE		1000
@@ -77,11 +70,21 @@
 #define FG_VBAT_AVERAGE_SIZE 18
 #define R_FG_VALUE 			0 // mOhm, base is 20
 
-
+#define CUST_POWERON_DELTA_CAPACITY_TOLRANCE	40
+#define CUST_POWERON_LOW_CAPACITY_TOLRANCE		5
+#define CUST_POWERON_MAX_VBAT_TOLRANCE			90
+#define CUST_POWERON_DELTA_VBAT_TOLRANCE		30
 
 /* Disable Battery check for HQA */
 #ifdef MTK_DISABLE_POWER_ON_OFF_VOLTAGE_LIMITATION
 #define FIXED_TBAT_25
 #endif
+
+/* Dynamic change wake up period of battery thread when suspend*/
+#define VBAT_NORMAL_WAKEUP		3600		//3.6V
+#define VBAT_LOW_POWER_WAKEUP		3500		//3.5v
+#define NORMAL_WAKEUP_PERIOD		5400 		//90 * 60 = 90 min
+#define LOW_POWER_WAKEUP_PERIOD		300		//5 * 60 = 5 min
+#define CLOSE_POWEROFF_WAKEUP_PERIOD	30	//30 s
 
 #endif	//#ifndef _CUST_BATTERY_METER_H

@@ -1,3 +1,39 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ * 
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ * 
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #include "typedefs.h"
 #include "platform.h"
@@ -36,14 +72,12 @@ static void mtk_wdt_reset(char mode)
 
     wdt_mode_val = DRV_Reg32(MTK_WDT_MODE);
     /* clear autorestart bit: autoretart: 1, bypass power key, 0: not bypass power key */
-#if defined(CFG_USB_AUTO_DETECT)
-    wdt_mode_val &= (~MTK_WDT_MODE_AUTO_RESTART);
-#endif
+    wdt_mode_val &=(~MTK_WDT_MODE_AUTO_RESTART);
 	/* make sure WDT mode is hw reboot mode, can not config isr mode  */
 	//wdt_mode_val &=(~(MTK_WDT_MODE_IRQ|MTK_WDT_MODE_ENABLE | MTK_WDT_MODE_DUAL_MODE));
 	
 		wdt_mode_val &= ~MTK_WDT_MODE_DDRRSV_MODE;
-		
+
     if(mode){ /* mode != 0 means by pass power key reboot, We using auto_restart bit as by pass power key flag */
         wdt_mode_val = wdt_mode_val | (MTK_WDT_MODE_KEY|MTK_WDT_MODE_EXTEN|MTK_WDT_MODE_AUTO_RESTART);
         DRV_WriteReg32(MTK_WDT_MODE, wdt_mode_val);
@@ -76,11 +110,25 @@ static unsigned int mtk_wdt_check_status(void)
     return status;
 }
 
+/**
+ * For Power off and power on reset, the INTERVAL default value is 0x7FF.
+ * We set Interval[1:0] to different value to distinguish different stage.
+ * Enter pre-loader, we will set it to 0x0
+ * Enter u-boot, we will set it to 0x1
+ * Enter kernel, we will set it to 0x2
+ * And the default value is 0x3 which means reset from a power off and power on reset
+ */
 #define POWER_OFF_ON_MAGIC	(0x3)
 #define PRE_LOADER_MAGIC	(0x0)
 #define U_BOOT_MAGIC		(0x1)
 #define KERNEL_MAGIC		(0x2)
 #define MAGIC_NUM_MASK		(0x3)
+/**
+ * If the reset is trigger by RGU(Time out or SW trigger), we hope the system can boot up directly;
+ * we DO NOT hope we must press power key to reboot system after reset.
+ * This message should tell pre-loader and u-boot, and we use Interval[2] to store this information.
+ * And this information will be cleared after uboot check it.
+ */
 #define IS_POWER_ON_RESET	(0x1<<2)
 #define RGU_TRIGGER_RESET_MASK	(0x1<<2)
 
@@ -323,17 +371,21 @@ void mtk_wdt_init(void)
 	{
 	   g_rgu_status |= RE_BOOT_WITH_INTTERUPT;
 	}
-	
+
 	if(wdt_sta & MTK_WDT_STATUS_SPMWDT_RST)
 	{
 	   g_rgu_status |= RE_BOOT_WITH_THERMAL;
 	}
-		
+	if(wdt_sta & MTK_WDT_STATUS_PCMWDT_RST)
+	{
+	   g_rgu_status |= RE_BOOT_BY_SPM;
+	}
+
     print ("RGU: g_rgu_satus:%d\n", g_rgu_status);	    
     mtk_wdt_mode_config(FALSE, FALSE, FALSE, FALSE, FALSE); // Wirte Mode register will clear status register
     mtk_wdt_check_trig_reboot_reason();
     /* Setting timeout 10s */
-    mtk_wdt_set_time_out_value(10);
+    mtk_wdt_set_time_out_value(16);
 
     #if !CFG_APWDT_DISABLE
     /* Config HW reboot mode */

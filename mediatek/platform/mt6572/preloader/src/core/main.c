@@ -1,3 +1,39 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ *
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #include "typedefs.h"
 #include "platform.h"
@@ -5,8 +41,7 @@
 #include "meta.h"
 #include "sec.h"
 #include "part.h"
-//FR443144 added by yongming.li for show  version 
-#include "version.h"
+#include <version.h>
 
 /*============================================================================*/
 /* CONSTAND DEFINITIONS                                                       */
@@ -36,21 +71,23 @@ static void bldr_pre_process(void)
 	platform_usbdl_flag_check();
 #endif
 
+    /* enter preloader safe mode */
 #if CFG_EMERGENCY_DL_SUPPORT
-    platform_safe_mode(1,CFG_EMERGENCY_DL_TIMEOUT_MS);
+    platform_safe_mode(1, CFG_EMERGENCY_DL_TIMEOUT_MS);
 #endif
+
     /* essential hardware initialization. e.g. timer, pll, uart... */
     platform_pre_init();
 
-    //FR443144 added by yongming.li for show preloader version begin
-    #ifdef PRELOADER_VER
+//FR595162 added by cansong.li for show preloader version begin
+#ifdef PRELOADER_VER
      #define xstr(s) str(s)
      #define str(s) #s
 
      print(xstr(PRELOADER_VER));
-    #endif
-    //FR443144 added by yongming.li for show preloader version end
-	 
+#endif
+//FR595162 added by cansong.li for show preloader version end
+
     #ifdef PL_PROFILING
     printf("#T#total_preplf_init=%d\n", get_timer(0));
     #endif
@@ -114,6 +151,26 @@ static void bldr_post_process(void)
     #ifdef PL_PROFILING
     printf("#T#total_plf_post_init=%d\n", get_timer(profiling_time));
     #endif
+}
+
+static bool wait_for_discon(struct comport_ops *comm, u32 tmo_ms)
+{
+    bool ret;
+    u8 discon[HSHK_DISCON_SZ];
+    memset(discon, 0x0, HSHK_DISCON_SZ);
+
+    print("[BLDR] DISCON...");
+    if (ret = comm->recv(discon, HSHK_DISCON_SZ, tmo_ms)) {
+	print("timeout\n");
+	return ret;
+    }
+
+    if (0 == memcmp(discon, HSHK_DISCON, HSHK_DISCON_SZ))
+	print("OK\n");
+    else
+	print("protocol mispatch\n");
+
+    return ret;
 }
 
 int bldr_load_part(char *name, blkdev_t *bdev, u32 *addr)
@@ -182,6 +239,7 @@ static bool bldr_cmd_handler(struct bldr_command_handler *handler,
         }
 
         comm->send((u8*)META_STR_ACK, strlen(META_STR_ACK));
+        wait_for_discon(comm, 1000);
         g_boot_mode = META_BOOT;
     } else if (CMD_MATCH(cmd, FACTORY_STR_REQ)) {
         para_t param;
@@ -201,6 +259,7 @@ static bool bldr_cmd_handler(struct bldr_command_handler *handler,
         if (attr & CMD_HNDL_ATTR_COM_FORBIDDEN)
             goto forbidden;
         comm->send((u8*)META_ADV_ACK, strlen(META_ADV_ACK));
+        wait_for_discon(comm, 1000);
         g_boot_mode = ADVMETA_BOOT;
     } else if (CMD_MATCH(cmd, ATE_STR_REQ)) {
         para_t param;
@@ -266,12 +325,7 @@ static int bldr_handshake(struct bldr_command_handler *handler)
         print("%s BR META BOOT\n", MOD);
         g_boot_mode = META_BOOT;
         /* secure META is only enabled on USB connection */
-#if defined(CFG_USB_AUTO_DETECT)
-        if(usb_cable_in())
-            g_meta_com_type = META_USB_COM;
-	else
-	    g_meta_com_type = META_UART_COM;
-#endif
+        g_meta_com_type = META_USB_COM;
         break;
 
     case FACTORY_BOOT:
@@ -312,6 +366,14 @@ void bldr_jump(u32 addr, u32 arg1, u32 arg2)
 
     /* disable preloader safe mode */
     platform_safe_mode(0, 0);
+
+    apmcu_disable_dcache();
+    apmcu_dcache_clean_invalidate();
+    apmcu_dsb();
+    apmcu_icache_invalidate();
+    apmcu_disable_icache();
+    apmcu_isb();
+    apmcu_disable_smp();
 
     print("\n%s jump to 0x%x\n", MOD, addr);
     print("%s <0x%x>=0x%x\n", MOD, addr, *(u32*)addr);
@@ -374,6 +436,52 @@ void main(void)
         print("%s can't find boot device(%d)\n", MOD, CFG_BOOT_DEV);
         goto error;
     }
+
+#if defined(LOAD_NORMAL_BOOT_PRELOADER)
+    #ifdef PL_PROFILING
+    profiling_time = get_timer(0);
+    #endif
+
+    {
+        volatile u32 cache_cfg;
+
+        #define L2C_SIZE_CFG_OFF 5
+        //enable L2 sram for DA
+        cache_cfg = DRV_Reg(APMCUSYS_CONFIG_BASE);
+        cache_cfg &= ~(0x7 << L2C_SIZE_CFG_OFF);
+        DRV_WriteReg(APMCUSYS_CONFIG_BASE, cache_cfg);
+
+        //enable audio sysram clk for DA
+        *(volatile unsigned int *)(0x10000084) = 0x02000000;
+    }
+
+    addr = CFG_UBOOT_MEMADDR;
+    printf("load preloader=0x%x\n",addr);
+    if (bldr_load_part(PART_PRELOADER, bootdev, &addr) != 0)
+        goto error;
+
+    addr = 0x02007200;
+    printf("memcpy preloader=0x%x\n", addr);
+    memcpy((void *)addr,(void *) CFG_UBOOT_MEMADDR,(int) 0x18E00);
+    #ifdef PL_PROFILING
+    printf("#T#ld_lk=%d\n", get_timer(profiling_time));
+    #endif
+
+    addr = 0x02007500;
+    apmcu_disable_dcache();
+    apmcu_dcache_clean_invalidate();
+    apmcu_dsb();
+    apmcu_icache_invalidate();
+    apmcu_disable_icache();
+    apmcu_isb();
+    apmcu_disable_smp();
+    printf("jump to preloader=0x%x\n", addr);
+
+//    while( *(volatile unsigned int *)(0x10001428) != 0x000000AA)  ;
+
+    jump((u32) addr, BOOT_ARGUMENT_ADDR, sizeof(boot_arg_t));
+#endif
+
 
 #if CFG_LOAD_DSP_ROM
     /* DSP is no more available in MT6589/MT6583 */

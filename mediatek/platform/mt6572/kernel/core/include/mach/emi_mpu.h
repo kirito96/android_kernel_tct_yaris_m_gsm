@@ -23,6 +23,9 @@
 #define EMI_MPSW (EMI_BASE+0x0658)
 #define EMI_MLST (EMI_BASE+0x0660)
 
+#define EMI_DRVA  (EMI_BASE+0x0318)    
+#define EMI_DRVB  (EMI_BASE+0x0320)    
+
 #define REGION_0_KEY 0x12345678
 #define REGION_1_KEY 0x23456788
 #define REGION_2_KEY 0x34567898
@@ -42,6 +45,7 @@
 
 #define EN_MPU_STR "ON"
 #define DIS_MPU_STR "OFF"
+#define TEST_STR "TEST"
 
 
 /*EMI memory protection align 32K*/

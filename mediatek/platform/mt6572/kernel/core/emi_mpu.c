@@ -366,9 +366,10 @@ static irqreturn_t mpu_violation_irq(int irq, void *dev_id)
     int counter = 0;
     char *master_name;
     
+#if 0	
     struct list_head *p;
     struct emi_mpu_notifier_block *block;    
-    
+  #endif  
     
     if ((readl(DEVAPC_D0_VIO_STA_3) & ABORT_EMI) == 0) {
         printk(KERN_INFO "Not EMI MPU violation.\n");
@@ -758,6 +759,26 @@ static ssize_t emi_mpu_store(struct device_driver *driver, const char *buf, size
         region = simple_strtoul(token[3], &token[3], 16);
         emi_mpu_set_region_protection(0x0, 0x0, region, SET_ACCESS_PERMISSON(NO_PROTECTION, NO_PROTECTION, NO_PROTECTION, NO_PROTECTION));
         printk("set EMI MPU: start: 0x%x, end: 0x%x, region: %d, permission: 0x%x\n", 0, 0, region, SET_ACCESS_PERMISSON(NO_PROTECTION, NO_PROTECTION, NO_PROTECTION, NO_PROTECTION));
+    } else if (!strncmp(buf, TEST_STR, strlen(TEST_STR))) {
+        i = 0;
+        while (ptr != NULL) {
+            ptr = strsep(&command, " ");
+            token[i] = ptr;
+            printk(KERN_DEBUG "token[%d] = %s\n", i, token[i]);
+            i++;
+        }
+        for (i = 0; i < 2; i++) {
+            printk(KERN_DEBUG "token[%d] = %s\n", i, token[i]);
+        }
+
+	 start_addr = simple_strtoul(token[1], &token[1], 16);	 
+	 end_addr = simple_strtoul(token[2], &token[2], 16);
+	 printk(KERN_CRIT "[EMI] start_addr = 0x%x, end_addr = 0x%x \n", start_addr, end_addr);
+	 mt65xx_reg_sync_writel(start_addr, EMI_DRVA); 
+	 mt65xx_reg_sync_writel(end_addr, EMI_DRVB); 
+        //mt65xx_reg_sync_writel((start_addr<<28) | (start_addr<<24) |(start_addr<<20) |(start_addr<<16) |(start_addr<<12) |(start_addr<<8) |(start_addr<<4) |start_addr, EMI_DRVA); 
+        //mt65xx_reg_sync_writel((start_addr<<20) |(start_addr<<16), EMI_DRVB); 
+	 printk(KERN_CRIT "[EMI] EMI_DRVA = 0x%x, EMI_DRVB= 0x%x \n", readl(EMI_DRVA), readl(EMI_DRVB));
     } else {
         printk(KERN_CRIT "Unkown emi_mpu command.\n");
     }

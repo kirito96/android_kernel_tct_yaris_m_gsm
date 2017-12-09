@@ -23,9 +23,6 @@
 #ifdef CONFIG_MTK_HIBERNATION
 #include "mach/mtk_hibernate_dpm.h"
 #endif
-#ifdef CONFIG_MTK_AEE_FEATURE
-#include <linux/aee.h>
-#endif  
 #include "devapc.h"
 
 
@@ -36,8 +33,6 @@ static DEFINE_SPINLOCK(g_devapc_lock);
 static struct cdev* g_devapc_ctrl = NULL;
 static unsigned long g_devapc_flags;
 static BOOL g_usb_protected = FALSE;
-
-extern spinlock_t g_mt_devapc_lock;
 
 
 /*
@@ -52,7 +47,6 @@ extern spinlock_t g_mt_devapc_lock;
  */
 static void set_module_apc(unsigned int module, DEVAPC_DOM domain_num , DEVAPC_ATTR permission_control)
 {
-    unsigned long irq_flag;
     unsigned int base;
     unsigned int clr_bit = 0x3 << ((module % 16) * 2);
     unsigned int set_bit = permission_control << ((module % 16) * 2);
@@ -83,12 +77,8 @@ static void set_module_apc(unsigned int module, DEVAPC_DOM domain_num , DEVAPC_A
         return;
     }
 
-    spin_lock_irqsave(&g_mt_devapc_lock, irq_flag);
-
     mt65xx_reg_sync_writel(readl(base) & ~clr_bit, base);
     mt65xx_reg_sync_writel(readl(base) | set_bit, base);
-
-    spin_unlock_irqrestore(&g_mt_devapc_lock, irq_flag);
     
     return;
 }
@@ -340,7 +330,6 @@ static irqreturn_t devapc_violation_irq(int irq, void *dev_id)
     int module_index;
     unsigned int sta, status = 0;
     unsigned int dbg0, dbg1;
-    unsigned int _dbg0, _dbg1;
     unsigned int master_ID;
     unsigned int domain_ID;
     unsigned int r_w_violation;
@@ -408,30 +397,16 @@ static irqreturn_t devapc_violation_irq(int irq, void *dev_id)
         
     mt65xx_reg_sync_writel(0x80000000 , DEVAPC_VIO_DBG0);
 
-    _dbg0 = readl(DEVAPC_VIO_DBG0);
-    _dbg1 = readl(DEVAPC_VIO_DBG1);
-    if ((_dbg0 != 0) || (_dbg1 != 0)) 
+    dbg0 = readl(DEVAPC_VIO_DBG0);
+    dbg1 = readl(DEVAPC_VIO_DBG1);
+    if ((dbg0 != 0) || (dbg1 != 0)) 
     {
         xlog_printk(ANDROID_LOG_ERROR, DEVAPC_TAG ,"[DEVAPC] DBG Clear FAILED!\n");
-        xlog_printk(ANDROID_LOG_ERROR, DEVAPC_TAG ,"[DEVAPC] DBG0 = %x, DBG1 = %x\n", _dbg0, _dbg1);
+        xlog_printk(ANDROID_LOG_ERROR, DEVAPC_TAG ,"[DEVAPC] DBG0 = %x, DBG1 = %x\n", dbg0, dbg1);
     }
 
     spin_unlock_irqrestore(&g_devapc_lock, g_devapc_flags);
-
-#ifdef CONFIG_MTK_AEE_FEATURE
-    if (status != 0)
-    {
-        if(r_w_violation == 1)
-        {
-            aee_kernel_warning("DEVAPC", "Vio Status:0x%x, Addr:0x%x, Dom ID:0x%x, W\n", status, dbg1, domain_ID);
-        }
-        else
-        {
-            aee_kernel_warning("DEVAPC", "Vio Status:0x%x, Addr:0x%x, Dom ID:0x%x, R\n", status, dbg1, domain_ID);
-        }     
-    }
-#endif
-    
+  
     return IRQ_HANDLED;
 }
 
@@ -565,9 +540,8 @@ static void __exit devapc_exit(void)
     return;
 }
 
+late_initcall(devapc_init);
 
-module_init(devapc_init);
-module_exit(devapc_exit);
 MODULE_LICENSE("GPL");
 EXPORT_SYMBOL(start_usb_protection);
 EXPORT_SYMBOL(stop_usb_protection);

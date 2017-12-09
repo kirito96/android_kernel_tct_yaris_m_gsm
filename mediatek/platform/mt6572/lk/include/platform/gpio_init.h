@@ -1,6 +1,15 @@
 #ifndef _GPIO_INIT_H_
 #define _GPIO_INIT_H_
 
+/******************************************************************************
+ * mt_gpio_init_value.c - MT6516 Linux GPIO Device Driver
+ * 
+ * Copyright 2008-2009 MediaTek Co.,Ltd.
+ * 
+ * DESCRIPTION:
+ *     default GPIO init value
+ *
+ ******************************************************************************/
 //#if defined(MT_GPIO_ENABLED)
 //#include <cust_gpio_boot.h>
 //#include <platform/gpio_const.h>
@@ -44,8 +53,8 @@ MIPI_CFG_BASE+0x0074
 },
 {
 IO_CFG_T_BASE+0x0000
-,(GPIO153_IES << 12) | (GPIO152_IES << 12) | (GPIO151_IES << 12) | (GPIO150_IES << 12) | (GPIO149_IES << 12) | (GPIO148_IES << 11) | (GPIO147_IES << 11) | (GPIO146_IES << 11) | (GPIO145_IES << 10) | (GPIO144_IES << 10) | (GPIO143_IES << 10) | (GPIO142_IES << 10) | (GPIO141_IES << 9) | (GPIO140_IES << 9) | (GPIO139_IES << 9) | (GPIO138_IES << 9) | (GPIO137_IES << 9) | (GPIO136_IES << 8) | (GPIO135_IES << 8) | (GPIO134_IES << 8) | (GPIO133_IES << 7) | (GPIO132_IES << 7) | (GPIO131_IES << 7) | (GPIO130_IES << 7) | (GPIO129_IES << 14) | (GPIO128_IES << 13) | (GPIO114_IES << 6) | (GPIO113_IES << 6) | (GPIO112_IES << 5) | (GPIO111_IES << 4) | (GPIO110_IES << 3) | (GPIO109_IES << 2) | (GPIO108_IES << 1) | (GPIO107_IES << 0)
-,(0x1 << 12) | (0x1 << 12) | (0x1 << 12) | (0x1 << 12) | (0x1 << 12) | (0x1 << 11) | (0x1 << 11) | (0x1 << 11) | (0x1 << 10) | (0x1 << 10) | (0x1 << 10) | (0x1 << 10) | (0x1 << 9) | (0x1 << 9) | (0x1 << 9) | (0x1 << 9) | (0x1 << 9) | (0x1 << 8) | (0x1 << 8) | (0x1 << 8) | (0x1 << 7) | (0x1 << 7) | (0x1 << 7) | (0x1 << 7) | (0x1 << 14) | (0x1 << 13) | (0x1 << 6) | (0x1 << 6) | (0x1 << 5) | (0x1 << 4) | (0x1 << 3) | (0x1 << 2) | (0x1 << 1) | (0x1 << 0)
+,(GPIO153_IES << 12) | (GPIO152_IES << 12) | (GPIO151_IES << 12) | (GPIO150_IES << 12) | (GPIO149_IES << 12) | (GPIO148_IES << 11) | (GPIO147_IES << 11) | (GPIO146_IES << 11) | (GPIO145_IES << 10) | (GPIO144_IES << 10) | (GPIO143_IES << 10) | (GPIO142_IES << 9) | (GPIO141_IES << 9) | (GPIO140_IES << 9) | (GPIO139_IES << 9) | (GPIO138_IES << 9) | (GPIO137_IES << 9) | (GPIO136_IES << 8) | (GPIO135_IES << 8) | (GPIO134_IES << 8) | (GPIO133_IES << 7) | (GPIO132_IES << 7) | (GPIO131_IES << 7) | (GPIO130_IES << 7) | (GPIO129_IES << 14) | (GPIO128_IES << 13) | (GPIO114_IES << 6) | (GPIO113_IES << 6) | (GPIO112_IES << 5) | (GPIO111_IES << 4) | (GPIO110_IES << 3) | (GPIO109_IES << 2) | (GPIO108_IES << 1) | (GPIO107_IES << 0)
+,(0x1 << 12) | (0x1 << 12) | (0x1 << 12) | (0x1 << 12) | (0x1 << 12) | (0x1 << 11) | (0x1 << 11) | (0x1 << 11) | (0x1 << 10) | (0x1 << 10) | (0x1 << 10) | (0x1 << 9) | (0x1 << 9) | (0x1 << 9) | (0x1 << 9) | (0x1 << 9) | (0x1 << 9) | (0x1 << 8) | (0x1 << 8) | (0x1 << 8) | (0x1 << 7) | (0x1 << 7) | (0x1 << 7) | (0x1 << 7) | (0x1 << 14) | (0x1 << 13) | (0x1 << 6) | (0x1 << 6) | (0x1 << 5) | (0x1 << 4) | (0x1 << 3) | (0x1 << 2) | (0x1 << 1) | (0x1 << 0)
 },
 {
 IO_CFG_T_BASE+0x0010

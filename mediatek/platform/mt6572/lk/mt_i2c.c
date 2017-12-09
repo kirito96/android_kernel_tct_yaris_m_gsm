@@ -28,7 +28,6 @@
  * SUCH DAMAGE.
  */
 #include <platform/mt_i2c.h>
-#include <platform/mt_pmic_wrap_init.h> // to be removed
 #include <platform/mt_gpio.h>
 
 /*-----------------------------------------------------------------------
@@ -141,7 +140,7 @@ static unsigned long mt_i2c_channel_init(unsigned char channel)
 * Initializa the HW I2C module
 *    Returns: ERROR_CODE
 */
-unsigned long mt_i2c_init ()
+unsigned long mt_i2c_init(void)
 {
 	/*if you are using I2C, first init it at here*/
     return I2C_OK;
@@ -237,7 +236,9 @@ unsigned long mt_i2c_read(unsigned char channel,unsigned char chip, unsigned cha
         return I2C_READ_FAIL_ZERO_LENGTH;
     }
 
+#ifndef MACH_FPGA
     ENABLE_CLOCK(channel);
+#endif
 
     I2C_CLR_INTR_STATUS(I2C_TRANSAC_COMP | I2C_ACKERR | I2C_HS_NACKERR);
     /* for read, bit 0 is to indicate read REQ or write REQ */
@@ -250,7 +251,7 @@ unsigned long mt_i2c_read(unsigned char channel,unsigned char chip, unsigned cha
     I2C_SET_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
     I2C_FIFO_CLR_ADDR;
 
-    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT | STOP_FLAG);
+    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT);
 
     /* start trnasfer transaction */
     I2C_START_TRANSAC;
@@ -313,8 +314,11 @@ unsigned long mt_i2c_read(unsigned char channel,unsigned char chip, unsigned cha
 
     /* clear bit mask */
     I2C_CLR_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
+    I2C_SOFTRESET;
 
+#ifndef MACH_FPGA
     DISABLE_CLOCK(channel);
+#endif
 
     I2CLOG("[i2c_read] Done\n");
 
@@ -346,15 +350,10 @@ unsigned long mt_i2c_write (unsigned char channel,unsigned char chip, unsigned c
 		I2CLOG("[i2c_write] I2C doesn't support len = 0.\n");
         return I2C_WRITE_FAIL_ZERO_LENGTH;
     }
-#if 0 // 6572 doesn't have I2C on PMIC
-	if(dir == 0){
-		I2C_PATH_NORMAL;
-	}else{
-		I2C_PATH_PMIC;
-	}
-#endif
 
+#ifndef MACH_FPGA
     ENABLE_CLOCK(channel);
+#endif
 
     I2C_CLR_INTR_STATUS(I2C_TRANSAC_COMP | I2C_ACKERR | I2C_HS_NACKERR);
     /* bit 0 is to indicate read REQ or write REQ */
@@ -367,7 +366,7 @@ unsigned long mt_i2c_write (unsigned char channel,unsigned char chip, unsigned c
     I2C_SET_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
     I2C_FIFO_CLR_ADDR;
 
-    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT | STOP_FLAG);
+    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT);
 
     /* start to write data */
     while (len--) {
@@ -427,7 +426,9 @@ unsigned long mt_i2c_write (unsigned char channel,unsigned char chip, unsigned c
     I2C_CLR_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
 	I2C_SOFTRESET;
 
+#ifndef MACH_FPGA
     DISABLE_CLOCK(channel);
+#endif
 
     return ret_code;
 }
@@ -455,20 +456,13 @@ unsigned long mt_i2c_read_new(struct mt_i2c_t *i2c,unsigned char *buffer, int le
         I2CLOG("[i2c_read] I2C doesn't support len = %d.\n",len);
         return I2C_READ_FAIL_ZERO_LENGTH;
     }
-#if 0 // 6572 doesn't have I2C on PMIC
-	/*setting path direction and clock first all*/
-	if(i2c->dir == 0){
-		I2C_PATH_NORMAL;
-		i2c_clk = I2C_CLK_RATE;
-	}else{
-		I2C_PATH_PMIC;
-		i2c_clk = I2C_CLK_RATE_PMIC;
-	}
-#else
-	i2c_clk = I2C_CLK_RATE;
-#endif
 
+    /* setting clock */
+    i2c_clk = I2C_CLK_RATE;
+
+#ifndef MACH_FPGA
     ENABLE_CLOCK(i2c->id);
+#endif
 
     I2C_CLR_INTR_STATUS(I2C_TRANSAC_COMP | I2C_ACKERR | I2C_HS_NACKERR);
 	//setting speed
@@ -483,8 +477,8 @@ unsigned long mt_i2c_read_new(struct mt_i2c_t *i2c,unsigned char *buffer, int le
     I2C_SET_TRANSAC_LEN(1);
     I2C_SET_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
     I2C_FIFO_CLR_ADDR;
-    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | (i2c->is_clk_ext_disable?0:CLK_EXT) |(i2c->is_rs_enable?REPEATED_START_FLAG:STOP_FLAG));
-    //I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT | STOP_FLAG);
+    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | (i2c->is_clk_ext_disable?0:CLK_EXT) |(i2c->is_rs_enable?REPEATED_START_FLAG:0));
+    //I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT);
 
     /* start trnasfer transaction */
     I2C_START_TRANSAC;
@@ -540,7 +534,9 @@ unsigned long mt_i2c_read_new(struct mt_i2c_t *i2c,unsigned char *buffer, int le
     I2C_CLR_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
 	I2C_SOFTRESET;
 
+#ifndef MACH_FPGA
     DISABLE_CLOCK(i2c->id);
+#endif
 
     I2CLOG("[i2c_read] Done\n");
 
@@ -557,11 +553,10 @@ unsigned long mt_i2c_read_new(struct mt_i2c_t *i2c,unsigned char *buffer, int le
 unsigned long mt_i2c_write_new(struct mt_i2c_t *i2c,unsigned char *buffer, int len)
 {
     unsigned long ret_code = I2C_OK;
-	unsigned long i2c_clk;
+    unsigned long i2c_clk;
     unsigned char *ptr = buffer;
-    int ret = len;
     unsigned short status;
-	unsigned int time_out_val=0;
+    unsigned int time_out_val=0;
 
     CHANNEL_BASE(i2c->id);
 
@@ -570,20 +565,13 @@ unsigned long mt_i2c_write_new(struct mt_i2c_t *i2c,unsigned char *buffer, int l
 		I2CLOG("[i2c_write] I2C doesn't support len = %d.\n",len);
         return I2C_WRITE_FAIL_ZERO_LENGTH;
     }
-#if 0 // 6572 doesn't have I2C on PMIC
-	/*setting path direction and clock first all*/
-	if(i2c->dir == 0){
-		I2C_PATH_NORMAL;
-		i2c_clk = I2C_CLK_RATE;
-	}else{
-		I2C_PATH_PMIC;
-		i2c_clk = I2C_CLK_RATE_PMIC;
-	}
-#else
-	i2c_clk = I2C_CLK_RATE;
-#endif
 
+    /* setting clock */
+    i2c_clk = I2C_CLK_RATE;
+
+#ifndef MACH_FPGA
     ENABLE_CLOCK(i2c->id);
+#endif
 
     I2C_CLR_INTR_STATUS(I2C_TRANSAC_COMP | I2C_ACKERR | I2C_HS_NACKERR);
 	//setting speed
@@ -597,8 +585,8 @@ unsigned long mt_i2c_write_new(struct mt_i2c_t *i2c,unsigned char *buffer, int l
     I2C_SET_TRANSAC_LEN(1);
     I2C_SET_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
     I2C_FIFO_CLR_ADDR;
-    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | (i2c->is_clk_ext_disable?0:CLK_EXT) |(i2c->is_rs_enable?REPEATED_START_FLAG:STOP_FLAG));
-    //I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT | STOP_FLAG);
+    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | (i2c->is_clk_ext_disable?0:CLK_EXT) |(i2c->is_rs_enable?REPEATED_START_FLAG:0));
+    //I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | CLK_EXT);
 
     /* start to write data */
     while (len--) {
@@ -643,7 +631,9 @@ unsigned long mt_i2c_write_new(struct mt_i2c_t *i2c,unsigned char *buffer, int l
     I2C_CLR_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
 	I2C_SOFTRESET;
 
+#ifndef MACH_FPGA
     DISABLE_CLOCK(i2c->id);
+#endif
 
     return ret_code;
 }
@@ -672,20 +662,13 @@ unsigned long mt_i2c_write_read_new(struct mt_i2c_t *i2c,unsigned char *buffer, 
 		I2CLOG("[i2c_write_read] I2C doesn't support w,r len = %d,%d.\n",write_len, read_len);
         return I2C_WRITE_FAIL_ZERO_LENGTH;
     }
-#if 0 // 6572 doesn't have I2C on PMIC
-	/*setting path direction and clock first all*/
-	if(i2c->dir == 0){
-		I2C_PATH_NORMAL;
-		i2c_clk = I2C_CLK_RATE;
-	}else{
-		I2C_PATH_PMIC;
-		i2c_clk = I2C_CLK_RATE_PMIC;
-	}
-#else
-	i2c_clk = I2C_CLK_RATE;
-#endif
 
+    /* setting clock */
+    i2c_clk = I2C_CLK_RATE;
+
+#ifndef MACH_FPGA
     ENABLE_CLOCK(i2c->id);
+#endif
 
     I2C_CLR_INTR_STATUS(I2C_TRANSAC_COMP | I2C_ACKERR | I2C_HS_NACKERR);
 	//setting speed
@@ -697,12 +680,12 @@ unsigned long mt_i2c_write_read_new(struct mt_i2c_t *i2c,unsigned char *buffer, 
     I2C_SET_SLAVE_ADDR(i2c->addr << 1);
     I2C_SET_TRANS_LEN(write_len);
     I2C_SET_TRANS_AUX_LEN(read_len);
-    I2C_SET_TRANSAC_LEN(2); // TODO
+    I2C_SET_TRANSAC_LEN(2);
     I2C_SET_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
     I2C_FIFO_CLR_ADDR;
 
-    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | DIR_CHG | (i2c->is_clk_ext_disable?0:CLK_EXT) 
-			| REPEATED_START_FLAG);
+    I2C_SET_TRANS_CTRL(ACK_ERR_DET_EN | DIR_CHG | (i2c->is_clk_ext_disable?0:CLK_EXT)
+            | REPEATED_START_FLAG);
 
     /* start to write data */
     while (write_len--) {
@@ -711,6 +694,7 @@ unsigned long mt_i2c_write_read_new(struct mt_i2c_t *i2c,unsigned char *buffer, 
         ptr++;
     }
 
+    //mt_i2c_dump_info(i2c);
     /* start trnasfer transaction */
     I2C_START_TRANSAC;
     /* polling mode : see if transaction complete */
@@ -753,7 +737,9 @@ unsigned long mt_i2c_write_read_new(struct mt_i2c_t *i2c,unsigned char *buffer, 
     I2C_CLR_INTR_MASK(I2C_HS_NACKERR | I2C_ACKERR | I2C_TRANSAC_COMP);
 	I2C_SOFTRESET;
 
+#ifndef MACH_FPGA
     DISABLE_CLOCK(i2c->id);
+#endif
 
     return ret_code;
 }
@@ -803,6 +789,7 @@ int mt_i2c_test(void)
 	int ret;
 	int i;
 	for (i = 0; i < I2C_NR; i++) {
+		I2CERR("I2C%d,EEPROM test start\n",i);
 		ret = mt_i2c_test_eeprom(i);
 		I2CERR("I2C%d,EEPROM test ret = %d\n\n",i,ret);
 	}

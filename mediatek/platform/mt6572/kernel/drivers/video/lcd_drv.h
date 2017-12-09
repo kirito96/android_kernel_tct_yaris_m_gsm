@@ -1,20 +1,14 @@
 #ifndef __LCD_DRV_H__
 #define __LCD_DRV_H__
 
-#ifdef BUILD_UBOOT
-    #include <asm/arch/disp_drv_platform.h>
-#else
-    #include "disp_drv_platform.h"
-#endif
-#include "disp_drv.h"
-#include "lcm_drv.h"
+#include "disp_hal.h"
+#include "disp_intr.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#ifndef BUILD_UBOOT
 #include <linux/proc_fs.h>
-#endif
 // ---------------------------------------------------------------------------
 
 #define LCD_CHECK_RET(expr)             \
@@ -174,12 +168,6 @@ typedef enum {
    LCD_LAYER_ALL = 0xFFFFFFFF,
 } LCD_LAYER_ID;
 
-/* Layer Designation */
-#define ASSERT_LAYER    (LCD_LAYER_3)
-extern unsigned int FB_LAYER;    // default LCD layer
-#define DISP_DEFAULT_UI_LAYER_ID LCD_LAYER_3
-#define DISP_CHANGED_UI_LAYER_ID LCD_LAYER_2
-
 
 typedef enum {
     LCD_LAYER_FORMAT_RGB888     = 0,
@@ -315,7 +303,7 @@ typedef enum
 // Configurations
 LCD_STATUS LCD_Init(BOOL isLcdPoweredOn);
 LCD_STATUS LCD_Deinit(void);
-LCD_STATUS LCD_SetSwReset(void);//zhao.li@tcl bug 481348 P28
+LCD_STATUS LCD_SetSwReset(void);
 
 LCD_STATUS LCD_Set_DrivingCurrent(LCM_PARAMS *lcm_params);
 LCD_STATUS LCD_PowerOn(void);
@@ -497,8 +485,10 @@ void LCD_GetVsyncCnt(void);
 void LCD_DumpLayer(void);;
 
 LCD_STATUS LCD_BackupRegisters(void);
+LCD_STATUS LCD_RestoreRegisters(void);
+LCD_STATUS LCD_WaitForEngineNotBusy(void);
+unsigned int LCD_Check_LCM(UINT32 color);
 
-unsigned int LCD_Check_LCM(UINT32 color);//zhao.li@tcl bug 481348 P28
 // ---------------------------------------------------------------------------
 
 #ifdef __cplusplus

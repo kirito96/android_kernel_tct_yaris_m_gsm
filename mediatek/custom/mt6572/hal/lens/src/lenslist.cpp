@@ -1,11 +1,9 @@
-
-
 #include <utils/Log.h>
 #include <utils/Errors.h>
 #include <fcntl.h>
 #include <math.h>
 
-#include "MediaHal.h"
+#include "MediaTypes.h"
 
 //#include "lens_custom_cfg.h"
 //#include "msdk_lens_exp.h"
@@ -37,7 +35,7 @@ MSDK_LENS_INIT_FUNCTION_STRUCT LensList[MAX_NUM_OF_SUPPORT_LENS] =
 	{DUMMY_SENSOR_ID, SENSOR_DRIVE_LENS_ID, "kd_camera_hw", pSensorDrive_getDefaultData},	
 
     //  for backup lens, need assign correct SensorID
-    {OV5645MIPI_SENSOR_ID, SENSOR_DRIVE_LENS_ID, "kd_camera_hw", pSensorDrive_getDefaultData},
+    //{OV5642_SENSOR_ID, SENSOR_DRIVE_LENS_ID, "kd_camera_hw", pSensorDrive_getDefaultData},
 #endif
 
 #if defined(FM50AF)

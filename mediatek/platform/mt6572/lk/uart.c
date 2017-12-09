@@ -20,6 +20,7 @@
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
+#include <string.h>
 #include <debug.h>
 #include <reg.h>
 #include <dev/uart.h>
@@ -86,7 +87,7 @@ unsigned int g_brg;
 #define UART_SRC_CLK 26000000
 #endif
 
-int mtk_uart_power_on(MTK_UART uart)
+void mtk_uart_power_on(MTK_UART uart)
 {
     //FIXME Disable for MT6572 LK Porting
     //return 0;
@@ -97,7 +98,7 @@ int mtk_uart_power_on(MTK_UART uart)
         UART_SET_BITS(1 << 10, AP_PERI_GLOBALCON_PDN0); /* Power on UART1 */
     else if (uart == UART2)
         UART_SET_BITS(1 << 11, AP_PERI_GLOBALCON_PDN0); /* Power on UART2 */
-    return 0;  
+    return;  
 }
 
 void uart_setbrg()
@@ -110,9 +111,9 @@ void uart_setbrg()
 	unsigned int tmp_div;
 
 	speed = g_brg;
-        ////FIXME Disable for MT6572 LK Porting
+        
         uartclk = UART_SRC_CLK;
-	//uartclk = (unsigned int)(mtk_get_bus_freq()*1000/4);
+	
 	if (speed <= 115200 ) {
 		highspeed = 0;
 		quot = 16;
@@ -189,21 +190,17 @@ void uart_init_early(void)
 {
 	#ifdef __ENABLE_UART_LOG_SWITCH_FEATURE__
 	if(get_uart_port_id() == 1){
-               /*susheng.ye add for portingJRD505400(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P65) for FR510874 20130820 begin */
                 #ifdef GPIO_UART_URXD1_PIN
                 mt_set_gpio_mode(GPIO_UART_URXD1_PIN, GPIO_MODE_01);
 		mt_set_gpio_mode(GPIO_UART_UTXD1_PIN, GPIO_MODE_01);
 		#endif
-               /*susheng.ye add for portingJRD505400(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P65) for FR510874 20130820 end */
 		mtk_set_current_uart(UART1);
 		mtk_uart_power_on(UART1);
 	}else{
-               /*susheng.ye add for portingJRD505400(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P65) for FR510874 20130820 begin */
 		#ifdef GPIO_UART_URXD2_PIN
 		mt_set_gpio_mode(GPIO_UART_URXD2_PIN, GPIO_MODE_01);
 		mt_set_gpio_mode(GPIO_UART_UTXD2_PIN, GPIO_MODE_01);
                 #endif
-                /*susheng.ye add for portingJRD505400(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P65) for FR510874 20130820 end */
 		mtk_set_current_uart(UART2);
 		mtk_uart_power_on(UART2);
 	}
@@ -214,20 +211,12 @@ void uart_init_early(void)
 	/*[MT6572] workaround set all uart port to AP in META_mode*/
 	if((g_boot_arg->boot_mode &= 0x000000FF) == META_BOOT){
 		if((g_boot_arg->meta_com_type &= 0x000000FF) == META_UART_COM){
-                      /*susheng.ye add for portingJRD505400(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P65) for FR510874 20130820 begin */
 			#ifdef GPIO_UART_URXD1_PIN
 			mt_set_gpio_mode(GPIO_UART_URXD1_PIN, GPIO_MODE_01);
 			mt_set_gpio_mode(GPIO_UART_UTXD1_PIN, GPIO_MODE_01);
 			#endif
 			mtk_uart_power_on(UART1);
-                     /*susheng.ye add for portingJRD505400(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P65) for FR510874 20130820 end */
 		}
-              /*susheng.ye add for portingJRD505400(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P65) for FR510874 20130820 begin */
-		//mt_set_gpio_mode(GPIO_UART_URXD2_PIN, GPIO_MODE_01);
-		//mt_set_gpio_mode(GPIO_UART_UTXD2_PIN, GPIO_MODE_01);
-		//mtk_set_current_uart(UART2);
-		//mtk_uart_power_on(UART2);
-               /*susheng.ye add for portingJRD505400(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P65) for FR510874 20130820 end */
 	}
 	/*[MT6572] workaround end*/
     
@@ -270,15 +259,15 @@ void uart_puts(const char *s)
 extern BOOT_ARGUMENT *g_boot_arg;
 int get_uart_port_id(void)
 {	
-	unsigned int mode = 0;
+	//unsigned int mode = 0;
 	unsigned int log_port;
 	unsigned int log_enable;
-	unsigned int  log_baudrate;	
+	//unsigned int  log_baudrate;	
 
-	mode = g_boot_arg->boot_mode &= 0x000000FF;
+	//mode = g_boot_arg->boot_mode &= 0x000000FF;
 	log_port = g_boot_arg->log_port;
 	log_enable = g_boot_arg->log_enable;
-	log_baudrate = g_boot_arg->log_baudrate;
+	//log_baudrate = g_boot_arg->log_baudrate;
 	if( (log_port == UART1)&&(log_enable != 0) )
 		return 1;
 	return 2;

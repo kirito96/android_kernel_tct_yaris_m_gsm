@@ -1,6 +1,9 @@
 #ifndef __DDP_DPFD_H__
 #define __DDP_DPFD_H__
 
+#include <mach/mt_typedefs.h>
+
+
 unsigned int ddp_bitblt_ioctl_wait_reequest( unsigned long ioctl_user_param  );
 unsigned int ddp_bitblt_ioctl_inform_done( unsigned long ioctl_user_param  );
 

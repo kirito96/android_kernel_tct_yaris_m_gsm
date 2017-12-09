@@ -706,18 +706,18 @@ struct debug_alloc_header {
 #define dah_overhead ALIGN(sizeof(struct debug_alloc_header), dah_align)
 
 #define SIZEOF_DEBUG_ALLOC_POOL_ALIGNED   (sizeof(u64)*256*1024/dah_align)
-#ifdef MTK_USE_RESERVED_EXT_MEM
+#if defined (MTK_USE_RESERVED_EXT_MEM) && defined (CONFIG_MT_ENG_BUILD)
 extern void* extmem_malloc_page_align(size_t bytes);
 static u64 * debug_alloc_pool_aligned = NULL;
 static char *debug_alloc_pool = NULL;
 
 void init_debug_alloc_pool_aligned(void)
 {
-    debug_alloc_pool_aligned = extmem_malloc_page_align(SIZEOF_DEBUG_ALLOC_POOL_ALIGNED);
+	debug_alloc_pool_aligned = extmem_malloc_page_align(SIZEOF_DEBUG_ALLOC_POOL_ALIGNED);
 	if(debug_alloc_pool_aligned == NULL)
 		panic("%s[%s] memory alloc failed!!!\n", __FILE__, __FUNCTION__);
 	
-    debug_alloc_pool = (char *)debug_alloc_pool_aligned;
+	debug_alloc_pool = (char *)debug_alloc_pool_aligned;
 }
 EXPORT_SYMBOL(init_debug_alloc_pool_aligned);
 #else

@@ -1,3 +1,39 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ * 
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ * 
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #include "typedefs.h"
 #include "platform.h"
@@ -10,6 +46,9 @@
 
 #define MOD                      "<DM>"
 
+/**************************************************************************
+*  MACRO DEFINITION
+**************************************************************************/
 #if DM_DBG_LOG
 #define DM_ASSERT(expr)      {  if ((expr)==FALSE){  \
     print("%s : [ASSERT] at %s #%d %s\n       %s\n       above expression is not TRUE\n", MOD, __FILE__, __LINE__, __FUNCTION__, #expr); \
@@ -25,8 +64,14 @@
 #define DM_LOG
 #endif
 
+/**************************************************************************
+*  EXTERNAL DECLARATION
+**************************************************************************/
 extern DM_CONTEXT dm_ctx;
 
+/**************************************************************************
+ *  Return Image Format
+ **************************************************************************/
 u8 * get_img_fmt (DM_IMG_FORMAT fmt)
 {
     switch (fmt)
@@ -42,6 +87,9 @@ u8 * get_img_fmt (DM_IMG_FORMAT fmt)
 }
 
 
+/**************************************************************************
+ *  Return Image Type
+ **************************************************************************/
 u8 * get_img_type (DM_IMG_TYPE type)
 {
     switch (type)
@@ -84,6 +132,9 @@ u8 * get_img_type (DM_IMG_TYPE type)
     }
 }
 
+/**************************************************************************
+ *  Debug
+ **************************************************************************/
 #if DM_DBG_LOG
 void dump_dm_descriptor (void)
 {
@@ -109,6 +160,9 @@ void dump_spare_data (u8 * buf)
 #endif
 
 
+/**************************************************************************
+ *  Reset Descriptor
+ **************************************************************************/
 void reset_dm_descriptor (void)
 {
     dm_ctx.img_info.img_format = DM_IMG_FORMAT_UNKNOWN;
@@ -130,6 +184,9 @@ void reset_dm_descriptor (void)
 }
 
 
+/**************************************************************************
+ *  Return Partition Name
+ **************************************************************************/
 u8 * get_part_name (DM_IMG_TYPE type)
 {
     switch (type)
@@ -171,6 +228,9 @@ u8 * get_part_name (DM_IMG_TYPE type)
     }
 }
 
+/**************************************************************************
+ *  Return Partition Range
+ **************************************************************************/
 #ifndef FEATURE_DOWNLOAD_BOUNDARY_CHECK
 u32 get_part_range (DM_IMG_TYPE img_type)
 {
@@ -190,6 +250,9 @@ u32 get_part_range (DM_IMG_TYPE img_type)
 }
 #endif // #ifndef FEATURE_DOWNLOAD_BOUNDARY_CHECK
 
+/**************************************************************************
+ *  Reboot
+ **************************************************************************/
 void do_reboot (char mode)
 {
     mtk_arch_reset (mode);
@@ -197,6 +260,9 @@ void do_reboot (char mode)
     return;
 }
 
+/**************************************************************************
+ *  Checksum (Received Buffer)
+ **************************************************************************/
 #if DM_CAL_CKSM_FROM_USB_BUFFER
 u32 cal_chksum_per_pkt (u8 * pkt_buf, u32 pktsz)
 {
@@ -213,6 +279,9 @@ u32 cal_chksum_per_pkt (u8 * pkt_buf, u32 pktsz)
 }
 #endif
 
+/**************************************************************************
+ *  Check Package Type
+ **************************************************************************/
 DM_PKT_TYPE judge_pkt_type (const void *buf)
 {
     if (memcmp (buf, (const void *) DM_STR_REBOOT, DM_SZ_REBOOT_STR) == 0)

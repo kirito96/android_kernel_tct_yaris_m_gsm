@@ -86,13 +86,6 @@ config MTK_ACCDET # ACCDET
         bool "MediaTek Accessory Detection Support"
         default n
 
-# Bluetooth Related TODO refine?
-config MTK_BT_NET_DEV # BT_NET_DEV
-        bool "Bluetooth network device (for DUN/PAN)"
-        ---help---
-          This is the virtual network driver for bluetooth DUN and PAN. It can be
-          used to forward ip packets to external network driver. Say Y or N.
-
 # CCCI TODO refine
 menuconfig MTK_CCCI_DEVICES # CCCI_DEVICES TODO Depends on ARCH_MT6573 --> no body use it, should be delete?
         bool "CCCI Devices"
@@ -258,17 +251,6 @@ config MTK_SPI
         ---help---
           This selects the MediaTek(R) SPI bus driver.
           If you want to use MediaTek(R) SPI interface, say Y or M here.  If unsure, say N.
-
-# CMMB
-config  MTK_CMMB
-        #tristate "MediaTek CMMB Driver"
-        depends on  MTK_SPI
-        default m
-        ---help---
-          This selects the MediaTek(R) CMMB driver.
-          If you want to use MediaTek(R) CMMB driver, say M here.
-          If unsure, say N.
-
 # Jpeg
 config MTK_JPEG # JPEG_MT6516 (no JPEG_MT6573, but 6573 is supported!)
         tristate "MediaTek JPEG driver"
@@ -351,10 +333,10 @@ menuconfig MTK_MTD_NAND # MTD_NAND_MT6516
         tristate "MediaTek Nand Support"
         depends on MTD_NAND
         select UBIFS_FS
-        select UBIFS_FS_ADVANCED_COMPR
-        select UBIFS_FS_DEBUG
-        select UBIFS_FS_LZO
         select UBIFS_FS_XATTR
+        select UBIFS_FS_ADVANCED_COMPR
+        select UBIFS_FS_LZO
+        select UBIFS_FS_LZ4K
         select UBIFS_FS_ZLIB
         select MTD_UBI
        ---help---

@@ -2,7 +2,9 @@
 #define _DDP_ROT_API_H_
 
 #include <mach/mt_typedefs.h>
+
 #include "ddp_drv.h"
+
 
 typedef enum
 {

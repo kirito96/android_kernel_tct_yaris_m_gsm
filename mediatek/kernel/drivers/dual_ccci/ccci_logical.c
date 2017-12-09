@@ -6,13 +6,7 @@
 #include <linux/kallsyms.h>
 #include <linux/delay.h>
 #include <linux/wakelock.h>
-
 #include <ccci.h>
-#include <ccci_err_no.h>
-#include <ccci_layer.h>
-#include <ccci_cfg.h>
-#include <ccci_common.h>
-
 
 #define FIRST_PENDING		(1<<0)
 #define PENDING_50MS		(1<<1)
@@ -66,6 +60,12 @@ const logic_channel_static_info_t logic_ch_static_info_tab[] =
 	{CCCI_IPC_UART_TX_ACK, 8, "ipc_uart_tx_ack", L_CH_DROP_TOLERATED},
 	{CCCI_MD_LOG_RX,     256, "md_log_rx",       0},
 	{CCCI_MD_LOG_TX,       0, "md_log_tx",       L_CH_ATTR_TX|L_CH_ATTR_PRVLG1|L_CH_ATTR_PRVLG2},
+#ifdef MTK_ICUSB_SUPPORT
+	{CCCI_ICUSB_RX,        8, "icusb_rx",        L_CH_DROP_TOLERATED},
+	{CCCI_ICUSB_RX_ACK,    0, "icusb_rx_ack",    L_CH_ATTR_TX},
+	{CCCI_ICUSB_TX,        0, "icusb_tx",        L_CH_ATTR_TX},
+	{CCCI_ICUSB_TX_ACK,    8, "icusb_tx_ack",    L_CH_DROP_TOLERATED},
+#endif
 };
 
 #define MAX_LOGIC_CH_ID		(sizeof(logic_ch_static_info_tab)/sizeof(logic_channel_static_info_t))
@@ -519,13 +519,13 @@ int ccci_message_send(int md_id, ccci_msg_t *msg, int retry_en)
 		if (ctl_b->m_logic_ch_table[msg->channel].m_attrs & L_CH_ATTR_PRVLG0){
 			ret = ccif->ccif_write_phy_ch_data(ccif, (unsigned int*)msg, retry_en);
 		} else {
-			ret = -CCCI_ERR_MD_NOT_READY;
+			ret = -ENODEV;
 		}
 	} else if (unlikely(md_stage == MD_BOOT_STAGE_1)){ // PRIVILEGE 1 <--
 		if (ctl_b->m_logic_ch_table[msg->channel].m_attrs & L_CH_ATTR_PRVLG1){
 			ret = ccif->ccif_write_phy_ch_data(ccif, (unsigned int*)msg, retry_en);
 		} else {
-			ret = -CCCI_ERR_MD_NOT_READY;
+			ret = -ENODEV;
 		}
 	} else if (unlikely(md_stage == MD_BOOT_STAGE_EXCEPTION)) { // PRIVILEGE 2 <--
 		if (ctl_b->m_logic_ch_table[msg->channel].m_attrs & L_CH_ATTR_PRVLG2){
@@ -533,7 +533,7 @@ int ccci_message_send(int md_id, ccci_msg_t *msg, int retry_en)
 		} else if (ctl_b->m_logic_ch_table[msg->channel].m_attrs & L_CH_ATTR_DUMMY_WRITE){
 			ret = sizeof(ccci_msg_t); // Dummy write here, MD using polling
 		} else {
-			ret = -CCCI_ERR_MD_NOT_READY;
+			ret = -ETXTBSY;
 		}
 	} else {
 		ret = ccif->ccif_write_phy_ch_data(ccif, (unsigned int*)msg, retry_en);

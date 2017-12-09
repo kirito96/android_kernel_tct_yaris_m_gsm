@@ -37,7 +37,6 @@
 #include <platform/sec_devinfo.h>
 #include <platform/env.h>
 #include <dfo_boot.h>
-
 extern int g_nr_bank;
 extern BOOT_ARGUMENT *g_boot_arg;
 extern BI_DRAM bi_dram[MAX_NR_BANK];
@@ -122,6 +121,12 @@ struct tag_devinfo_data{
     u32 devinfo_data[ATAG_DEVINFO_DATA_SIZE];
     u32 devinfo_data_size;
 };
+
+#define ATAG_MDINFO_DATA 0x41000806
+struct tag_mdinfo_data{
+   u8 md_type[4];
+};
+
 
 
 /* The list ends with an ATAG_NONE node. */
@@ -301,6 +306,21 @@ unsigned *target_atag_videolfb(unsigned *ptr)
   ptr += (sizeof(struct tag_videolfb)>>2);
   return ptr;
 }
+
+
+unsigned *target_atag_mdinfo(unsigned *ptr)
+{
+   unsigned char *p;
+   *ptr++=tag_size(tag_mdinfo_data);
+   *ptr++=ATAG_MDINFO_DATA;
+    p=(unsigned char *)ptr;
+   *p++=g_boot_arg->md_type[0];
+   *p++=g_boot_arg->md_type[1];
+   *p++=g_boot_arg->md_type[2];
+   *p++=g_boot_arg->md_type[3];
+   return (unsigned *)p;
+}
+
 
 void *target_get_scratch_address(void)
 {

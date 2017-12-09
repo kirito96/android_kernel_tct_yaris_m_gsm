@@ -28,8 +28,12 @@ static const unsigned max_num_devices = 32;
 
 /*-- Configurable parameters */
 
-/* Default zram disk size: 25% of total RAM */
-static const unsigned default_disksize_perc_ram = 25;
+/* Default zram disk size: 50% of total RAM */
+static const unsigned default_disksize_perc_ram = 50;	/* 25 */
+/* Let disk size be DISKSIZE_ALIGNMENT */
+#define	DISKSIZE_ALIGNMENT	0x4000000		/* 64MB */
+/* Is totalram_pages less than SUPPOSED_TOTALRAM? */
+#define SUPPOSED_TOTALRAM	0x20000			/* 512MB */
 
 /*
  * Pages that compress to size greater than this are stored
@@ -39,8 +43,8 @@ static const size_t max_zpage_size = PAGE_SIZE / 4 * 3;
 
 /*
  * NOTE: max_zpage_size must be less than or equal to:
- *   ZS_MAX_ALLOC_SIZE - sizeof(struct zobj_header)
- * otherwise, xv_malloc() would always return failure.
+ *   ZS_MAX_ALLOC_SIZE. Otherwise, zs_malloc() would
+ * always return failure.
  */
 
 /*-- End of configurable params */
@@ -86,11 +90,15 @@ struct zram_stats {
 	u32 bad_compress;	/* % of pages with compression ratio>=75% */
 };
 
-struct zram {
-	struct zs_pool *mem_pool;
+struct zram_meta {
 	void *compress_workmem;
 	void *compress_buffer;
 	struct table *table;
+	struct zs_pool *mem_pool;
+};
+
+struct zram {
+	struct zram_meta *meta;
 	spinlock_t stat64_lock;	/* protect 64-bit stats */
 	struct rw_semaphore lock; /* protect compression buffers and table
 				   * against concurrent read and writes */
@@ -114,7 +122,13 @@ unsigned int zram_get_num_devices(void);
 extern struct attribute_group zram_disk_attr_group;
 #endif
 
-extern int zram_init_device(struct zram *zram);
-extern void __zram_reset_device(struct zram *zram);
+extern void zram_reset_device(struct zram *zram);
+extern struct zram_meta *zram_meta_alloc(u64 disksize);
+extern void zram_meta_free(struct zram_meta *meta);
+extern void zram_init_device(struct zram *zram, struct zram_meta *meta);
+
+/* Type for zram compression/decompression hooks */
+typedef int (*comp_hook) (const unsigned char *, size_t , unsigned char *, size_t *, void *);
+typedef int (*decomp_hook) (const unsigned char *, size_t , unsigned char *, size_t *);
 
 #endif

@@ -50,4 +50,7 @@ extern atomic_t hotplug_cpu_count;
 //extern void mtk_hotplug_mechanism_thermal_protect(int limited_cpus);
 
 
+#ifdef CONFIG_MTK_SCHED_TRACERS
+DECLARE_PER_CPU(u64, last_event_ts);
+#endif
 #endif //enf of #ifndef _HOTPLUG

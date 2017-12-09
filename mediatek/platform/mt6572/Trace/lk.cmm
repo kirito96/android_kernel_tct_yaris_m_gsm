@@ -1,27 +1,27 @@
 do project.cmm
 
-SYSTEM.down
-SYSTEM.Reset
-SYStem.CPU CortexA7MPCore
-System.Option Cflush on    	;flush the cache to avoid data consistency
-SYSTEM.OPTION ENRESET On
-SYSTEM.OPTION TRST On
-SYStem.Option ResBreak OFF
+;SYSTEM.Reset
+SYSTEM.CPU CortexA7MPCore
+System.Option Cflush ON    	;flush the cache to avoid data consistency
+SYSTEM.OPTION ENRESET ON
+SYSTEM.OPTION TRST ON
+SYStem.Option ResBreak on
 SYStem.Option WaitReset OFF
-SYStem.JtagClock 10MHz
+SYStem.JtagClock 5MHz
 
 ;R-T Memory Access
 SYSTEM.MULTICORE MEMORYACCESSPORT 0
 SYSTEM.MULTICORE DEBUGACCESSPORT 1
 
-;Serial Wire JTAG
-System.CONFIG SWDP ON
-
 ;Setting Core debug register access
-SYStem.CONFIG CORENUMBER 2
-SYSTEM.MULTICORE COREBASE APB:0x80070000 0x80072000
+SYSTEM.MULTICORE COREBASE APB:0x80070000
 
-SYStem.Up
+sys.mode go
+wait 500.ms
+sys.mode down
+wait 100.ms
+sys.mode up
+;SYStem.Up
 
 ; set_hw_breakpoint_by_def
 ; setting attribute of breakpoints
@@ -32,13 +32,20 @@ Break.Select Read OnChip
 Break.Select Write OnChip
 
 
-do wdt.cmm  ; disable hw watchdog timer
+D.S A:0x10000000 %LE %LONG 0x22000024 ;disable wdt
+local &address &value
+&address=0x10000000
+&value=0x22000024
+data.epilog.reset
+data.epilog.SEQuence  SET asd:&address %long &value
+Data.EPILOG.ON
 
 ; disable DABORT and PABORT breakpoint
  TrOnchip.Set DABORT OFF        ; used by Linux for page miss!
  TrOnchip.Set SWI OFF
  TrOnchip.Set PABORT OFF        ; used by Linux for page miss!
  TrOnchip.Set UNDEF OFF         ; used to detect non-existent coprocessor
+ SYStem.Option MMU off           ; enable space ids to virtual addresses
 
 
 print "loading lk symbol"
@@ -46,7 +53,7 @@ d.load.elf ../../../../bootable/bootloader/lk/build-&project/lk /gnu /nocode
 
 
 Y.SPATH.RESET ; reset all source path
-Y.SPATH.SRD ../../../../mediatek/platform/mt6572/lk
+Y.SPATH.SRD ../../../../mediatek/platform/mt6589/lk
 Y.SPATH.SRD ../../../../mediatek/custom/out/&project/preloader
 Y.SPATH.SRD ../../../../bootable/bootloader/lk/app
 Y.SPATH.SRD ../../../../bootable/bootloader/lk/app/mt_boot
@@ -64,14 +71,16 @@ Register.Set PC a:0xffff0000
 ;winclear
 winpos 0% 0% 50% 50%
 d.l
-go
 
-on pbreak gosub
-(
-	do wdt.cmm
-	print "Watchdog disabled"
-	return
-)
-stop
-end
+;winpos 0% 50% 50% 20%
+;sYmbol.Browse
+;winpos 0% 70% 50% 30%
+;Break.List
+
+;winpos 50% 0% 50% 50%
+;Register
+;winpos 50% 50% 50% 50%
+;Var.Frame /l /c
+
+enddo
 

@@ -1,6 +1,6 @@
 VERSION = 3
 PATCHLEVEL = 4
-SUBLEVEL = 5
+SUBLEVEL = 113
 EXTRAVERSION =
 NAME = Saber-toothed Squirrel
 
@@ -245,10 +245,10 @@ CONFIG_SHELL := $(shell if [ -x "$$BASH" ]; then echo $$BASH; \
 	  else if [ -x /bin/bash ]; then echo /bin/bash; \
 	  else echo sh; fi ; fi)
 
-HOSTCC       = gcc
+HOSTCC       = ccache gcc
 HOSTCXX      = g++
-HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O3 -fomit-frame-pointer -fgcse-las
-HOSTCXXFLAGS = -O3 -fgcse-las
+HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O3 -fomit-frame-pointer -fgraphite
+HOSTCXXFLAGS = -O3 -fgraphite
 
 # Decide whether to build built-in, modular, or both.
 # Normally, just do built-in.
@@ -347,15 +347,21 @@ KALLSYMS	= scripts/kallsyms
 PERL		= perl
 CHECK		= sparse
 
+OPTFLAGS = -march=armv7-a -mtune=cortex-a7 -mfpu=neon-vfpv4 \
+	-ffast-math -fsingle-precision-constant \
+	-fgcse-lm -fgcse-sm -fsched-spec-load -fforce-addr
+ -mfloat-abi=softfp -funsafe-math-optimizations
+ -marm -std=gnu89 -fstrict-aliasing
+
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-MODFLAGS        = -fgcse-las \
-                  -fpredictive-commoning
-CFLAGS_MODULE   = $(MODFLAGS)
-AFLAGS_MODULE   = $(MODFLAGS)
-LDFLAGS_MODULE  = -T $(srctree)/scripts/module-common.lds
-CFLAGS_KERNEL   = $(MODFLAGS)
-AFLAGS_KERNEL	=
+KERNEL_FLAGS	= -O3 -fgraphite	  
+MOD_FLAGS	= -DMODULE $(KERNEL_FLAGS)		  
+CFLAGS_MODULE   = $(MOD_FLAGS)
+AFLAGS_MODULE   = $(MOD_FLAGS)
+LDFLAGS_MODULE  =
+CFLAGS_KERNEL	= $(KERNEL_FLAGS)
+AFLAGS_KERNEL	= $(KERNEL_FLAGS)
 CFLAGS_GCOV	= -fprofile-arcs -ftest-coverage
 
 
@@ -372,10 +378,7 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common \
 		   -Werror-implicit-function-declaration \
 		   -Wno-format-security \
-		   -fno-delete-null-pointer-checks \
-                   -mtune=cortex-a7 -march=armv7-a -mfpu=neon-vfpv4 \
-                   -ftree-vectorize \
-                   -ffast-math
+		   -fno-delete-null-pointer-checks
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
 KBUILD_AFLAGS   := -D__ASSEMBLY__
@@ -384,7 +387,7 @@ KBUILD_CFLAGS_MODULE  := -DMODULE
 KBUILD_LDFLAGS_MODULE := -T $(srctree)/scripts/module-common.lds
 
 -include $(srctree)/$(MTK_PROJECT)_mtk_cust.mak
-MTK_INC += -I$(MTK_ROOT_CUSTOM)/$(MTK_PROJECT)/common
+#MTK_INC += -I$(MTK_ROOT_CUSTOM)/$(MTK_PROJECT)/common
 LINUXINCLUDE	+= $(MTK_INC)
 KBUILD_CFLAGS	+= $(MTK_CFLAGS) $(MTK_CDEFS)
 KBUILD_CPPFLAGS	+= $(MTK_CPPFLAGS) $(MTK_CPPDEFS)
@@ -582,12 +585,13 @@ all: vmlinux
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS	+= -Os
 else
-KBUILD_CFLAGS	+= -O2
+KBUILD_CFLAGS	+= -O3
 endif
 
 include $(srctree)/arch/$(SRCARCH)/Makefile
 
 ifneq ($(CONFIG_FRAME_WARN),0)
+KBUILD_CFLAGS += $(call cc-option,-Werror=frame-larger-than=1)
 KBUILD_CFLAGS += $(call cc-option,-Wframe-larger-than=${CONFIG_FRAME_WARN})
 endif
 
@@ -612,6 +616,8 @@ ifndef CONFIG_FUNCTION_TRACER
 KBUILD_CFLAGS	+= -fomit-frame-pointer
 endif
 endif
+
+KBUILD_CFLAGS   += $(call cc-option, -fno-var-tracking-assignments)
 
 ifdef CONFIG_DEBUG_INFO
 KBUILD_CFLAGS	+= -g

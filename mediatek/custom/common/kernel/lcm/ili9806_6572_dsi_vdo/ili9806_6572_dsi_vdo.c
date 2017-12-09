@@ -1,4 +1,72 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein
+ * is confidential and proprietary to MediaTek Inc. and/or its licensors.
+ * Without the prior written permission of MediaTek inc. and/or its licensors,
+ * any reproduction, modification, use or disclosure of MediaTek Software,
+ * and information contained herein, in whole or in part, shall be strictly prohibited.
+ */
+/* MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
+ * AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+ * NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+ * SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+ * SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
+ * THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
+ * THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
+ * CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
+ * SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
+ * CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+ * AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+ * OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
+ * MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek Software")
+ * have been modified by MediaTek Inc. All revisions are subject to any receiver's
+ * applicable license agreements with MediaTek Inc.
+ */
 
+/*****************************************************************************
+*  Copyright Statement:
+*  --------------------
+*  This software is protected by Copyright and the information contained
+*  herein is confidential. The software may not be copied and the information
+*  contained herein may not be used or disclosed except with the written
+*  permission of MediaTek Inc. (C) 2008
+*
+*  BY OPENING THIS FILE, BUYER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+*  THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+*  RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO BUYER ON
+*  AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+*  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+*  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+*  NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+*  SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+*  SUPPLIED WITH THE MEDIATEK SOFTWARE, AND BUYER AGREES TO LOOK ONLY TO SUCH
+*  THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. MEDIATEK SHALL ALSO
+*  NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE RELEASES MADE TO BUYER'S
+*  SPECIFICATION OR TO CONFORM TO A PARTICULAR STANDARD OR OPEN FORUM.
+*
+*  BUYER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND CUMULATIVE
+*  LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+*  AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+*  OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY BUYER TO
+*  MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+*
+*  THE TRANSACTION CONTEMPLATED HEREUNDER SHALL BE CONSTRUED IN ACCORDANCE
+*  WITH THE LAWS OF THE STATE OF CALIFORNIA, USA, EXCLUDING ITS CONFLICT OF
+*  LAWS PRINCIPLES.  ANY DISPUTES, CONTROVERSIES OR CLAIMS ARISING THEREOF AND
+*  RELATED THERETO SHALL BE SETTLED BY ARBITRATION IN SAN FRANCISCO, CA, UNDER
+*  THE RULES OF THE INTERNATIONAL CHAMBER OF COMMERCE (ICC).
+*
+*****************************************************************************/
 #if defined(BUILD_LK)
 #include <string.h>
 #else
@@ -98,58 +166,52 @@ static struct LCM_setting_table lcm_initialization_setting[] = {
 	{REGFLAG_END_OF_TABLE, 0x00, {}}
 	*/
        // add by zhuqiang for FR437058 at 2013.4.25 begin
-       {0xFF,	3,	{0xFF, 0x98, 0x16}},
+        {0xFF,	3,	{0xFF, 0x98, 0x16}},
 
-	{0xBA,	1,	{0x60}},
+        {0xBA,	1,	{0x60}},
 
-       {0xB0,	1,	{0x01}},
-        // add by zhuqiang for FR437058 at 2013.4.25 end
+        {0xB0,	1,	{0x01}},
      
-       // add by zhuqiang for FR454775 at 2013.5.20 begin
-       {0xB9,	1,	{0x00}},
-       // add by zhuqiang for FR454775 at 2013.5.20 end
+        {0xB9,	1,	{0x00}},
 
-       {0xBC,	18,	{0x03, 0x0D, 0x63, 0x33, 0x16, 0x16, 0x1B, 0x11, 0x38, 0x00, 0x00,0x00, 0x16, 0x16, 0x08, 0x00, 0xFF, 0xF0}},
+        {0xBC,	18,	{0x03,0x0D,0x63,0x33,0x16,0x16,0x1B,0x11,0x38,0x00,0x00,0x00,0x16,0x16,0x08,0x00,0xFF,0xF0}},
 
-   	{0xBD,	8,	{0x01, 0x45, 0x45, 0x67, 0x01, 0x23, 0x45, 0x67}},
+        {0xBD,	8,	{0x01,0x45,0x45,0x67,0x01,0x23,0x45,0x67}},
 
-       {0xBE,	17,	{0x13, 0x22, 0x11, 0x00, 0x66, 0x77, 0x22, 0x22, 0xAA, 0xCC, 0xBB,0xDD, 0x22, 0x22, 0x22, 0x22, 0x22}},
+        {0xBE,	17,	{0x13,0x22,0x11,0x00,0x66,0x77,0x22,0x22,0xAA,0xCC,0xBB,0xDD,0x22,0x22,0x22,0x22,0x22}},
 
-      	{0xED,	2,	{0x7F, 0x0F}},
+        {0xED,	2,	{0x7F,0x0F}},
 
-    	{0xF3,	1,	{0x70}},
+        {0xF3,	1,	{0x70}},
    
-      	{0xB4,	1,	{0x02}},
+        {0xB4,	1,	{0x02}},
 
-    	{0xC0,	3,	{0x0F, 0x0B, 0x0A}},
+        {0xC0,	3,	{0x0F, 0x0B, 0x0A}},
 
-       {0xC1,	4,	{0x17, 0x8E, 0x87, 0x20}},
+        {0xC1,	4,	{0x17, 0x8E, 0x87, 0x20}},
 
-      	{0xD8,	1,	{0x50}},
+        {0xD8,	1,	{0x50}},
 
-       {0xFC,	1,	{0x07}},     
-       {0xE0,	16,	{0x00, 0x19, 0x22, 0x0F, 0x11, 0x17, 0xC6, 0x03, 0x0D, 0x0E, 0x06,0x13, 0x04, 0x2C, 0x2A, 0x00}},
+        {0xFC,	1,	{0x07}},
+
+        {0xE0,	16,	{0x00,0x19,0x22,0x0F,0x11,0x17,0xC6,0x05,0x08,0x0c,0x02,0x0b,0x09,0x33,0x2a,0x00}}, // gamma setting
  
-       {0xE1,	16,	{0x00, 0x0C, 0x1A, 0x11, 0x11, 0x16, 0x79, 0x06, 0x02, 0x07, 0x09,0x0B, 0x0B, 0x23, 0x1C, 0x00}},
+        {0xE1,	16,	{0x00,0x0C,0x1A,0x11,0x11,0x17,0x79,0x08,0x00,0x07,0x0a,0x0f,0x0e,0x22,0x1b,0x00}}, // gamma setting
 
-       {0xD5,	8,	{0x10, 0x08, 0x08, 0x07, 0xCB, 0xA5, 0x01, 0x04}},   
+        {0xD5,	8,	{0x10,0x08,0x09,0x07,0xCB,0xA5,0x01,0x04}}, // gamma setting
   
-       {0xF7,	1,	{0x8A}},    
+        {0xF7,	1,	{0x8A}}, 
 
-       {0xC7,	1,	{0x4A}},    
+        {0xC7,	1,	{0x4A}}, // vcom   
 
-       {0x11,	1,	{0x00}},
-	{REGFLAG_DELAY, 120, {}},
+        {0x11,	1,	{0x00}},
+        {REGFLAG_DELAY, 120, {}},
+	
+        //{ 0xEE, 9, { 0x0A,0x1B,0x5F,0x40,0x00,0x00,0x10,0x00,0x58 } }, // For ESD check
+        {0x29,	1,	{0x00}},
+        {REGFLAG_DELAY, 50, {}},
 
-	{0x29,	1,	{0x00}},
-	{REGFLAG_DELAY, 50, {}},
-
-   	{0x2C,	1,	{0x00}},
-
-        // add by zhuqiang for FR437058 at 2013.4.25 end
-
-   	//{REGFLAG_DELAY, 50, {}},
-
+        {0x2C,	1,	{0x00}},
 
 	// Note
 	// Strongly recommend not to set Sleep out / Display On here. That will cause messed frame to be shown as later the backlight is on.
@@ -384,49 +446,24 @@ static void lcm_update(unsigned int x, unsigned int y,
 
 }
 
-// added by zhuqiang for lcd esd begin 2012.11.19
 
 static unsigned int lcm_esd_check(void)
 {
-#ifndef BUILD_UBOOT
-
-       unsigned char buffer_vcom[4];
-
+#ifndef BUILD_LK
        unsigned char buffer_0a[1];
-
        unsigned int array[16];
 
-
-       array[0]=0x00341500;
-
-       dsi_set_cmdq(&array, 1, 1);
-
        array[0] = 0x00013700;
-
        dsi_set_cmdq(array, 1, 1);
+       read_reg_v2(0x0A,buffer_0a, 1);
+       printk("lcm esd check 0x0a is %x\n", buffer_0a[0]);
 
-      read_reg_v2(0x0A,buffer_0a, 1);
-
-      array[0] = 0x00043700;
-
-      dsi_set_cmdq(array, 1, 1);
-
-      read_reg_v2(0xC5, buffer_vcom, 4);
-
-      array[0]=0x00351500;
-
-      dsi_set_cmdq(&array, 1, 1);
-     //printk("lcm 0x0a is %x--------------\n", buffer_0a[0]);
-     //printk("lcm 0xc5 is %x,%x,%x,%x--------------\n", buffer_vcom[0], buffer_vcom[1] ,buffer_vcom[2], buffer_vcom[3]);
-    //  if ((buffer_vcom[0]==0x00)&&(buffer_vcom[1]==0x41)&&(buffer_vcom[3]==0x41)&&(buffer_0a[0]==0x9C)){
-
+      if (buffer_0a[0]==0x9C){
                return 0;
+      }else{
 
-
-   //   }else{
-
-  //            return 1;
-  //    }
+              return 1;
+      }
 #endif
 }
 
@@ -434,7 +471,7 @@ static unsigned int lcm_esd_check(void)
 static unsigned int lcm_esd_recover(void)
 {
 
-   #ifndef BUILD_UBOOT
+   #ifndef BUILD_LK
 
 
        lcm_init();
@@ -509,8 +546,8 @@ LCM_DRIVER ili9806_dsi_6572_lcm_drv =
 //	.get_pwm        = lcm_getpwm,
    
       // added by zhuqiang for lcd esd begin 2012.11.19
-//	.esd_check   = lcm_esd_check,
- //  	.esd_recover   = lcm_esd_recover,
+	//.esd_check   = lcm_esd_check,
+  	//.esd_recover   = lcm_esd_recover,
       // added by zhuqiang for lcd esd end 2012.11.19
 	.compare_id    = lcm_compare_id,
 //#endif

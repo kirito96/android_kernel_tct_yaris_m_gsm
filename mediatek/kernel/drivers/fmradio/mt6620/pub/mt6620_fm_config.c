@@ -1,3 +1,25 @@
+/* fm_config.c
+ *
+ * (C) Copyright 2011
+ * MediaTek <www.MediaTek.com>
+ * hongcheng <hongcheng.xia@MediaTek.com>
+ *
+ * FM Radio Driver
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 #include <linux/string.h>
 #include <linux/slab.h>
 
@@ -32,31 +54,8 @@ static fm_s32 MT6620fm_cust_config_print(fm_cust_cfg *cfg)
     WCN_DBG(FM_NTC | MAIN, "MT6620 scan_hole_low:\t%d\n", cfg->tx_cfg.scan_hole_low);
     WCN_DBG(FM_NTC | MAIN, "MT6620 scan_hole_high:\t%d\n", cfg->tx_cfg.scan_hole_high);
     WCN_DBG(FM_NTC | MAIN, "MT6620 power_level:\t%d\n", cfg->tx_cfg.power_level);
-#if 0
-    WCN_DBG(FM_NTC | MAIN, "MT6620 rssi_l:\t0x%04x\n", cfg->rx_cfg.long_ana_rssi_th);
-    WCN_DBG(FM_NTC | MAIN, "MT6620 rssi_s:\t0x%04x\n", cfg->rx_cfg.short_ana_rssi_th);
-    WCN_DBG(FM_NTC | MAIN, "MT6620 mr_th:\t0x%04x\n", cfg->rx_cfg.mr_th);
-    WCN_DBG(FM_NTC | MAIN, "MT6620 cqi_th:\t0x%04x\n", cfg->rx_cfg.cqi_th);
-    WCN_DBG(FM_NTC | MAIN, "MT6620 smg_th:\t0x%04x\n", cfg->rx_cfg.smg_th);
-    WCN_DBG(FM_NTC | MAIN, "MT6620 scan_ch_size:\t%d\n", cfg->rx_cfg.scan_ch_size);
-    WCN_DBG(FM_NTC | MAIN, "MT6620 seek_space:\t%d\n", cfg->rx_cfg.seek_space);
-    WCN_DBG(FM_NTC | MAIN, "MT6620 band:\t%d\n", cfg->rx_cfg.band);
-    WCN_DBG(FM_NTC | MAIN, "MT6620 band_freq_l:\t%d\n", cfg->rx_cfg.band_freq_l);
-    WCN_DBG(FM_NTC | MAIN, "MT6620 band_freq_h:\t%d\n", cfg->rx_cfg.band_freq_h);
-    WCN_DBG(FM_NTC | MAIN, "MT6620 scan_sort:\t%d\n", cfg->rx_cfg.scan_sort);
-    WCN_DBG(FM_NTC | MAIN, "MT6620 fake_ch_num:\t%d\n", cfg->rx_cfg.fake_ch_num);
-    WCN_DBG(FM_NTC | MAIN, "MT6620 fake_ch_rssi_th:\t%d\n", cfg->rx_cfg.fake_ch_rssi_th);
 
-    for (i = 0; i < cfg->rx_cfg.fake_ch_num; i++) {
-        WCN_DBG(FM_NTC | MAIN, "fake_ch:\t%d\n", cfg->rx_cfg.fake_ch[i]);
-    }
-
-    WCN_DBG(FM_NTC | MAIN, "de_emphasis:\t%d\n", cfg->rx_cfg.deemphasis);
-    WCN_DBG(FM_NTC | MAIN, "osc_freq:\t%d\n", cfg->rx_cfg.osc_freq);
-    WCN_DBG(FM_NTC | MAIN, "scan_hole_low:\t%d\n", cfg->tx_cfg.scan_hole_low);
-    WCN_DBG(FM_NTC | MAIN, "scan_hole_high:\t%d\n", cfg->tx_cfg.scan_hole_high);
-    WCN_DBG(FM_NTC | MAIN, "power_level:\t%d\n", cfg->tx_cfg.power_level);
-#endif
+    WCN_DBG(FM_NTC | MAIN, "aud path[%d]I2S state[%d]mode[%d]rate[%d]\n", cfg->aud_cfg.aud_path,cfg->aud_cfg.i2s_info.status,cfg->aud_cfg.i2s_info.mode,cfg->aud_cfg.i2s_info.rate);
     return 0;
 }
 
@@ -123,6 +122,39 @@ static fm_s32 MT6620cfg_item_handler(fm_s8 *grp, fm_s8 *key, fm_s8 *val, fm_cust
         WCN_DBG(FM_WAR | MAIN, "invalid key\n");
         return -1;
     }
+/*    if (0 <= (ret = cfg_item_match(key, val, "FMR_RSSI_TH_L_MT6620", &rx_cfg->long_ana_rssi_th))) {//FMR_RSSI_TH_L = 0x0301
+        return ret;
+    } else if (0 <= (ret = cfg_item_match(key, val, "FMR_RSSI_TH_S_MT6620", &rx_cfg->short_ana_rssi_th))) {
+        return ret;
+    } else if (0 <= (ret = cfg_item_match(key, val, "FMR_CQI_TH_MT6620", &rx_cfg->cqi_th))) {
+        return ret;
+    } else if (0 <= (ret = cfg_item_match(key, val, "FMR_MR_TH_MT6620", &rx_cfg->mr_th))) {
+        return ret;
+    } else if (0 <= (ret = cfg_item_match(key, val, "FMR_SMG_TH_MT6620", &rx_cfg->smg_th))) {
+        return ret;
+    } else if (0 <= (ret = cfg_item_match(key, val, "FMR_SCAN_CH_SIZE_MT6620", &rx_cfg->scan_ch_size))) {
+        return ret;
+    } else if (0 <= (ret = cfg_item_match(key, val, "FMR_SCAN_SORT_MT6620", &rx_cfg->scan_sort))) {
+        return ret;
+    } else if (0 <= (ret = cfg_item_match(key, val, "FMR_SEEK_SPACE_MT6620", &rx_cfg->seek_space))) {
+        return ret;
+    } else if (0 <= (ret = cfg_item_match(key, val, "FMR_BAND_MT6620", &rx_cfg->band))) {
+        return ret;
+    } else if (0 <= (ret = cfg_item_match(key, val, "FMR_BAND_FREQ_L_MT6620", &rx_cfg->band_freq_l))) {
+        return ret;
+    } else if (0 <= (ret = cfg_item_match(key, val, "FMR_BAND_FREQ_H_MT6620", &rx_cfg->band_freq_h))) {
+        return ret;
+    } else if (0 <= (ret = cfg_item_match(key, val, "FMR_FAKE_CH_MT6620", &rx_cfg->fake_ch[fm_index]))) {
+        fm_index += 1;
+        rx_cfg->fake_ch_num = (rx_cfg->fake_ch_num < fm_index) ? fm_index : rx_cfg->fake_ch_num;
+        return ret;
+    } else if (0 <= (ret = cfg_item_match(key, val, "FMR_FAKE_CH_RSSI_MT6620", &rx_cfg->fake_ch_rssi_th))) {
+        return ret;
+    } else if (0 <= (ret = cfg_item_match(key, val, "FMR_DEEMPHASIS_MT6620", &rx_cfg->deemphasis))) {
+        return ret;
+    } else if (0 <= (ret = cfg_item_match(key, val, "FMR_OSC_FREQ_MT6620", &rx_cfg->osc_freq))) {
+        return ret;
+    } */
 }
 static fm_s32 MT6620fm_cust_config_default(fm_cust_cfg *cfg)
 {
@@ -143,6 +175,25 @@ static fm_s32 MT6620fm_cust_config_default(fm_cust_cfg *cfg)
     cfg->tx_cfg.scan_hole_high = FM_TX_SCAN_HOLE_HIGH_MT6620;
     cfg->tx_cfg.power_level = FM_TX_PWR_LEVEL_MAX_MT6620;
 
+#if (defined MTK_MERGE_INTERFACE_SUPPORT) || (defined FM_DIGITAL_INPUT)
+    cfg->aud_cfg.aud_path = FM_AUD_I2S;
+    cfg->aud_cfg.i2s_info.status = FM_I2S_OFF;
+    cfg->aud_cfg.i2s_info.mode = FM_I2S_SLAVE;
+    cfg->aud_cfg.i2s_info.rate = FM_I2S_44K;
+    cfg->aud_cfg.i2s_pad = FM_I2S_PAD_IO;
+#elif defined FM_ANALOG_INPUT
+    cfg->aud_cfg.aud_path = FM_AUD_ANALOG;
+    cfg->aud_cfg.i2s_info.status = FM_I2S_STATE_ERR;
+    cfg->aud_cfg.i2s_info.mode = FM_I2S_MODE_ERR;
+    cfg->aud_cfg.i2s_info.rate = FM_I2S_SR_ERR;
+    cfg->aud_cfg.i2s_pad = FM_I2S_PAD_ERR;
+#else
+    cfg->aud_cfg.aud_path = FM_AUD_ERR;
+    cfg->aud_cfg.i2s_info.status = FM_I2S_STATE_ERR;
+    cfg->aud_cfg.i2s_info.mode = FM_I2S_MODE_ERR;
+    cfg->aud_cfg.i2s_info.rate = FM_I2S_SR_ERR;
+    cfg->aud_cfg.i2s_pad = FM_I2S_PAD_ERR;
+#endif
     return 0;
 }
 

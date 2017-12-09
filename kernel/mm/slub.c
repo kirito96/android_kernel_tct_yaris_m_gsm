@@ -30,10 +30,10 @@
 #include <linux/fault-inject.h>
 #include <linux/stacktrace.h>
 #include <linux/prefetch.h>
-#include <linux/aee.h>
+
 
 #include <trace/events/kmem.h>
-#include <mach/mtk_memcfg.h>
+
 
 /*
  * Lock order:
@@ -209,7 +209,7 @@ struct track {
 	unsigned long when;	/* When did the operation occur */
 };
 
-enum track_item { TRACK_ALLOC, TRACK_FREE };
+enum track_item { TRACK_FREE, TRACK_ALLOC };
 
 #ifdef CONFIG_SYSFS
 static int sysfs_slab_add(struct kmem_cache *);
@@ -637,7 +637,6 @@ static void object_err(struct kmem_cache *s, struct page *page,
 {
 	slab_bug(s, "%s", reason);
 	print_trailer(s, page, object);
-        aee_kernel_warning("[SLUB_DEBUG]", __FUNCTION__);
 }
 
 static void slab_err(struct kmem_cache *s, struct page *page, char *fmt, ...)
@@ -651,7 +650,6 @@ static void slab_err(struct kmem_cache *s, struct page *page, char *fmt, ...)
 	slab_bug(s, "%s", buf);
 	print_page_info(page);
 	dump_stack();
-        aee_kernel_warning("[SLUB_DEBUG]", __FUNCTION__);
 }
 
 static void init_object(struct kmem_cache *s, void *object, u8 val)
@@ -694,11 +692,10 @@ static int check_bytes_and_report(struct kmem_cache *s, struct page *page,
 					fault, end - 1, fault[0], value);
 	print_trailer(s, page, object);
 
+	/* trigger BUG before restore_bytes */
+	BUG();
 	restore_bytes(s, what, value, fault, end);
-        printk(KERN_ERR "dump 4k byte in front of the error object\n");
-	print_section("memdump ", (object - PAGE_SIZE), PAGE_SIZE);
-        
-        aee_kernel_warning("[SLUB_DEBUG]", __FUNCTION__);
+
 	return 0;
 }
 
@@ -768,11 +765,6 @@ static int slab_pad_check(struct kmem_cache *s, struct page *page)
 	int length;
 	int remainder;
 
-#ifdef CONFIG_MTK_MEMCFG
-        if (unlikely(mtk_memcfg_get_bypass_slub_debug_flag())) {
-            return 1;
-        }
-#endif 
 	if (!(s->flags & SLAB_POISON))
 		return 1;
 
@@ -802,11 +794,6 @@ static int check_object(struct kmem_cache *s, struct page *page,
 	u8 *p = object;
 	u8 *endobject = object + s->objsize;
 
-#ifdef CONFIG_MTK_MEMCFG
-        if (unlikely(mtk_memcfg_get_bypass_slub_debug_flag())) {
-            return 1;
-        }
-#endif 
 	if (s->flags & SLAB_RED_ZONE) {
 		if (!check_bytes_and_report(s, page, object, "Redzone",
 			endobject, val, s->inuse - s->objsize))
@@ -1068,11 +1055,6 @@ static void setup_object_debug(struct kmem_cache *s, struct page *page,
 static noinline int alloc_debug_processing(struct kmem_cache *s, struct page *page,
 					void *object, unsigned long addr)
 {
-#ifdef CONFIG_MTK_MEMCFG
-        if (unlikely(mtk_memcfg_get_bypass_slub_debug_flag())) {
-            return 1;
-        }
-#endif 
 	if (!check_slab(s, page))
 		goto bad;
 
@@ -1111,11 +1093,6 @@ static noinline int free_debug_processing(struct kmem_cache *s,
 	unsigned long flags;
 	int rc = 0;
 
-#ifdef CONFIG_MTK_MEMCFG
-        if (unlikely(mtk_memcfg_get_bypass_slub_debug_flag())) {
-            return 1;
-        }
-#endif 
 	local_irq_save(flags);
 	slab_lock(page);
 
@@ -1242,6 +1219,10 @@ static unsigned long kmem_cache_flags(unsigned long objsize,
 	/*
 	 * Enable debugging if selected on the kernel commandline.
 	 */
+	if(flags & SLAB_NO_DEBUG) {
+		return flags;
+	}
+
 	if (slub_debug && (!slub_debug_slabs ||
 		!strncmp(slub_debug_slabs, name, strlen(slub_debug_slabs))))
 		flags |= slub_debug;
@@ -1305,6 +1286,7 @@ static inline struct page *alloc_slab_page(gfp_t flags, int node,
 	flags |= __GFP_NOTRACK;
 
 	if (node == NUMA_NO_NODE)
+
 		return alloc_pages(flags, order);
 	else
 		return alloc_pages_exact_node(node, flags, order);
@@ -1445,6 +1427,7 @@ static void __free_slab(struct kmem_cache *s, struct page *page)
 	reset_page_mapcount(page);
 	if (current->reclaim_state)
 		current->reclaim_state->reclaimed_slab += pages;
+
 	__free_pages(page, order);
 }
 
@@ -1542,15 +1525,19 @@ static inline void *acquire_slab(struct kmem_cache *s,
 		freelist = page->freelist;
 		counters = page->counters;
 		new.counters = counters;
-		if (mode)
+		if (mode) {
 			new.inuse = page->objects;
+			new.freelist = NULL;
+		} else {
+			new.freelist = freelist;
+		}
 
 		VM_BUG_ON(new.frozen);
 		new.frozen = 1;
 
 	} while (!__cmpxchg_double_slab(s, page,
 			freelist, counters,
-			NULL, new.counters,
+			new.freelist, new.counters,
 			"lock and freeze"));
 
 	remove_partial(n, page);
@@ -1592,7 +1579,6 @@ static void *get_partial_node(struct kmem_cache *s,
 			object = t;
 			available =  page->objects - page->inuse;
 		} else {
-			page->freelist = t;
 			available = put_cpu_partial(s, page, 0);
 			stat(s, CPU_PARTIAL_NODE);
 		}
@@ -1642,7 +1628,7 @@ static struct page *get_any_partial(struct kmem_cache *s, gfp_t flags,
 
 	do {
 		cpuset_mems_cookie = get_mems_allowed();
-		zonelist = node_zonelist(slab_node(current->mempolicy), flags);
+		zonelist = node_zonelist(slab_node(), flags);
 		for_each_zone_zonelist(zone, z, zonelist, high_zoneidx) {
 			struct kmem_cache_node *n;
 
@@ -1907,18 +1893,24 @@ redo:
 /* Unfreeze all the cpu partial slabs */
 static void unfreeze_partials(struct kmem_cache *s)
 {
-	struct kmem_cache_node *n = NULL;
+	struct kmem_cache_node *n = NULL, *n2 = NULL;
 	struct kmem_cache_cpu *c = this_cpu_ptr(s->cpu_slab);
 	struct page *page, *discard_page = NULL;
 
 	while ((page = c->partial)) {
-		enum slab_modes { M_PARTIAL, M_FREE };
-		enum slab_modes l, m;
 		struct page new;
 		struct page old;
 
 		c->partial = page->next;
-		l = M_FREE;
+
+		n2 = get_node(s, page_to_nid(page));
+		if (n != n2) {
+			if (n)
+				spin_unlock(&n->list_lock);
+
+			n = n2;
+			spin_lock(&n->list_lock);
+		}
 
 		do {
 
@@ -1931,43 +1923,17 @@ static void unfreeze_partials(struct kmem_cache *s)
 
 			new.frozen = 0;
 
-			if (!new.inuse && (!n || n->nr_partial > s->min_partial))
-				m = M_FREE;
-			else {
-				struct kmem_cache_node *n2 = get_node(s,
-							page_to_nid(page));
-
-				m = M_PARTIAL;
-				if (n != n2) {
-					if (n)
-						spin_unlock(&n->list_lock);
-
-					n = n2;
-					spin_lock(&n->list_lock);
-				}
-			}
-
-			if (l != m) {
-				if (l == M_PARTIAL) {
-					remove_partial(n, page);
-					stat(s, FREE_REMOVE_PARTIAL);
-				} else {
-					add_partial(n, page,
-						DEACTIVATE_TO_TAIL);
-					stat(s, FREE_ADD_PARTIAL);
-				}
-
-				l = m;
-			}
-
 		} while (!cmpxchg_double_slab(s, page,
 				old.freelist, old.counters,
 				new.freelist, new.counters,
 				"unfreezing slab"));
 
-		if (m == M_FREE) {
+		if (unlikely(!new.inuse && n->nr_partial > s->min_partial)) {
 			page->next = discard_page;
 			discard_page = page;
+		} else {
+			add_partial(n, page, DEACTIVATE_TO_TAIL);
+			stat(s, FREE_ADD_PARTIAL);
 		}
 	}
 
@@ -4226,6 +4192,7 @@ struct loc_track {
 static void free_loc_track(struct loc_track *t)
 {
 	if (t->max)
+
 		free_pages((unsigned long)t->loc,
 			get_order(sizeof(struct location) * t->max));
 }
@@ -4237,7 +4204,6 @@ static int alloc_loc_track(struct loc_track *t, unsigned long max, gfp_t flags)
 
 	order = get_order(sizeof(struct location) * max);
 
-	l = (void *)__get_free_pages(flags, order);
 	if (!l)
 		return 0;
 
@@ -4545,7 +4511,13 @@ static ssize_t show_slab_objects(struct kmem_cache *s,
 			page = c->partial;
 
 			if (page) {
-				x = page->pobjects;
+				node = page_to_nid(page);
+				if (flags & SO_TOTAL)
+					WARN_ON_ONCE(1);
+				else if (flags & SO_OBJECTS)
+					WARN_ON_ONCE(1);
+				else
+					x = page->pages;
 				total += x;
 				nodes[node] += x;
 			}
@@ -5534,6 +5506,191 @@ static const struct file_operations proc_slabinfo_operations = {
 	.llseek		= seq_lseek,
 	.release	= seq_release,
 };
+
+#ifdef CONFIG_MTK_MEMCFG
+
+static int mtk_memcfg_add_location(struct loc_track *t, struct kmem_cache *s,
+				const struct track *track)
+{
+	long start, end, pos;
+	struct location *l;
+	unsigned long (*caddrs)[MTK_MEMCFG_SLABTRACE_CNT];	/* Called from addresses */
+	unsigned long taddrs[MTK_MEMCFG_SLABTRACE_CNT] 
+		= { [0 ... MTK_MEMCFG_SLABTRACE_CNT - 1] = 0,};		/* Called from addresses of track */
+	unsigned long age = jiffies - track->when;
+	int i, cnt;
+
+	start = -1;
+	end = t->count;
+
+	/* find the index of track->addr */
+	for (i = 0; i < TRACK_ADDRS_COUNT; i++)
+		if (track->addr == track->addrs[i])
+			break;
+	cnt = min(MTK_MEMCFG_SLABTRACE_CNT, TRACK_ADDRS_COUNT - i);
+	memcpy(taddrs, track->addrs + i, (cnt * sizeof (unsigned long)));
+
+	for ( ; ; ) {
+		pos = start + (end - start + 1) / 2;
+
+		/*
+		 * There is nothing at "end". If we end up there
+		 * we need to add something to before end.
+		 */
+		if (pos == end)
+			break;
+
+		caddrs = &(t->loc[pos].addrs);
+		if (!memcmp(caddrs, taddrs, MTK_MEMCFG_SLABTRACE_CNT * sizeof (unsigned long))) {
+
+			l = &t->loc[pos];
+			l->count++;
+			if (track->when) {
+				l->sum_time += age;
+				if (age < l->min_time)
+					l->min_time = age;
+				if (age > l->max_time)
+					l->max_time = age;
+
+				if (track->pid < l->min_pid)
+					l->min_pid = track->pid;
+				if (track->pid > l->max_pid)
+					l->max_pid = track->pid;
+
+				cpumask_set_cpu(track->cpu,
+						to_cpumask(l->cpus));
+			}
+			node_set(page_to_nid(virt_to_page(track)), l->nodes);
+			return 1;
+		}
+
+		if (memcmp(caddrs, taddrs, MTK_MEMCFG_SLABTRACE_CNT * sizeof (unsigned long)) < 0) 
+			end = pos;
+		else
+			start = pos;
+	}
+
+	/*
+	 * Not found. Insert new tracking element.
+	 */
+	if (t->count >= t->max && !alloc_loc_track(t, 2 * t->max, GFP_ATOMIC))
+		return 0;
+
+	l = t->loc + pos;
+	if (pos < t->count)
+		memmove(l + 1, l,
+			(t->count - pos) * sizeof(struct location));
+	t->count++;
+	l->count = 1;
+	l->addr = track->addr;
+	memcpy(l->addrs, taddrs, MTK_MEMCFG_SLABTRACE_CNT * sizeof (unsigned long));
+	l->sum_time = age;
+	l->min_time = age;
+	l->max_time = age;
+	l->min_pid = track->pid;
+	l->max_pid = track->pid;
+	cpumask_clear(to_cpumask(l->cpus));
+	cpumask_set_cpu(track->cpu, to_cpumask(l->cpus));
+	nodes_clear(l->nodes);
+	node_set(page_to_nid(virt_to_page(track)), l->nodes);
+	return 1;
+}
+
+static void mtk_memcfg_process_slab(struct loc_track *t, struct kmem_cache *s,
+		struct page *page, enum track_item alloc,
+		unsigned long *map)
+{
+	void *addr = page_address(page);
+	void *p;
+
+	bitmap_zero(map, page->objects);
+	get_map(s, page, map);
+
+	for_each_object(p, s, addr, page->objects)
+		if (!test_bit(slab_index(p, s, addr), map))
+			mtk_memcfg_add_location(t, s, get_track(s, p, alloc));
+}
+
+static int mtk_memcfg_list_locations(struct kmem_cache *s, struct seq_file *m,
+					enum track_item alloc)
+{
+	unsigned long i, j;
+	struct loc_track t = { 0, 0, NULL };
+	int node;
+	unsigned long *map = kmalloc(BITS_TO_LONGS(oo_objects(s->max)) *
+				     sizeof(unsigned long), GFP_KERNEL);
+
+	if (!map || !alloc_loc_track(&t, PAGE_SIZE / sizeof(struct location),
+				     GFP_TEMPORARY)) {
+		kfree(map);
+		return seq_printf(m, "Out of memory\n");
+	}
+	/* Push back cpu slabs */
+	flush_all(s);
+
+	for_each_node_state(node, N_NORMAL_MEMORY) {
+		struct kmem_cache_node *n = get_node(s, node);
+		unsigned long flags;
+		struct page *page;
+
+		if (!atomic_long_read(&n->nr_slabs))
+			continue;
+
+		spin_lock_irqsave(&n->list_lock, flags);
+		list_for_each_entry(page, &n->partial, lru)
+			mtk_memcfg_process_slab(&t, s, page, alloc, map);
+		list_for_each_entry(page, &n->full, lru)
+			mtk_memcfg_process_slab(&t, s, page, alloc, map);
+		spin_unlock_irqrestore(&n->list_lock, flags);
+	}
+
+	for (i = 0; i < t.count; i++) {
+		struct location *l = &t.loc[i];
+
+		seq_printf(m, "%7ld ", l->count);
+
+		if (l->addr)
+			seq_printf(m, "%pS", (void *)l->addr);
+		else
+			seq_printf(m, "<not-available>");
+
+		for (j = 0; j < MTK_MEMCFG_SLABTRACE_CNT; j++)
+			if (l->addrs[j])
+				seq_printf(m, " %p", (void *)l->addrs[j]);
+
+		seq_printf(m, "\n");
+	}
+
+	free_loc_track(&t);
+	kfree(map);
+
+	if (!t.count)
+		seq_printf(m, "No data\n");
+	return 0;
+}
+
+static int mtk_memcfg_slabtrace_show(struct seq_file *m, void *p)
+{
+	struct kmem_cache *s;
+	down_read(&slub_lock);
+	list_for_each_entry(s, &slab_caches, list) {
+		seq_printf(m, "========== kmem_cache: %s alloc_calls ==========\n", s->name);
+		if (!(s->flags & SLAB_STORE_USER)) {
+			continue;
+		} else {
+			mtk_memcfg_list_locations(s, m, TRACK_ALLOC);
+		}
+	}
+	up_read(&slub_lock);
+	return 0;
+}
+
+int slabtrace_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, mtk_memcfg_slabtrace_show, NULL);
+}
+
+#endif 
 
 static int __init slab_proc_init(void)
 {

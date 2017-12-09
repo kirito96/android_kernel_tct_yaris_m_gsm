@@ -16,6 +16,7 @@
 
 //FIXME, should defined in DCT tool 
 //
+/*
 #ifndef GPIO_CAMERA_LDO_EN_PIN 
 #define GPIO_CAMERA_LDO_EN_PIN GPIO108
 #endif 
@@ -58,7 +59,7 @@
 
 //i2c id for sensor device, MT8320_fpga, the I2C is attached on 1
 #define IMG_SENSOR_I2C_GROUP_ID 0
-
+*/
 
 
 #endif 

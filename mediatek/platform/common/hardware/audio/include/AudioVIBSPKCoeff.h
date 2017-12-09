@@ -1,4 +1,4 @@
-#if defined(MTK_VIBSPK_SUPPORT)
+//#if defined(MTK_VIBSPK_SUPPORT)
 
 #define DEFAULT_AUD_VIBR_LOUDNESS_FILTER_COEF_141    \
 {                                                    \
@@ -1547,4 +1547,4 @@
 -8061, 16208, 8190, -16240, 8190                                    \
 }
 
-#endif
+//#endif

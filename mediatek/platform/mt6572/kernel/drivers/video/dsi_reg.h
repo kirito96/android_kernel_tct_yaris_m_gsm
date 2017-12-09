@@ -2,6 +2,7 @@
 #define __DSI_REG_H__
 
 #include <stddef.h>
+#include <mach/mt_typedefs.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -836,7 +837,6 @@ typedef struct
 	DSI_VM_CMDQ data[4];
 } DSI_VM_CMDQ_REGS, *PDSI_VM_CMDQ_REGS;
 
-#ifndef BUILD_UBOOT
 STATIC_ASSERT(0x0050 == offsetof(DSI_PHY_REGS, MIPITX_DSI_PLL_CON0));
 STATIC_ASSERT(0x0070 == offsetof(DSI_PHY_REGS, MIPITX_DSI_RGS));
 STATIC_ASSERT(0x0080 == offsetof(DSI_PHY_REGS, MIPITX_DSI_SW_CTRL));
@@ -845,7 +845,6 @@ STATIC_ASSERT(0x002C == offsetof(DSI_REGS, DSI_VACT_NL));
 STATIC_ASSERT(0x0104 == offsetof(DSI_REGS, DSI_PHY_LCCON));
 STATIC_ASSERT(0x011C == offsetof(DSI_REGS, DSI_PHY_TIMECON3));
 STATIC_ASSERT(0x017C == offsetof(DSI_REGS, BIST_CON));
-#endif
 
 #ifdef __cplusplus
 }

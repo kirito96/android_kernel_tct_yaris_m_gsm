@@ -1,3 +1,25 @@
+/* alps/ALPS_SW/TRUNK/MAIN/alps/kernel/drivers/fm/mt6575_fm.c
+ *
+ * (C) Copyright 2009 
+ * MediaTek <www.MediaTek.com>
+ * MingHsien Hsieh <minghsien.hsieh@MediaTek.com>
+ *
+ * ADBS-A320 driver (OFN device)
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -12,7 +34,7 @@
 #include <mach/irqs.h>
 #include <asm/io.h>
 #include <linux/platform_device.h>
-#include <linux/autoconf.h>
+#include <generated/autoconf.h>
 #include <linux/workqueue.h>
 #include <cust_gpio_usage.h>
 #include <cust_eint.h>
@@ -20,8 +42,16 @@
 #include "a320.h"
 #include <linux/slab.h>
 
+#define POWER_NONE_MACRO MT65XX_POWER_NONE
+
+/******************************************************************************
+ * configuration
+*******************************************************************************/
 //#define A320_DEBUG_RW
 #define CONFIG_ACCU_COUNT      /*!< use accumulated count to adjust sensitivity */        
+/******************************************************************************
+ * macro
+*******************************************************************************/
 #define C_I2C_FIFO_SIZE         8       /*according i2c_mt6575.c*/
 #define ABS(X)                  ((X > 0) ? (X) : (-X))
 /*----------------------------------------------------------------------------*/
@@ -32,25 +62,19 @@
 #define AVA_LOG(fmt, args...)	printk(KERN_INFO AVA_TAG fmt, ##args)
 #define AVA_MSG(...)	        printk(__VA_ARGS__)
 #define AVA_VER(fmt, args...)   ((void)0)
-#ifdef MT6575
-extern void mt65xx_eint_unmask(unsigned int line);
-extern void mt65xx_eint_mask(unsigned int line);
-extern void mt65xx_eint_set_polarity(kal_uint8 eintno, kal_bool ACT_Polarity);
-extern void mt65xx_eint_set_hw_debounce(kal_uint8 eintno, kal_uint32 ms);
-extern kal_uint32 mt65xx_eint_set_sens(kal_uint8 eintno, kal_bool sens);
-extern void mt65xx_eint_registration(kal_uint8 eintno, kal_bool Dbounce_En,
-                                     kal_bool ACT_Polarity, void (EINT_FUNC_PTR)(void),
-                                     kal_bool auto_umask);
-#endif
-
-#ifdef MT6577
-	extern void mt65xx_eint_unmask(unsigned int line);
-	extern void mt65xx_eint_mask(unsigned int line);
-	extern void mt65xx_eint_set_polarity(unsigned int eint_num, unsigned int pol);
-	extern void mt65xx_eint_set_hw_debounce(unsigned int eint_num, unsigned int ms);
-	extern unsigned int mt65xx_eint_set_sens(unsigned int eint_num, unsigned int sens);
-	extern void mt65xx_eint_registration(unsigned int eint_num, unsigned int is_deb_en, unsigned int pol, void (EINT_FUNC_PTR)(void), unsigned int is_auto_umask);
-#endif
+/******************************************************************************
+ * extern functions
+*******************************************************************************/
+extern void mt_eint_mask(unsigned int eint_num);
+extern void mt_eint_unmask(unsigned int eint_num);
+extern void mt_eint_set_hw_debounce(unsigned int eint_num, unsigned int ms);
+extern void mt_eint_set_polarity(unsigned int eint_num, unsigned int pol);
+extern unsigned int mt_eint_set_sens(unsigned int eint_num, unsigned int sens);
+extern void mt_eint_registration(unsigned int eint_num, unsigned int flow, void (EINT_FUNC_PTR)(void), unsigned int is_auto_umask);
+extern void mt_eint_print_status(void);
+/******************************************************************************
+ * local functions
+*******************************************************************************/
 static int a320_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id); 
 static int a320_i2c_remove(struct i2c_client *client);
 //static int a320_i2c_detect(struct i2c_client *client, struct i2c_board_info *info);
@@ -63,6 +87,12 @@ static int a320_i2c_suspend(struct i2c_client *client, pm_message_t msg);
 static int a320_i2c_resume(struct i2c_client *client);
 #endif
 static int a320_reset_and_init(struct i2c_client *client);
+/******************************************************************************
+ * Configration Settings
+*******************************************************************************/
+/******************************************************************************
+ * enumeration
+*******************************************************************************/
 typedef enum {
     AVA_DIR_UP  = 0,
     AVA_DIR_DN  = 1,
@@ -91,6 +121,9 @@ typedef enum {
     AVA_DETECT_POLL     = 0,
     AVA_DETECT_EINT     = 1,            
 }AVA_DETECT;
+/******************************************************************************
+ * structure
+*******************************************************************************/
 struct a320_dir
 {
     /*trackball class*/
@@ -222,6 +255,9 @@ static struct a320_reg a320_regs[] = {
     {"OFN_ORIENTATION",         A320_REG_OFN_ORIENTATION   },
 };
 static struct timeval t1,t2;
+/******************************************************************************
+ * Sysfs attributes
+*******************************************************************************/
 int a320_read_byte(struct i2c_client *client, u8 addr, u8 *data)
 {
     u8 buf;
@@ -382,6 +418,9 @@ int a320_write_block(struct i2c_client *client, u8 addr, u8 *data, u8 len)
     }
     return err;
 }
+/******************************************************************************
+ * Sysfs attributes
+*******************************************************************************/
 static ssize_t a320_show_trace(struct device *dev, 
                                struct device_attribute *attr, char *buf)
 {
@@ -650,11 +689,14 @@ static struct attribute *a320_attributes[] = {
 static const struct attribute_group a320_group = {
 	.attrs = a320_attributes,
 };
+/******************************************************************************
+ *             Common function: EINT implementation
+*******************************************************************************/
 static void a320_power(struct ofn_hw *hw, unsigned int on) 
 {
     static unsigned int power_on = 0;
 
-    if (hw->power_id != MT65XX_POWER_NONE) {        
+    if (hw->power_id != POWER_NONE_MACRO) {        
         AVA_LOG("power %s\n", on ? "on" : "off");
         if (power_on == on) {
             AVA_LOG("ignore power control: %d\n", on);
@@ -689,15 +731,16 @@ int a320_setup_eint(struct a320_priv *obj, void (*eint_motion)(void))
     mt_set_gpio_pull_enable(GPIO_OFN_EINT_PIN, TRUE);
     mt_set_gpio_pull_select(GPIO_OFN_EINT_PIN, GPIO_PULL_UP);
 
-    mt65xx_eint_set_sens(CUST_EINT_OFN_NUM, CUST_EINT_OFN_SENSITIVE);
-    mt65xx_eint_set_polarity(CUST_EINT_OFN_NUM, CUST_EINT_OFN_POLARITY);
-    mt65xx_eint_set_hw_debounce(CUST_EINT_OFN_NUM, CUST_EINT_OFN_DEBOUNCE_CN);
-    mt65xx_eint_registration(CUST_EINT_OFN_NUM, CUST_EINT_OFN_DEBOUNCE_EN, CUST_EINT_OFN_POLARITY, eint_motion, 0);
+  mt_eint_set_hw_debounce(CUST_EINT_OFN_NUM, CUST_EINT_OFN_DEBOUNCE_CN);
+	mt_eint_registration(CUST_EINT_OFN_NUM, CUST_EINT_OFN_TYPE, eint_motion, 0);
 
-    mt65xx_eint_unmask(CUST_EINT_OFN_NUM);
+	mt_eint_unmask(CUST_EINT_OFN_NUM); 
     return 0;
 }
 
+/******************************************************************************
+ *         Keyboard class: Algorithm for reporting key event
+*******************************************************************************/
 int64_t a320_get_timecount(void)
 {
     struct timeval tv;
@@ -708,6 +751,9 @@ int64_t a320_get_timecount(void)
     return count;
 }
 
+/******************************************************************************
+ *             Trackball Class: EINT implementation
+*******************************************************************************/
 static void a320_eint_ball_work(struct work_struct *work) 
 {
     struct a320_priv *obj = (struct a320_priv *)container_of(work, struct a320_priv, eint_ball_work);
@@ -808,7 +854,7 @@ exit:
     if (err) 
         a320_reset_and_init(obj->client);
     if (!atomic_read(&obj->suspended))
-        mt65xx_eint_unmask(CUST_EINT_OFN_NUM);      
+        mt_eint_unmask(CUST_EINT_OFN_NUM);      
     else
         AVA_LOG("ignore unmask\n");
 }
@@ -825,6 +871,9 @@ void a320_eint_ball_motion(void)
     if (atomic_read(&obj->trace) & AVA_TRC_EINT)
         AVA_LOG("eint: motion interrupt\n");
 }
+/******************************************************************************
+ *             Trackball Class: setup function
+*******************************************************************************/
 static int a320_setup_class_ball(struct a320_priv *obj)
 {   
     g_a320_ptr = obj;    
@@ -832,6 +881,11 @@ static int a320_setup_class_ball(struct a320_priv *obj)
         return a320_setup_eint(obj, a320_eint_ball_motion);
     return -EINVAL;
 }
+/******************************************************************************
+ *
+ *                      General function   
+ *
+*******************************************************************************/
 static int a320_reset_device(struct a320_priv *obj)
 {
     int err;
@@ -1016,11 +1070,11 @@ static int a320_reset_and_init(struct i2c_client* client)
     
     /*set device to shutdown*/
     mt_set_gpio_out(GPIO_OFN_DWN_PIN, GPIO_OUT_ONE);
-    mt65xx_eint_mask(CUST_EINT_OFN_NUM);
+    mt_eint_mask(CUST_EINT_OFN_NUM);
     a320_power(obj->hw, 0);
     
     /*re-init the devices*/
-    mt65xx_eint_unmask(CUST_EINT_OFN_NUM);
+    mt_eint_unmask(CUST_EINT_OFN_NUM);
     a320_power(obj->hw, 1);
     if ((err = a320_init_client(obj->client))) {
         AVA_ERR("initialize client fail!!\n");
@@ -1075,7 +1129,7 @@ static void a320_early_suspend(struct early_suspend *h)
     }
     atomic_set(&obj->suspended, 1);
     mt_set_gpio_out(GPIO_OFN_DWN_PIN, GPIO_OUT_ONE);
-    mt65xx_eint_mask(CUST_EINT_OFN_NUM);
+    mt_eint_mask(CUST_EINT_OFN_NUM);
     a320_power(obj->hw, 0);
 }
 /*----------------------------------------------------------------------------*/
@@ -1091,7 +1145,7 @@ static void a320_late_resume(struct early_suspend *h)
     }
     
     atomic_set(&obj->suspended, 0);
-    mt65xx_eint_unmask(CUST_EINT_OFN_NUM);
+    mt_eint_unmask(CUST_EINT_OFN_NUM);
     a320_power(obj->hw, 1);
     if ((err = a320_init_client(obj->client))) {
         AVA_ERR("initialize client fail!!\n");
@@ -1102,6 +1156,10 @@ static void a320_late_resume(struct early_suspend *h)
 #endif
 /*----------------------------------------------------------------------------*/
 #if 0
+/*
+  * new i2c detect
+  * int detect(struct i2c_client *, struct i2c_board_info*);
+*/
 static int a320_i2c_detect(struct i2c_client *client, struct i2c_board_info *info) 
 {    
     strcpy(info->type, A320_DEV_NAME);

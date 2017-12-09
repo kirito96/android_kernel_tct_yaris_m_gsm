@@ -1304,7 +1304,8 @@ struct _ADAPTER_T {
 #endif
 
     BOOL fgDisStaAgingTimeoutDetection;
-
+	UINT_32   u4FwCompileFlag0;
+    UINT_32   u4FwCompileFlag1;
 };/* end of _ADAPTER_T */
 
 /*******************************************************************************

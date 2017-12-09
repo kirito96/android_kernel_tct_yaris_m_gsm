@@ -1,9 +1,7 @@
-
 #include <cutils/xlog.h> //#include <utils/Log.h>
 #include <fcntl.h>
 #include <math.h>
 
-//seanlin 120921 for 658x #include "MediaHal.h"
 //#include "src/lib/inc/MediaLog.h" //#include "src/lib/inc/MediaLog.h"
 
 #include "camera_custom_nvram.h"
@@ -366,6 +364,9 @@ UINT32 DoISPSensorShadingLoad(INT32 epprom_fd, UINT32 start_addr, UINT32* pGetSe
     CAMEEPROM_LOG("DoISPSensorShadingLoad (NOT YET) \n");
     return (err|EEPROM_ERR_SENSOR_SHADING);
 }
+/******************************************************************************
+*
+*******************************************************************************/
 UINT32 EEPROMGetCalData(UINT32* pGetSensorCalData)
 {
     UCHAR cBuf[128] = "/dev/";

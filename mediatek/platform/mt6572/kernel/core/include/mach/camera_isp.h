@@ -192,6 +192,7 @@ typedef enum
     ISP_CMD_CLEAR_IRQ,      //Clear IRQ
     ISP_CMD_DUMP_REG,       //Dump ISP registers , for debug usage
 //    ISP_CMD_SET_USER_PID,   //for signal
+    ISP_CMD_SET_DEVICE_ID, //for atv and sensor 
     ISP_CMD_PLL_SEL,
     ISP_CMD_GPIO_SEL,
     ISP_CMD_RT_BUF_CTRL,    //for pass buffer control    
@@ -208,6 +209,7 @@ typedef enum
 #define ISP_IOC_WAIT_IRQ        _IOW (ISP_MAGIC, ISP_CMD_WAIT_IRQ,      ISP_WAIT_IRQ_STRUCT)
 #define ISP_IOC_READ_IRQ        _IOR (ISP_MAGIC, ISP_CMD_READ_IRQ,      unsigned int)
 #define ISP_IOC_CLEAR_IRQ       _IOW (ISP_MAGIC, ISP_CMD_CLEAR_IRQ,     unsigned int)
+#define ISP_IOC_SET_DEVICE_ID   _IOW (ISP_MAGIC, ISP_CMD_SET_DEVICE_ID, int)
 #define ISP_IOC_DUMP_REG        _IO  (ISP_MAGIC, ISP_CMD_DUMP_REG)
 //#define ISP_IOC_SET_USER_PID    _IOW (ISP_MAGIC, ISP_CMD_SET_USER_PID, 	unsigned long)
 #define ISP_IOC_PLL_SEL_IRQ   	_IOW (ISP_MAGIC, ISP_CMD_PLL_SEL,     	ISP_PLL_SEL_STRUCT)

@@ -1,7 +1,8 @@
 LOCAL_PATH := $(call my-dir)
 
 ## ==> build this lib only when HAVE_MATV_FEATURE is yes
-ifeq ($(HAVE_MATV_FEATURE),yes)
+#ifeq ($(HAVE_MATV_FEATURE),yes)
+ifeq ($(MTK_ATV_CHIP),NMI5625)
 
 include $(CLEAR_VARS)
 LOCAL_ARM_MODE := arm
@@ -18,6 +19,7 @@ LOCAL_STATIC_LIBRARIES += libmatvctrl_93
 endif
 LOCAL_SHARED_LIBRARIES := libcutils libc libft libmatv_cust
 LOCAL_PRELINK_MODULE := false
+LOCAL_CFLAGS += -DNMI5625
 include $(BUILD_STATIC_LIBRARY)
 
 endif

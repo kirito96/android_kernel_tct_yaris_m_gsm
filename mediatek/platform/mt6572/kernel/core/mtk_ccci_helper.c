@@ -13,14 +13,14 @@
 #include <linux/platform_device.h>
 #include <linux/proc_fs.h>
 #include <asm/setup.h>
-
+#include <asm/memblock.h>
 #include <mach/mtk_ccci_helper.h>
 
 #include <mach/eint.h>
 #include <mach/mt_gpio.h>
 #include <mach/mt_reg_base.h>
 #include <mach/battery_common.h>
-#include <dfo/dfo_boot.h>
+#include <mach/dfo_boot.h>
 #include <mach/pmic_mt6320_sw.h>
 #include <mach/upmu_common.h>
 #include <mach/upmu_hw.h>
@@ -173,7 +173,7 @@ static int get_ccci_dfo_setting(char item[], unsigned int *val)
 			return 0;
 		}
 	}
-	printk("[ccci/ctl] (0)DFO:%s not found\n", i+1, item);
+	printk("[ccci/ctl] (0)DFO:%s not found\n", item);
 	return -1;
 }
 
@@ -243,16 +243,35 @@ static void cal_md_mem_usage(void)
 unsigned int get_nr_modem(void)
 {
     // 2 additional modems (rear end)
-    return modem_num;
+    return 0;
+    //return modem_num;
 }
 EXPORT_SYMBOL(get_nr_modem);
 
 
 unsigned int *get_modem_size_list(void)
 {
-    return modem_size_list;
+    return NULL;
+    //return modem_size_list;
 }
 EXPORT_SYMBOL(get_modem_size_list);
+
+//Reserve DRAM memory for MD from system
+int parse_ccci_dfo_setting(void *dfo_tbl, int num);
+void ccci_md_mem_reserve(void)
+{
+	void* ptr = NULL;
+
+	ptr = (void*)arm_memblock_steal(modem_size_list[0],SZ_32M);
+	if(ptr)
+	{
+		md_resv_mem_addr[MD_SYS1] =(unsigned int) ptr;
+		printk("[ccci/ctl] (0)md mem reserve successfully,ptr=%p,size=%d\n",ptr,modem_size_list[0]);
+	}else{
+		printk("[ccci/ctl] (0)md mem reserve fail.\n");
+		md_resv_mem_addr[MD_SYS1] = 0;
+	}
+}
 
 
 #if defined(FEATURE_DFO_EN)
@@ -284,6 +303,8 @@ int parse_ccci_dfo_setting(void *dfo_tbl, int num)
 		printk("[ccci/ctl] (0)DFO:%s:0x%08X\n", ccci_name, *ccci_value);
 	}
 	cal_md_mem_usage();
+
+	return 0;
 }
 #else
 
@@ -308,10 +329,10 @@ int parse_ccci_dfo_setting(void *dfo_data, int num)
 static void collect_md_setting(void)
 {
 	unsigned long	*addr;
-	unsigned int	*md_resv_mem_size_list;
 	unsigned int	md1_en;
 
-	addr = get_modem_start_addr_list();
+	//addr = get_modem_start_addr_list();
+	addr = (unsigned long	*)md_resv_mem_addr;
 
   if( (md_usage_case&MD1_EN)== MD1_EN) { //Only MD1 enabled
 		md1_en = 1;
@@ -353,7 +374,7 @@ int parse_meta_md_setting(unsigned char args[])
 		active_id = MD_SYS2;
 
 	switch(active_id){
-	case MD_SYS1:
+        	case MD_SYS1:
 			if(md_setting_flag&MD_WG_FLAG) {
 				md_support[MD_SYS1] = modem_wg;
 			} else if(md_setting_flag&MD_TG_FLAG) {
@@ -396,6 +417,25 @@ unsigned int get_modem_support(int md_id)
 	}
 }
 EXPORT_SYMBOL(get_modem_support);
+
+
+unsigned int set_modem_support(int md_id, int md_type)
+{
+	switch(md_id)
+	{
+	case MD_SYS1:
+		if (md_type >= modem_2g && md_type <= modem_tg){
+			md_support[MD_SYS1] = md_type;
+		}
+		else
+			printk("[ccci/ctl] error: set_modem_support fail(md:%d, md_type:%d)!\n", md_id+1, md_type);
+		return 0;
+
+	default:
+		return 0;
+	}
+}
+EXPORT_SYMBOL(set_modem_support);
 
 
 unsigned int get_resv_mem_size_for_md(int md_id)
@@ -508,7 +548,7 @@ void get_md_post_fix(int md_id, char buf[], char buf_ex[])
 			
 		case modem_tg:
 			snprintf(YY_K, 8, "_tg_n");
-			break;
+			break;			
 			
 		default:
 			break;
@@ -1274,6 +1314,12 @@ unsigned int get_modem_support(int md_id)
 	return 0;
 }
 
+unsigned int set_modem_support(int md_id, int md_type)
+{
+	return 0;
+}
+
+
 int register_ccci_kern_func(unsigned int id, ccci_kern_cb_func_t func)
 {
 	return -1;
@@ -1307,6 +1353,25 @@ void ccci_helper_exit(void)
 {
 }
 
+void ccci_md_mem_reserve(void)
+{
+}
+
+
+#ifndef MTK_ENABLE_MD1
+
+static int __init ccci_helper_init(void)
+{
+	internal_md_power_down();
+	return 0;
+}
+
+module_init(ccci_helper_init);
+
+MODULE_LICENSE("GPL");
+MODULE_AUTHOR("MTK");
+MODULE_DESCRIPTION("The ccci helper function");
+#endif//MTK_ENABLE_MD1
 
 #endif
 

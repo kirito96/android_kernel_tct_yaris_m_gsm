@@ -245,10 +245,10 @@ static kal_int32 read_adc_v_bat_temp(void *data)
 
 static kal_int32 read_adc_v_charger(void *data)
 {
-	kal_int32 val;
 #if defined(CONFIG_POWER_EXT)
     *(kal_int32*)(data) = 5001;
 #else
+    kal_int32 val;
     val = PMIC_IMM_GetOneChannelValue(VCHARGER_CHANNEL_NUMBER,*(kal_int32*)(data),1);
 	val = (((R_CHARGER_1+R_CHARGER_2)*100*val)/R_CHARGER_2)/100;
 	

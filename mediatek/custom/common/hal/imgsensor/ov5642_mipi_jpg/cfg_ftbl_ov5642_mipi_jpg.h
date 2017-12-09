@@ -1,4 +1,3 @@
-
 #ifndef _CFG_FTBL_OV5642_MIPI_JPG_H_
 #define _CFG_FTBL_OV5642_MIPI_JPG_H_
 

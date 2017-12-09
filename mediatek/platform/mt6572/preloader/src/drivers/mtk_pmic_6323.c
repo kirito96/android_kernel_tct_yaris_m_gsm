@@ -642,7 +642,7 @@ void hw_set_cc(int cc_val)
     for(i=CHR_CON0 ; i<=CHR_CON29 ; i++)    
     {        
         ret_val=pmic_read_interface(i,&reg_val,0xFFFF,0x0);        
-        PMIC_PRINT("[0x%x]=0x%x\n", i, reg_val);    
+        print("[0x%x]=0x%x\n", i, reg_val);    
     }
 
     printf("hw_set_cc: done\r\n");    
@@ -724,7 +724,7 @@ void pl_charging(int en_chr)
     for(i=CHR_CON0 ; i<=CHR_CON29 ; i++)    
     {        
         ret_val=pmic_read_interface(i,&reg_val,0xFFFF,0x0);        
-        PMIC_PRINT("[0x%x]=0x%x\n", i, reg_val);    
+        print("[0x%x]=0x%x\n", i, reg_val);    
     }
 
     printf("pl charging done\n");

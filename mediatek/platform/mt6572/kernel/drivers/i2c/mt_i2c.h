@@ -85,6 +85,7 @@ enum DMA_REGS_OFFSET {
 	OFFSET_INT_FLAG =	0x0,
 	OFFSET_INT_EN =		0x04,
 	OFFSET_EN =		0x08,
+	OFFSET_RST =		0x0c,
 	OFFSET_CON =		0x18,
 	OFFSET_MEM_ADDR =	0x1c,
 	OFFSET_LEN = 		0x24,
@@ -213,7 +214,7 @@ struct mt_i2c {
 
 //external API
 //void _i2c_dump_info(struct mt_i2c *i2c);
-inline void i2c_writew(struct mt_i2c *i2c, u8 offset, u16 value);
-inline u16 i2c_readw(struct mt_i2c *i2c, u8 offset);
+void i2c_writew(struct mt_i2c *i2c, u8 offset, u16 value);
+u16 i2c_readw(struct mt_i2c *i2c, u8 offset);
 
 #endif /* __MT_I2C_H__ */

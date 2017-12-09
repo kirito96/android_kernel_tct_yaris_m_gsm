@@ -15,6 +15,7 @@
 #include <linux/device.h>
 #include <linux/genhd.h>
 #include <linux/mm.h>
+#include <linux/kernel.h>
 
 #include "zram_drv.h"
 
@@ -54,23 +55,44 @@ static ssize_t disksize_show(struct device *dev,
 static ssize_t disksize_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t len)
 {
-	int ret;
 	u64 disksize;
+	struct zram_meta *meta;
 	struct zram *zram = dev_to_zram(dev);
 
-	ret = kstrtoull(buf, 10, &disksize);
-	if (ret)
-		return ret;
+#if 0
+	disksize = memparse(buf, NULL);
+	/*
+	if (!disksize)
+		return -EINVAL;
+	*/
+#else	/* Fix disksize */
+	disksize = default_disksize_perc_ram * ((totalram_pages << PAGE_SHIFT) / 100);
+	/* Expand its disksize if we have little system ram! */
+	if (totalram_pages < SUPPOSED_TOTALRAM) {
+		disksize += (disksize >> 1) ;
+	}
+	/* Align it! */
+	disksize = round_up(disksize, DISKSIZE_ALIGNMENT);
+#endif
 
+	disksize = PAGE_ALIGN(disksize);
+	meta = zram_meta_alloc(disksize);
+	/* Check whether meta is null */
+	if (!meta) {
+		printk(KERN_ALERT"Failed to allocate memory for meta!\n");
+		return len;
+	}
 	down_write(&zram->init_lock);
 	if (zram->init_done) {
 		up_write(&zram->init_lock);
+		zram_meta_free(meta);
 		pr_info("Cannot change disksize for initialized device\n");
 		return -EBUSY;
 	}
 
-	zram->disksize = PAGE_ALIGN(disksize);
+	zram->disksize = disksize;
 	set_capacity(zram->disk, zram->disksize >> SECTOR_SHIFT);
+	zram_init_device(zram, meta);
 	up_write(&zram->init_lock);
 
 	return len;
@@ -95,27 +117,34 @@ static ssize_t reset_store(struct device *dev,
 	zram = dev_to_zram(dev);
 	bdev = bdget_disk(zram->disk, 0);
 
+	if (!bdev)
+		return -ENOMEM;
+
 	/* Do not reset an active device! */
-	if (bdev->bd_holders)
-		return -EBUSY;
+	if (bdev->bd_holders) {
+		ret = -EBUSY;
+		goto out;
+	}
 
 	ret = kstrtou16(buf, 10, &do_reset);
 	if (ret)
-		return ret;
+		goto out;
 
-	if (!do_reset)
-		return -EINVAL;
+	if (!do_reset) {
+		ret = -EINVAL;
+		goto out;
+	}
 
 	/* Make sure all pending I/O is finished */
-	if (bdev)
-		fsync_bdev(bdev);
+	fsync_bdev(bdev);
+	bdput(bdev);
 
-	down_write(&zram->init_lock);
-	if (zram->init_done)
-		__zram_reset_device(zram);
-	up_write(&zram->init_lock);
-
+	zram_reset_device(zram);
 	return len;
+
+out:
+	bdput(bdev);
+	return ret;
 }
 
 static ssize_t num_reads_show(struct device *dev,
@@ -201,9 +230,10 @@ static ssize_t mem_used_total_show(struct device *dev,
 {
 	u64 val = 0;
 	struct zram *zram = dev_to_zram(dev);
+	struct zram_meta *meta = zram->meta;
 
 	if (zram->init_done)
-		val = zs_get_total_size_bytes(zram->mem_pool);
+		val = zs_get_total_size_bytes(meta->mem_pool);
 
 	return sprintf(buf, "%llu\n", val);
 }

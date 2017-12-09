@@ -6,7 +6,7 @@
 #include "AudioUtility.h"
 
 extern "C" {
-#include "bli_exp.h"
+#include "MtkAudioSrc.h"
 }
 
 namespace android
@@ -34,13 +34,13 @@ class BGSPlayBuffer
         status_t        InitBGSPlayBuffer(BGSPlayer *playPointer, uint32_t sampleRate, uint32_t chNum, int32_t mFormat);
         uint32_t        Write(char *buf, uint32_t num);
 
-        int32           mFormat;
+        int32_t         mFormat;
 
         // ring buffer
         RingBuf         mRingBuf;
 
         // BLI_SRC
-        BLI_HANDLE     *mBliHandlerBuffer;
+        MtkAudioSrc     *mBliSrc;
         char           *mBliOutputLinearBuffer;
 
         Mutex           mBGSPlayBufferMutex;

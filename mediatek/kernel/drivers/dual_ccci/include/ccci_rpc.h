@@ -21,9 +21,6 @@
 #ifndef __CCCI_RPC_H__
 #define __CCCI_RPC_H__
 
-#include <crypto_engine_export.h>
-//#include <sec_error.h>
-
 #define CCCI_SED_LEN_BYTES   16 
 typedef struct {unsigned char sed[CCCI_SED_LEN_BYTES]; }sed_t;
 #define SED_INITIALIZER { {[0 ... CCCI_SED_LEN_BYTES-1]=0}}
@@ -79,4 +76,4 @@ extern int ccci_rpc_init(int);
 extern void ccci_rpc_exit(int);
 
 
-#endif // 
+#endif // __CCCI_RPC_H__

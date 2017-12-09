@@ -31,6 +31,8 @@
 
 #include <platform/mt_typedefs.h>
 #include <platform/boot_mode.h>
+#include <platform/meta.h>
+#include <dev/mrdump.h>
 #include <platform/mt_reg_base.h>
 
 
@@ -40,6 +42,11 @@ BOOTMODE g_boot_mode = NORMAL_BOOT;
 #ifdef MTK_KERNEL_POWER_OFF_CHARGING
 extern BOOL kernel_power_off_charging_detection(void);
 #endif
+extern BOOL factory_detection(void);
+extern BOOL boot_menu_detection(void);
+extern BOOL recovery_detection(void);
+
+
 BOOL meta_mode_check(void)
 {
 	if(g_boot_mode == META_BOOT || g_boot_mode == ADVMETA_BOOT || g_boot_mode ==ATE_FACTORY_BOOT || g_boot_mode == FACTORY_BOOT)
@@ -59,7 +66,10 @@ void boot_mode_select(void)
     {
       return;
     }
-
+    if (aee_kdump_detection())
+    {
+      return;
+    }
 #if defined (HAVE_LK_TEXT_MENU)
     if(Check_RTC_PDN1_bit13())
     {
@@ -68,24 +78,16 @@ void boot_mode_select(void)
       Set_Clr_RTC_PDN1_bit13(false);
    	  return;
     }
-
-// Begin. Modified by jinming.xiang to remove factory mode CR 496452(added compiler parameter: USER_BUILD)
-#ifndef USER_BUILD 
-
     if (factory_detection())
     {
       return;
     }
-#endif
-// End. Modified by jinming.xiang to remove factory mode CR 496452(added compiler parameter: USER_BUILD)
-
-
 #if defined(MEM_PRESERVED_MODE_ENABLE)
     // default enable memory presrved mode
-    platform_mem_preserved_config(1);
+    platform_mem_preserved_config(0);
 #endif //#if defined(MEM_PRESERVED_MODE_ENABLE)
-    if(boot_menu_detection())
-    {//recovery, fastboot, normal boot, mem-preserved mode.
+    if(boot_menu_detection())//recovery, fastboot, normal boot.
+    {
         return;
     }
     recovery_detection();
@@ -96,18 +98,10 @@ void boot_mode_select(void)
       return;
     }
 #endif
-
-
-// Begin. Modified by jinming.xiang to remove factory mode CR 496452(added compiler parameter: USER_BUILD)
-#ifndef USER_BUILD  
-
     if (factory_detection())
     {
       return;
     }
-#endif
-// End. Modified by jinming.xiang to remove factory mode CR 496452(added compiler parameter: USER_BUILD)
-
     if(recovery_detection())
     {
       //**************************************

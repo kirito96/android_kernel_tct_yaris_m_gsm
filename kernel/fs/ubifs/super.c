@@ -304,7 +304,9 @@ static int ubifs_write_inode(struct inode *inode, struct writeback_control *wbc)
 	if (is_bad_inode(inode))
 		return 0;
 
-	mutex_lock(&ui->ui_mutex);
+	if(mutex_trylock(&ui->ui_mutex) == 0) {
+		return 0;
+	}
 	/*
 	 * Due to races between write-back forced by budgeting
 	 * (see 'sync_some_inodes()') and pdflush write-back, the inode may
@@ -421,7 +423,9 @@ static int ubifs_statfs(struct dentry *dentry, struct kstatfs *buf)
 	else
 		buf->f_bavail = 0;
 	buf->f_files = 0;
-	buf->f_ffree = 0;
+	spin_lock(&c->cnt_lock);
+	buf->f_ffree = INUM_WATERMARK - c->highest_inum;
+	spin_unlock(&c->cnt_lock);
 	buf->f_namelen = UBIFS_MAX_NLEN;
 	buf->f_fsid.val[0] = le32_to_cpu(uuid[0]) ^ le32_to_cpu(uuid[2]);
 	buf->f_fsid.val[1] = le32_to_cpu(uuid[1]) ^ le32_to_cpu(uuid[3]);
@@ -823,13 +827,11 @@ static int alloc_wbufs(struct ubifs_info *c)
 		c->jheads[i].grouped = 1;
 	}
 
-	c->jheads[BASEHD].wbuf.dtype = UBI_SHORTTERM;
 	/*
 	 * Garbage Collector head likely contains long-term data and
 	 * does not need to be synchronized by timer. Also GC head nodes are
 	 * not grouped.
 	 */
-	c->jheads[GCHD].wbuf.dtype = UBI_LONGTERM;
 	c->jheads[GCHD].wbuf.no_timer = 1;
 	c->jheads[GCHD].grouped = 0;
 
@@ -2003,7 +2005,6 @@ static struct ubifs_info *alloc_ubifs_info(struct ubi_volume_desc *ubi)
 		mutex_init(&c->lp_mutex);
 		mutex_init(&c->tnc_mutex);
 		mutex_init(&c->log_mutex);
-		mutex_init(&c->mst_mutex);
 		mutex_init(&c->umount_mutex);
 		mutex_init(&c->bu_mutex);
 		mutex_init(&c->write_reserve_mutex);
@@ -2080,6 +2081,9 @@ static int ubifs_fill_super(struct super_block *sb, void *data, int silent)
 	if (c->max_inode_sz > MAX_LFS_FILESIZE)
 		sb->s_maxbytes = c->max_inode_sz = MAX_LFS_FILESIZE;
 	sb->s_op = &ubifs_super_operations;
+#ifdef CONFIG_UBIFS_FS_XATTR
+	sb->s_xattr = ubifs_xattr_handlers;
+#endif
 
 	mutex_lock(&c->umount_mutex);
 	err = mount_ubifs(c);

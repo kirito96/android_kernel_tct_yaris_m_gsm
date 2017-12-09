@@ -1,5 +1,4 @@
-
-#include <linux/autoconf.h>
+#include <generated/autoconf.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
@@ -24,6 +23,12 @@
 #include <linux/fs.h>
 #include <asm/uaccess.h>
 
+#include <linux/kernel.h>
+#include <linux/syscalls.h>
+#include <linux/fcntl.h>
+#include <asm/segment.h>
+#include <linux/buffer_head.h>
+
 #include "mt_sd.h"
 #include "emmc_otp.h"
 
@@ -33,8 +38,23 @@
 #ifndef MTK_EMMC_SUPPORT_OTP
 #define MTK_EMMC_SUPPORT_OTP     
 #endif
+//add by cansong.li for FR595365 open OTP
+#ifndef MODEM_OTP_SUPPORT
+#define MODEM_OTP_SUPPORT
+#endif
+//end FR595365
+#define EMMC_OTP_DEBUG           1
 
-#define EMMC_OTP_DEBUG           0
+#define TRACE_REGION "/dev/pro_info"
+#define TRACE_REGION_SZ (0x200)
+#define TRACE_ID_OFFSET (0x169)
+
+typedef struct {
+    unsigned int group;
+    unsigned int offset;
+    int          cached;
+} id_offset_t;
+static id_offset_t g_id_offset;
 
 //static spinlock_t               g_emmc_otp_lock;
 static struct emmc_otp_config   g_emmc_otp_func;
@@ -45,175 +65,15 @@ extern struct msdc_host *mtk_msdc_host[];
 extern int mmc_send_ext_csd(struct mmc_card *card, u8 *ext_csd);
 
 
-// FR443116  added by yongming.li for support  emmc otp  begin
-// remember open the macro in ProjectConfig.mk
-// MTK_EMMC_SUPPORT_OTP = yes
-
-typedef enum
-{
-    OTP_IMEI_1 = 0,
-    OTP_IMEI_2,
-    OTP_IMEI_3,
-    OTP_IMEI_4,
-} OTP_IMEI_NUMBER;
-
-OTP_IMEI_NUMBER Imei_number = OTP_IMEI_1;
-
-typedef struct
-{
-	unsigned char imei[8];
-	unsigned char imei_checksum[8];
-	unsigned char res[16];
-} OTP_LAYOUT;
-
-typedef struct
-{
-	unsigned char imei[8];
-	unsigned char svn;
-	unsigned char pad;
-} IMEI_SVN;
-
-#define   INPUT_IMEI_OFFSET    10
-// make sure same as  the tools team
-#define   OTP_IMEI_OFFSET        32  
-
-
-
-static void  dumpBuf(void * buf)
-{
-   unsigned char * temp;
-   
-   temp=(char *)buf;
-
-   int i=0;
-   //for(i=0;i<128;i=i+8)
-   //{
-      printk(KERN_ERR  "[%s] \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n \
-%02x %02x %02x %02x %02x %02x %02x %02x \r\n",__func__,  \
-	   	temp[i+0],temp[i+1],temp[i+2],temp[i+3],temp[i+4],temp[i+5],temp[i+6],temp[i+7], \
-	   	temp[i+8],temp[i+9],temp[i+10],temp[i+11],temp[i+12],temp[i+13],temp[i+14],temp[i+15],\
-	   	temp[i+16],temp[i+17],temp[i+18],temp[i+19],temp[i+20],temp[i+21],temp[i+22],temp[i+23],\
-	   	temp[i+24],temp[i+25],temp[i+26],temp[i+27],temp[i+28],temp[i+29],temp[i+30],temp[i+31],\
-	   	temp[i+32],temp[i+33],temp[i+34],temp[i+35],temp[i+36],temp[i+37],temp[i+38],temp[i+39],\
-	   	temp[i+40],temp[i+41],temp[i+42],temp[i+43],temp[i+44],temp[i+45],temp[i+46],temp[i+47],\
-	   	temp[i+48],temp[i+49],temp[i+50],temp[i+51],temp[i+52],temp[i+53],temp[i+54],temp[i+55],\
-	   	temp[i+56],temp[i+57],temp[i+58],temp[i+59],temp[i+60],temp[i+61],temp[i+62],temp[i+63],\
-	   	temp[i+64],temp[i+65],temp[i+66],temp[i+67],temp[i+68],temp[i+69],temp[i+70],temp[i+71],\
-	   	temp[i+72],temp[i+73],temp[i+74],temp[i+75],temp[i+76],temp[i+77],temp[i+78],temp[i+79],\
-	   	temp[i+80],temp[i+81],temp[i+82],temp[i+83],temp[i+84],temp[i+85],temp[i+86],temp[i+87],\
-	   	temp[i+88],temp[i+89],temp[i+90],temp[i+91],temp[i+92],temp[i+93],temp[i+94],temp[i+95],\
-	   	temp[i+96],temp[i+97],temp[i+98],temp[i+99],temp[i+100],temp[i+101],temp[i+102],temp[i+103],\
-	   	temp[i+104],temp[i+105],temp[i+106],temp[i+107],temp[i+108],temp[i+109],temp[i+110],temp[i+111],\
-	   	temp[i+112],temp[i+113],temp[i+114],temp[i+115],temp[i+116],temp[i+117],temp[i+118],temp[i+119],\
-	   	temp[i+120],temp[i+121],temp[i+122],temp[i+123],temp[i+124],temp[i+125],temp[i+126],temp[i+127]);
-   //}
-}
-
-static void jrd_imei_offset(struct otp_ctl *p)
-{
-    #if 0
-    if (10 == p->Offset)
-        p->Offset = 32;
-    #endif
-    Imei_number=(p->Offset)/INPUT_IMEI_OFFSET;
-    if((p->Offset==0) ||(p->Offset==INPUT_IMEI_OFFSET) ||(p->Offset==INPUT_IMEI_OFFSET*2) ||(p->Offset==INPUT_IMEI_OFFSET*3))
-    {
-        p->Offset=((p->Offset)/INPUT_IMEI_OFFSET)*OTP_IMEI_OFFSET;
-    }
-    
-    return;
-}
-void OTP_IMEI_Write (void *BufferPtr)
-{
-	int i, j;
-	OTP_LAYOUT  * otp_layout;
-
-	printk(KERN_ERR "[%s]: begin begin begin begin begin begin begin begin begin begin begin begin begin\n", __func__);
-       dumpBuf(BufferPtr);
-       otp_layout= (OTP_LAYOUT*)((unsigned char*)BufferPtr+Imei_number*OTP_IMEI_OFFSET);
-	for (j=0; j<7/*8*/; j++)
-	{
-
-		if (0xFF == otp_layout->imei[j])
-		{
-		        printk(KERN_ERR"[%s]: invalid imei serial number,please try again j is %d\n", __func__,j);
-			 return  -1;
-		}
-	}
-
-	for (j=0; j<8; j++)
-	{
-
-	    otp_layout->imei_checksum[j] = 0xFF-otp_layout->imei[j];
-	}
-	printk(KERN_ERR "[%s]: $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n", __func__);
-       dumpBuf(BufferPtr);   
-       printk(KERN_ERR "[%s]: end end end end end end end end end end end end end end end end end end end end \n", __func__);
-}
-
-
-void OTP_IMEI_Read (void *BufferPtr)
-{
-	int  j;
-	unsigned char bValid = true;
-	OTP_LAYOUT *otp_layout;
-	IMEI_SVN imei_svn;
-	memset(imei_svn.imei, 0xff,sizeof(IMEI_SVN));
-
-       printk(KERN_ERR "[%s]: begin begin begin begin begin begin begin begin begin begin begin begin begin\n", __func__);
-       dumpBuf(BufferPtr);
-	
-	
-       otp_layout= (OTP_LAYOUT*)((unsigned char*)BufferPtr+Imei_number*OTP_IMEI_OFFSET);
-
-	for (j=0, bValid = true; j<8; j++)
-	{
-		if ((otp_layout->imei[j]+otp_layout->imei_checksum[j]) != 0xFF)
-		{
-			bValid = false;
-			printk(KERN_ERR "[%s]:imei[%d] =%x, imei_checksum =%x \n", __func__, j,otp_layout->imei[j],otp_layout->imei_checksum[j]);
-			break;
-		}
-	}
-	if (bValid == true)
-	{
-		memcpy(imei_svn.imei, otp_layout->imei, 8);
-		imei_svn.svn = 0x01;
-		imei_svn.pad = 0x00;
-	}
-	
-	printk(KERN_ERR "[%s]: $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$\n", __func__);
-	memset(BufferPtr+Imei_number*OTP_IMEI_OFFSET, 0xff, INPUT_IMEI_OFFSET);
-	memcpy(BufferPtr+Imei_number*OTP_IMEI_OFFSET, imei_svn.imei,INPUT_IMEI_OFFSET);
-	dumpBuf(BufferPtr);
-	printk(KERN_ERR "[%s]: end end end end end end end end end end end end end end end end end end end end \n", __func__);
-	
-}
-
-//FR443116  added by yongming.li for support  emmc otp  end
-
-
 struct msdc_host* emmc_otp_get_host(void)
 {
     return mtk_msdc_host[EMMC_HOST_NUM];
 }
 
 
+/******************************************************************************
+ * EMMC OTP operations
+ * ***************************************************************************/
 unsigned int emmc_get_wp_size(void)
 {
     unsigned char l_ext_csd[512];
@@ -474,9 +334,6 @@ unsigned int emmc_otp_read(unsigned int blk_offset, void *BufferPtr)
     else
         l_ret = OTP_SUCCESS;
 
-    // FR443116  added by yongming.li for imei checksum
-    OTP_IMEI_Read(BufferPtr);
-
     return l_ret;
 }
 
@@ -492,11 +349,7 @@ unsigned int emmc_otp_write(unsigned int blk_offset, void *BufferPtr)
     struct mmc_command msdc_cmd;
     struct mmc_request msdc_mrq;
     struct msdc_host *host_ctl;
-
-    //FR443116  added by yongming.li for imei checksum  
-    OTP_IMEI_Write(BufferPtr);
-    //return OTP_SUCCESS;  //  only for test
-	
+ 
     /* check parameter */
     l_addr = emmc_otp_start();
     l_otp_size = emmc_get_wp_size();
@@ -659,8 +512,8 @@ static int mt_otp_access(unsigned int access_type, unsigned int offset, void *bu
         }
         else if (FS_EMMC_OTP_WRITE == access_type){
             AccessLength = l_block_size - (offset % l_block_size);
-            memset(p_D_Buff, 0x00, l_block_size);
-            #if 1
+            memset(p_D_Buff, 0x0, l_block_size);
+
             Status = g_emmc_otp_func.read(blkno, p_D_Buff);
             *status = Status;
 
@@ -668,7 +521,6 @@ static int mt_otp_access(unsigned int access_type, unsigned int offset, void *bu
                 printk("[%s]: read before write, Read status (%d) blkno (0x%x)\n", __func__, Status, blkno);
                 break;
             }
-	     #endif 
 
             if (length >= AccessLength){
                 memcpy((p_D_Buff+(offset % l_block_size)), BufAddr, AccessLength);
@@ -707,6 +559,54 @@ exit:
     return ret;
 }
 
+static void id_offset(struct otp_ctl *p) {
+printk("***xbl***OTP:NON TD project ,call id_offset.\n");
+    int fd;
+    char buffer[TRACE_REGION_SZ];
+    char bf;
+    long len;
+
+    g_id_offset.offset = p->Offset;
+    if(1 == g_id_offset.cached)
+        goto ready;
+
+    mm_segment_t oldfs = get_fs();
+    set_fs(KERNEL_DS);
+
+    fd = sys_open(TRACE_REGION, O_RDONLY, 0);
+    if(fd >= 0) {
+        /*default lseek*/
+        len = sys_read(fd, buffer, TRACE_REGION_SZ);
+        if (len < TRACE_REGION_SZ) {
+            printk(KERN_DEBUG "[EMMC_OTP]read %s file failed, len=%d\n", TRACE_REGION, len);
+            goto fail;
+        } else {
+            printk(KERN_DEBUG "[EMMC_OTP]read %s ok, len=%d\n", TRACE_REGION, len);
+        }
+        sys_close(fd);
+    } else {
+        printk(KERN_DEBUG "[EMMC_OTP]can not open %s file\n", TRACE_REGION);
+        goto fail;
+    }
+
+    set_fs(oldfs);
+
+    bf = buffer[TRACE_ID_OFFSET] & 0xF; /*go encrypted?*/
+    if (bf == 0x0 || bf == 0x1) {
+        printk(KERN_DEBUG "[EMMC_OTP]use id group %d\n", bf);
+        g_id_offset.group = bf;
+        goto ready;
+    }
+
+fail:
+    g_id_offset.group = 0x0;
+ready:
+    p->Offset = g_id_offset.group*0x80+(g_id_offset.offset/0xA)*0x20;
+    printk(KERN_DEBUG "[EMMC_OTP]group is %d, use id offset 0x%x\n", g_id_offset.group, p->Offset);
+    g_id_offset.cached = 1;
+}
+
+
 static long mt_otp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
     int ret = 0;
@@ -724,8 +624,7 @@ static long mt_otp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
         goto exit;
     }
 
-    jrd_imei_offset(&otpctl);
-
+    id_offset(&otpctl);
     /*
     if(false == g_bInitDone)
     {
@@ -742,7 +641,7 @@ static long mt_otp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
     switch (cmd){
     case EMMC_OTP_GET_LENGTH:
         printk("OTP IOCTL: EMMC_OTP_GET_LENGTH\n");
-        if (('i' == (otpctl.status & 0xf)) && ('c' == ((otpctl.status >> 8) & 0xf)) && ('c' == ((otpctl.status >> 16) & 0xf)) && ('c' == ((otpctl.status >> 24) & 0xf))){
+        if (('c' == (otpctl.status & 0xff)) && ('c' == ((otpctl.status >> 8) & 0xff)) && ('c' == ((otpctl.status >> 16) & 0xff)) && ('i' == ((otpctl.status >> 24) & 0xff))){
             otpctl.QLength = g_otp_user_ccci; 
         } else {
             g_emmc_otp_func.query_length(&otpctl.QLength);
@@ -756,15 +655,6 @@ static long mt_otp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
         mt_otp_access(FS_EMMC_OTP_READ, otpctl.Offset, pbuf, otpctl.Length, &otpctl.status);
 
-        printk(KERN_ERR "[%s]: -----------------------------------\n", __func__);
-	  if(otpctl.Length==0X0A)
-	  {
-	     	  printk(KERN_ERR "[%s] !! read data is : %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",__func__, \
-	  	       pbuf[0], pbuf[1],pbuf[2],pbuf[3],pbuf[4],pbuf[5],\
-	  	       pbuf[6], pbuf[7],pbuf[8],pbuf[9]);
-	  }
-	 printk(KERN_ERR "[%s]: -----------------------------------\n", __func__);
-	 
         if (copy_to_user(otpctl.BufferPtr, pbuf, (sizeof(char)*otpctl.Length)))
         {
             printk("EMMC_OTP IOCTL: Copy to user buffer Error !\n");
@@ -778,24 +668,6 @@ static long mt_otp_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
             printk("EMMC_OTP IOCTL: Copy from user buffer Error !\n");
             goto error;
         }
-          //FR443116  added by liyongming for test write imei 
-	  if(otpctl.Length>=0X0A)
-	  {
-	     	  printk(KERN_ERR "[%s] !!!write data is : %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n",__func__, \
-	  	       pbuf[0], pbuf[1],pbuf[2],pbuf[3],pbuf[4],pbuf[5],\
-	  	       pbuf[6], pbuf[7],pbuf[8],pbuf[9]);
-	  }
-          int j=0;
-	   for (j=0; j<7; j++)
-           {
-	       if (0xFF == pbuf[j])
-	       {
-	            printk(KERN_ERR, "OTP[%s][%d]: invalid raw data to write !!\n", __func__,__LINE__);
-                   goto error;
-               }
-	   }
-	  //FR443116  added by liyongming for test write imei end
-	  
         mt_otp_access(FS_EMMC_OTP_WRITE, otpctl.Offset , pbuf, otpctl.Length, &otpctl.status);
         break;
     default:

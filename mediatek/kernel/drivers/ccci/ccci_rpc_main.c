@@ -59,6 +59,29 @@ struct work_struct      rpc_work;
 
 extern void ccci_rpc_work_helper(int *p_pkt_num, RPC_PKT pkt[], RPC_BUF *p_rpc_buf, unsigned int tmp_data[]);
 
+#if defined(MTK_TC1_FEATURE)
+/*********************************************************************************
+ * RPC Daemon section
+ *********************************************************************************/
+DECLARE_WAIT_QUEUE_HEAD(rpc_daemon_waitq);
+static struct kfifo     rpc_daemon_fifo;
+typedef struct _rpc_stream_msg_t
+{
+	unsigned length;
+	unsigned index;
+}rpc_stream_msg_t;
+static dev_t		rpc_dev_num;
+static struct cdev	rpc_cdev;
+static void rpc_daemon_notify(unsigned int buff_index);
+
+#define CCCI_RPC_MAJOR			178	// Note, this same to FS MAJOR
+
+#define CCCI_RPC_IOC_MAGIC		'R'
+#define CCCI_RPC_IOCTL_GET_INDEX	_IO(CCCI_RPC_IOC_MAGIC, 1)
+#define CCCI_RPC_IOCTL_SEND		_IOR(CCCI_RPC_IOC_MAGIC, 2, unsigned int)
+//--------------------------------------------------------------------------------
+#endif
+
 static bool get_pkt_info(unsigned int* pktnum, RPC_PKT* pkt_info, char* pdata)
 {
 	unsigned int pkt_num = *((unsigned int*)pdata);
@@ -153,6 +176,33 @@ static bool rpc_write(int buf_idx, RPC_PKT* pkt_src, unsigned int pkt_num)
 _Exit:
 	return ret;
 }
+
+#if defined(MTK_TC1_FEATURE)
+typedef enum
+{
+	RPC_CCCI_TC1_FAC_READ_SIM_LOCK_TYPE = 0x3001,
+	RPC_CCCI_TC1_FAC_READ_FUSG_FLAG,
+	RPC_CCCI_TC1_FAC_CHECK_UNLOCK_CODE_VALIDNESS,
+	RPC_CCCI_TC1_FAC_CHECK_NETWORK_CODE_VALIDNESS,
+	RPC_CCCI_TC1_FAC_WRITE_SIM_LOCK_TYPE,
+	RPC_CCCI_TC1_FAC_READ_IMEI,
+	RPC_CCCI_TC1_FAC_WRITE_IMEI,
+	RPC_CCCI_TC1_FAC_READ_NETWORK_CODE_LIST_NUM,
+	RPC_CCCI_TC1_FAC_READ_NETWORK_CODE,
+	//.............
+	RPC_CCCI_TC1_FAC_WRITE_NETWORK_CODE_LIST_NUM,
+	RPC_CCCI_TC1_FAC_WRITE_UNLOCK_CODE_VERIFY_FAIL_COUNT,
+	RPC_CCCI_TC1_FAC_READ_UNLOCK_CODE_VERIFY_FAIL_COUNT,
+	RPC_CCCI_TC1_FAC_WRITE_UNLOCK_FAIL_COUNT,
+	RPC_CCCI_TC1_FAC_READ_UNLOCK_FAIL_COUNT,
+	RPC_CCCI_TC1_FAC_WRITE_UNLOCK_CODE,
+	RPC_CCCI_TC1_FAC_VERIFY_UNLOCK_CODE,
+	RPC_CCCI_TC1_FAC_WRITE_NETWORK_CODE,
+	RPC_CCCI_TC1_FAC_INIT_SIM_LOCK_DATA,
+	
+} RPC_CCCI_OP_ID;
+#endif
+
 static void ccci_rpc_work(struct work_struct *work  __always_unused)
 {
 	int pkt_num = 0;		
@@ -211,6 +261,29 @@ static void ccci_rpc_work(struct work_struct *work  __always_unused)
 				
 		switch(rpc_buf_tmp->op_id)
 		{
+#if defined(MTK_TC1_FEATURE)
+		case RPC_CCCI_TC1_FAC_READ_SIM_LOCK_TYPE:
+		case RPC_CCCI_TC1_FAC_READ_FUSG_FLAG:
+		case RPC_CCCI_TC1_FAC_CHECK_UNLOCK_CODE_VALIDNESS:
+		case RPC_CCCI_TC1_FAC_CHECK_NETWORK_CODE_VALIDNESS:
+		case RPC_CCCI_TC1_FAC_WRITE_SIM_LOCK_TYPE:
+		case RPC_CCCI_TC1_FAC_READ_IMEI:
+		case RPC_CCCI_TC1_FAC_WRITE_IMEI:
+		case RPC_CCCI_TC1_FAC_READ_NETWORK_CODE_LIST_NUM:
+		case RPC_CCCI_TC1_FAC_READ_NETWORK_CODE:
+		case RPC_CCCI_TC1_FAC_WRITE_NETWORK_CODE_LIST_NUM:
+		case RPC_CCCI_TC1_FAC_WRITE_UNLOCK_CODE_VERIFY_FAIL_COUNT:
+		case RPC_CCCI_TC1_FAC_READ_UNLOCK_CODE_VERIFY_FAIL_COUNT:
+		case RPC_CCCI_TC1_FAC_WRITE_UNLOCK_FAIL_COUNT:
+		case RPC_CCCI_TC1_FAC_READ_UNLOCK_FAIL_COUNT:
+		case RPC_CCCI_TC1_FAC_WRITE_UNLOCK_CODE:
+		case RPC_CCCI_TC1_FAC_VERIFY_UNLOCK_CODE:
+		case RPC_CCCI_TC1_FAC_WRITE_NETWORK_CODE:
+		case RPC_CCCI_TC1_FAC_INIT_SIM_LOCK_DATA:
+			CCCI_RPC_MSG("tc1_opid=%d\n", rpc_buf_tmp->op_id);
+			rpc_daemon_notify(buf_idx);
+			return ;
+#endif         
 		default:
 			ccci_rpc_work_helper(&pkt_num, pkt, rpc_buf_tmp, tmp_data);
 			break;
@@ -238,6 +311,179 @@ static void ccci_rpc_callback(CCCI_BUFF_T *buff, void *private_data)
    	schedule_work(&rpc_work);
 	CCCI_RPC_MSG("callback --\n");    
 }
+
+#if defined(MTK_TC1_FEATURE)
+void rpc_daemon_notify(unsigned int buff_index)
+{
+	kfifo_in(&rpc_daemon_fifo, &buff_index, sizeof(unsigned int));
+	wake_up_interruptible(&rpc_daemon_waitq);    
+}
+
+static int rpc_get_share_mem_index(void)
+{
+	int ret;
+	unsigned long flag;
+
+	CCCI_RPC_MSG("get index start\n");
+
+	if (wait_event_interruptible(rpc_daemon_waitq, kfifo_len(&rpc_daemon_fifo) != 0) != 0)
+	{
+		return -ERESTARTSYS;
+	}
+
+	if (kfifo_out(&rpc_daemon_fifo, (unsigned int *) &ret, sizeof(int)) != sizeof(int)){
+		CCCI_RPC_MSG("Unable to get new request from fifo\n");
+		return -EFAULT;
+	}
+    
+	CCCI_RPC_MSG("get index(%d) end\n", ret);
+
+	return ret;
+}
+
+static int rpc_daemon_send_helper(unsigned long arg)
+{
+	void __user		*argp;
+	CCCI_BUFF_T		stream;
+	rpc_stream_msg_t	message;
+	int			ret = 0;
+    
+	argp = (void __user *) arg;
+	if (copy_from_user((void *) &message, argp, sizeof(rpc_stream_msg_t)))
+	{
+		printk("ccci_rpc: fail send msg -copy_from_user\n");
+		ret= -EFAULT;      
+	}
+	else{
+		stream.data[0]  = rpc_buf_phy + (sizeof(RPC_BUF) * message.index);
+		stream.data[1]  = message.length + 4;
+		stream.reserved = message.index;
+		CCCI_RPC_MSG("%s:  index(%d)\n",__func__,  message.index);
+
+		ret = ccci_write(CCCI_RPC_TX, &stream);
+		if(ret != CCCI_SUCCESS)
+		{
+			printk("ccci_rpc: fail send msg <%d>!!!\n", ret);
+
+		}
+	}
+
+	return ret;
+}
+
+
+static int rpc_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	unsigned long off, start, len;
+    
+	if (vma->vm_pgoff > (~0UL >> PAGE_SHIFT)){
+		return -EINVAL;
+	}
+
+	off   = vma->vm_pgoff << PAGE_SHIFT;
+	start = (unsigned long) rpc_buf_phy;
+	len   = PAGE_ALIGN((start & ~PAGE_MASK) + CCCI_RPC_SMEM_SIZE);
+
+	if ((vma->vm_end - vma->vm_start + off) > len)
+	{
+		return -EINVAL;
+	}
+
+	off += start & PAGE_MASK;
+	vma->vm_pgoff  = off >> PAGE_SHIFT;
+	vma->vm_flags |= VM_RESERVED;
+	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+    
+	return remap_pfn_range(vma, vma->vm_start, off >> PAGE_SHIFT, vma->vm_end - vma->vm_start, vma->vm_page_prot);
+}
+
+static int rpc_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	int ret;
+    
+	switch(cmd)
+	{
+	case CCCI_RPC_IOCTL_GET_INDEX:
+		ret = rpc_get_share_mem_index();
+		break;
+
+	case CCCI_RPC_IOCTL_SEND:
+		ret = rpc_daemon_send_helper(arg);
+		break;
+
+	default:
+		ret = -ENOIOCTLCMD;
+		break;
+	}
+ 
+	return ret;
+}
+
+static int rpc_open(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+static int rpc_release(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+static struct file_operations rpc_fops = 
+{
+	.owner   	= THIS_MODULE,
+	.unlocked_ioctl	= rpc_ioctl,
+	.open		= rpc_open,
+	.mmap		= rpc_mmap,
+	.release	= rpc_release,
+};
+
+int rpc_device_init(void)
+{
+	int  ret;
+
+	printk("ccci_rpc: rpc_device_init++\n");
+
+	ret=kfifo_alloc(&rpc_daemon_fifo, sizeof(unsigned int)*IPC_RPC_REQ_BUFFER_NUM, GFP_KERNEL);
+	if (ret)
+	{
+		printk("ccci_rpc: Unable to create daemon fifo\n");
+		return ret;
+	}
+
+	rpc_dev_num	= MKDEV(CCCI_RPC_MAJOR, 1);	// Using FS major, sub id is 1, not 0
+	ret		= register_chrdev_region(rpc_dev_num, 1, "ccci_rpc");
+    
+	if (ret){
+		printk("ccci_rpc: Register character device failed\n");
+		return ret;
+	}
+	
+	cdev_init(&rpc_cdev, &rpc_fops);
+	rpc_cdev.owner = THIS_MODULE;
+	rpc_cdev.ops   = &rpc_fops;
+
+	ret = cdev_add(&rpc_cdev, rpc_dev_num, 1);
+	if (ret){
+		printk("ccci_rpc: Char device add failed\n");
+		unregister_chrdev_region(rpc_dev_num, 1);
+		return ret;
+	}
+
+	printk("ccci_rpc: rpc_device_init--\n");
+
+	return 0;
+}
+
+
+ void rpc_device_deinit(void)
+{
+	kfifo_free(&rpc_daemon_fifo);
+	cdev_del(&rpc_cdev);
+	unregister_chrdev_region(rpc_dev_num, 1);
+}
+//-------------------------------------------------------------------------------------
+#endif
 
 int __init ccci_rpc_init(void)
 { 
@@ -268,6 +514,11 @@ int __init ccci_rpc_init(void)
     ASSERT(ccci_register(CCCI_RPC_TX, ccci_rpc_callback, NULL) == CCCI_SUCCESS);
     ASSERT(ccci_register(CCCI_RPC_RX, ccci_rpc_callback, NULL) == CCCI_SUCCESS);
 
+#if defined(MTK_TC1_FEATURE)
+    ret = rpc_device_init();
+    if(0 != ret)
+        return ret;
+#endif
     return 0;
 }
 
@@ -281,7 +532,9 @@ void __exit ccci_rpc_exit(void)
     }
 	//destroy_workqueue(rpc_work_queue);
 #endif
-	
+#if defined(MTK_TC1_FEATURE)
+	rpc_device_deinit();
+#endif
 	kfifo_free(&rpc_fifo);
 	ccci_unregister(CCCI_RPC_RX);
 	ccci_unregister(CCCI_RPC_TX);

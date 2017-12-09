@@ -19,7 +19,7 @@ class SpeechEnhancementController
          * speech enhancement parameters setting
          */
         status_t SetNBSpeechParametersToAllModem(const AUDIO_CUSTOM_PARAM_STRUCT *pSphParamNB);
-#if defined(MTK_DUAL_MIC_SUPPORT) ||defined(JRD_HDVOICE_CUST) /*modify for dual mic cust by yi.zheng.hz*/
+#if defined(MTK_DUAL_MIC_SUPPORT)
         status_t SetDualMicSpeechParametersToAllModem(const AUDIO_CUSTOM_EXTRA_PARAM_STRUCT *pSphParamDualMic);
 #endif
 #if defined(MTK_WB_SPEECH_SUPPORT)
@@ -40,6 +40,9 @@ class SpeechEnhancementController
         void SetMagicConferenceCallOn(const bool magic_conference_call_on);
 
 
+        bool GetBtHeadsetNrecOn() const { return mBtHeadsetNrecOn; }
+        void SetBtHeadsetNrecOnToAllModem(const bool bt_headset_nrec_on);
+
     private:
         SpeechEnhancementController();
         static SpeechEnhancementController *mSpeechEnhancementController; // singleton
@@ -48,11 +51,7 @@ class SpeechEnhancementController
 
         bool mMagicConferenceCallOn;
 
-	//modify for dual mic cust by yi.zheng.hz begin
-#if defined(JRD_HDVOICE_CUST)
-	bool mbMtkDualMicSupport;
-#endif
-	//modify for dual mic cust by yi.zheng.hz end
+        bool mBtHeadsetNrecOn;
 };
 
 

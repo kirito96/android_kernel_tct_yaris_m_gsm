@@ -6,6 +6,7 @@
 #include <linux/delay.h>
 #include <linux/platform_device.h>
 #include <linux/android_pmem.h>
+#include <linux/memblock.h>
 #include <asm/setup.h>
 #include <asm/mach/arch.h>
 #include <linux/sysfs.h>
@@ -13,6 +14,7 @@
 #include <linux/spi/spi.h>
 #include <linux/amba/bus.h>
 #include <linux/amba/clcd.h>
+#include <linux/musb/musb.h>
 #include <linux/musbfsh.h>
 #include "mach/memory.h"
 #include "mach/irqs.h"
@@ -22,20 +24,21 @@
 #include <linux/version.h>
 #include "mach/mtk_ccci_helper.h"
 #include <mach/mtk_memcfg.h>
-
-
-extern unsigned long pmem_start;
-#define PMEM_MM_START  (pmem_start)
-#define PMEM_MM_SIZE   (0x1700000)
+#include <mach/dfo_boot.h>
+#include <mach/dfo_boot_default.h>
 
 #define SERIALNO_LEN 32
 static char serial_number[SERIALNO_LEN];
 
 extern BOOTMODE get_boot_mode(void);
-
 extern u32 get_devinfo_with_index(u32 index);
 extern u32 g_devinfo_data[];
 extern u32 g_devinfo_data_size;
+extern void adjust_kernel_cmd_line_setting_for_console(char *u_boot_cmd_line, char *kernel_cmd_line);
+unsigned int mtk_get_max_DRAM_size(void);
+resource_size_t get_actual_DRAM_size(void);
+unsigned int get_phys_offset(void);
+unsigned int get_max_phys_addr(void);
 
 struct {
 	u32 base;
@@ -48,12 +51,29 @@ int use_bl_fb = 0;
 /* MT6589 USB GADGET                                                     */
 /*=======================================================================*/
 static u64 usb_dmamask = DMA_BIT_MASK(32);
+static struct musb_hdrc_config musb_config_mt65xx = {
+	.multipoint     = true,
+	.dyn_fifo       = true,
+	.soft_con       = true,
+	.dma            = true,
+	.num_eps        = 16,
+	.dma_channels   = 8,
+};
+
+static struct musb_hdrc_platform_data usb_data = {
+#ifdef CONFIG_USB_MTK_OTG
+	.mode           = MUSB_OTG,
+#else
+	.mode           = MUSB_PERIPHERAL,
+#endif
+	.config         = &musb_config_mt65xx,
+};
 
 struct platform_device mt_device_usb = {
 	.name		  = "mt_usb",
 	.id		  = -1,
 	.dev = {
-		//.platform_data          = &usb_data_mt65xx,
+		.platform_data          = &usb_data,
 		.dma_mask               = &usb_dmamask,
 		.coherent_dma_mask      = DMA_BIT_MASK(32),
 		//.release=musbfsh_hcd_release,
@@ -127,6 +147,53 @@ static struct resource mtk_resource_uart2[] = {
 	},
 };
 #endif
+
+extern unsigned long max_pfn;
+#define RESERVED_MEM_MODEM  (0x0) // do not reserve memory in advance, do it in mt_fixup
+#ifndef CONFIG_RESERVED_MEM_SIZE_FOR_PMEM
+#define CONFIG_RESERVED_MEM_SIZE_FOR_PMEM 	1
+#endif
+
+#if defined(CONFIG_MTK_FB)
+char temp_command_line[1024] = {0};
+extern unsigned int DISP_GetVRamSizeBoot(char* cmdline);
+#define RESERVED_MEM_SIZE_FOR_FB (DISP_GetVRamSizeBoot((char*)&temp_command_line))
+extern void   mtkfb_set_lcm_inited(bool isLcmInited);
+#else
+#define RESERVED_MEM_SIZE_FOR_FB (0x400000)
+#endif
+
+/*
+ * The memory size reserved for PMEM
+ *
+ * The size could be varied in different solutions.
+ * The size is set in mt65xx_fixup function.
+ * - MT6572 in develop (before M4U) should be 0x1700000
+ * - MT6572 SQC should be 0x0
+ */
+#define RESERVED_MEM_SIZE_FOR_PMEM (0x0)
+phys_addr_t pmem_start = 0x12345678;  // pmem_start is inited in mt_fixup
+resource_size_t kernel_mem_sz = 0x0;       // kernel_mem_sz is inited in mt_fixup
+resource_size_t bl_mem_sz = 0x0;       // bl_mem_sz is inited in mt_fixup
+resource_size_t RESERVED_MEM_SIZE_FOR_FB_MAX = 0x1500000;
+
+#define TOTAL_RESERVED_MEM_SIZE (RESERVED_MEM_SIZE_FOR_PMEM + \
+                                 RESERVED_MEM_SIZE_FOR_FB)
+#define MAX_PFN        ((max_pfn << PAGE_SHIFT) + PHYS_OFFSET)
+#define PMEM_MM_START  (pmem_start)
+#define PMEM_MM_SIZE   (RESERVED_MEM_SIZE_FOR_PMEM)
+#define FB_START       (PMEM_MM_START + PMEM_MM_SIZE)
+#define FB_SIZE        (RESERVED_MEM_SIZE_FOR_FB)
+
+/*
+ * CONNSYS FW must occupy the beginning of DRAM on MT6572 which is always 0x80000000
+ * The size is 1MB
+ * This offset is done by LK so we won't need to "fixup" for CONNSYS here
+ */
+#define CONNSYS_START  (DRAM_PHYS_ADDR_START)       // beginning of DRAM
+#define RESERVED_MEM_SIZE_FOR_CONNSYS (0x100000)    // 1MB
+#define CONNSYS_SIZE   (RESERVED_MEM_SIZE_FOR_CONNSYS)
+
 
 static struct platform_device mtk_device_uart[] = {
 
@@ -657,6 +724,16 @@ static struct platform_device dummychar_device =
 };
 
 /*=======================================================================*/
+/* MASP                                                                  */
+/*=======================================================================*/
+static struct platform_device masp_device =
+{
+       .name           = "masp",
+       .id             = -1,
+};
+
+
+/*=======================================================================*/
 /* MT6589 NAND                                                           */
 /*=======================================================================*/
 #if defined(CONFIG_MTK_MTD_NAND)
@@ -852,6 +929,56 @@ static struct platform_device camera_sysram_dev = {
 #endif
 
 /*=======================================================================*/
+/*=======================================================================*/
+/* Commandline filter                                                    */
+/* This function is used to filter undesired command passed from LK      */
+/*=======================================================================*/
+static void cmdline_filter(struct tag *cmdline_tag, char *default_cmdline)
+{
+	const char *undesired_cmds[] = {
+	                             "console=",
+                                     "root=",
+			             };
+
+	int i;
+	int ck_f = 0;
+	char *cs,*ce;
+
+	cs = cmdline_tag->u.cmdline.cmdline;
+	ce = cs;
+	while((__u32)ce < (__u32)tag_next(cmdline_tag)) {
+
+	    while(*cs == ' ' || *cs == '\0') {
+	    	cs++;
+	    	ce = cs;
+	    }
+
+	    if (*ce == ' ' || *ce == '\0') {
+	    	for (i = 0; i < sizeof(undesired_cmds)/sizeof(char *); i++){
+	    	    if (memcmp(cs, undesired_cmds[i], strlen(undesired_cmds[i])) == 0) {
+			ck_f = 1;
+                        break;
+                    }    		
+	    	}
+
+                if(ck_f == 0){
+		    *ce = '\0';
+                    //Append to the default command line
+                    strcat(default_cmdline, " ");
+                    strcat(default_cmdline, cs);
+		}
+		ck_f = 0;
+	    	cs = ce + 1;
+	    }
+	    ce++;
+	}
+	if (strlen(default_cmdline) >= COMMAND_LINE_SIZE)
+	{
+		panic("Command line length is too long.\n\r");
+	}
+}
+
+/*=======================================================================*/
 /* Parse the framebuffer info						 */
 /*=======================================================================*/
 int __init parse_tag_videofb_fixup(const struct tag *tags)
@@ -878,6 +1005,179 @@ int __init parse_tag_devinfo_data_fixup(const struct tag *tags)
 	return 0;
 }
 EXPORT_SYMBOL(parse_tag_devinfo_data_fixup);
+
+
+void mt_fixup(struct tag *tags, char **cmdline, struct meminfo *mi)
+{
+    struct tag *cmdline_tag = NULL;
+    struct tag *reserved_mem_bank_tag = NULL;
+    struct tag *none_tag = NULL;
+
+    resource_size_t max_limit_size = CONFIG_MAX_DRAM_SIZE_SUPPORT -
+                             RESERVED_MEM_MODEM;
+    resource_size_t avail_dram = 0;
+    //unsigned char md_inf_from_meta[4] = {0};
+
+#if defined(CONFIG_MTK_FB)
+	struct tag *temp_tags = tags;
+	for (; temp_tags->hdr.size; temp_tags = tag_next(temp_tags))
+	{
+		if(temp_tags->hdr.tag == ATAG_CMDLINE)
+			cmdline_filter(temp_tags, (char*)&temp_command_line);
+	}
+#endif
+
+    printk(KERN_ALERT"Load default dfo data...\n");
+
+    parse_ccci_dfo_setting(&dfo_boot_default, DFO_BOOT_COUNT);
+
+    for (; tags->hdr.size; tags = tag_next(tags)) {
+        if (tags->hdr.tag == ATAG_MEM) {
+	    bl_mem_sz += tags->u.mem.size;
+
+            /*
+             * Modify the memory tag to limit available memory to
+             * CONFIG_MAX_DRAM_SIZE_SUPPORT
+             */
+            if (max_limit_size > 0) {
+                if (max_limit_size >= tags->u.mem.size) {
+                    max_limit_size -= tags->u.mem.size;
+                    avail_dram += tags->u.mem.size;
+                } else {
+                    unsigned long max_limit_size_adjusted = max_limit_size;
+                    // since max_limit_size contains modem/connsys region
+                    // we should also remove the offset.
+                    max_limit_size_adjusted -= (PHYS_OFFSET - DRAM_PHYS_ADDR_START);
+                    tags->u.mem.size = max_limit_size_adjusted;
+                    avail_dram += max_limit_size_adjusted;
+                    // we are full. accept no further banks by setting 
+                    // max_limit_size to 0
+                    max_limit_size = 0;
+                }
+                // By Keene:
+                // remove this check to avoid calcuate pmem size before we know all dram size
+                // Assuming the minimum size of memory bank is 256MB
+                //if (tags->u.mem.size >= (TOTAL_RESERVED_MEM_SIZE)) {
+                reserved_mem_bank_tag = tags;
+                //}
+            } else {
+                tags->u.mem.size = 0;
+            }
+        }
+        else if (tags->hdr.tag == ATAG_CMDLINE) {
+            cmdline_tag = tags;
+        } else if (tags->hdr.tag == ATAG_BOOT) {
+            g_boot_mode = tags->u.boot.bootmode;
+        } else if (tags->hdr.tag == ATAG_VIDEOLFB) {
+            parse_tag_videofb_fixup(tags);
+        }else if (tags->hdr.tag == ATAG_DEVINFO_DATA){
+            parse_tag_devinfo_data_fixup(tags);
+        }
+        else if(tags->hdr.tag == ATAG_META_COM)
+        {
+            g_meta_com_type = tags->u.meta_com.meta_com_type;
+            g_meta_com_id = tags->u.meta_com.meta_com_id;
+        } else if (tags->hdr.tag == ATAG_DFO_DATA) {
+            parse_ccci_dfo_setting(&tags->u.dfo_data, DFO_BOOT_COUNT);
+        }
+    }
+
+    if ((g_boot_mode == META_BOOT) || (g_boot_mode == ADVMETA_BOOT)) {
+        /* 
+         * Always use default dfo setting in META mode.
+         * We can fix abnormal dfo setting this way.
+         */
+        printk(KERN_ALERT"(META mode) Load default dfo data...\n");
+        parse_ccci_dfo_setting(&dfo_boot_default, DFO_BOOT_COUNT);
+    }
+
+    kernel_mem_sz = avail_dram; // keep the DRAM size (limited by CONFIG_MAX_DRAM_SIZE_SUPPORT)
+    /*
+    * If the maximum memory size configured in kernel
+    * is smaller than the actual size (passed from BL)
+    * Still limit the maximum memory size but use the FB
+    * initialized by BL
+    */
+    if (bl_mem_sz >= (CONFIG_MAX_DRAM_SIZE_SUPPORT - RESERVED_MEM_MODEM)) {
+        use_bl_fb++;
+    }
+
+    /*
+     * Setup PMEM, FB reserve area
+     * Reserve memory in the last bank.
+     * Connsys is already reserved in LK, so that atag starting address is already offseted.
+     */
+    if (reserved_mem_bank_tag) {
+        reserved_mem_bank_tag->u.mem.size -= ((__u32)TOTAL_RESERVED_MEM_SIZE);
+        pmem_start = reserved_mem_bank_tag->u.mem.start + reserved_mem_bank_tag->u.mem.size;
+    } else // we should always have reserved memory
+    	BUG();
+
+    MTK_MEMCFG_LOG_AND_PRINTK(KERN_ALERT
+            "[PHY layout]avaiable DRAM size (lk) = 0x%llx\n"
+            "[PHY layout]avaiable DRAM size = 0x%llx\n"
+            "[PHY layout]FB       :   0x%llx - 0x%llx  (0x%llx)\n"
+            "[PHY layout]CONNSYS  :   0x%llx - 0x%llx  (0x%llx)\n",
+            (unsigned long long)bl_mem_sz,
+            (unsigned long long)kernel_mem_sz,
+            (unsigned long long)FB_START, 
+            (unsigned long long)(FB_START + FB_SIZE - 1), 
+            (unsigned long long)FB_SIZE,
+            (unsigned long long)CONNSYS_START, 
+            (unsigned long long)(CONNSYS_START + CONNSYS_SIZE - 1), 
+            (unsigned long long)CONNSYS_SIZE);
+    if (PMEM_MM_SIZE) {
+        MTK_MEMCFG_LOG_AND_PRINTK(KERN_ALERT
+                "[PHY layout]PMEM     :   0x%llx - 0x%llx  (0x%llx)\n",
+                (unsigned long long)PMEM_MM_START, 
+                (unsigned long long)(PMEM_MM_START + PMEM_MM_SIZE - 1), 
+                (unsigned long long)PMEM_MM_SIZE);
+    }
+
+
+	printk(KERN_ALERT
+        "[Phy Layout]  mtk_get_max_DRAM_size() : 0x%08lx\n"
+        "[Phy Layout]    get_phys_offset() : 0x%08lx\n"
+        "[Phy Layout]  get_max_phys_addr() : 0x%08lx\n",
+        (unsigned long)mtk_get_max_DRAM_size(), 
+        (unsigned long)get_phys_offset(),
+        (unsigned long)get_max_phys_addr()
+        );
+
+
+    if(tags->hdr.tag == ATAG_NONE)
+	none_tag = tags;
+    if (cmdline_tag != NULL) {
+#ifdef CONFIG_FIQ_DEBUGGER
+        char *console_ptr;
+        int uart_port;
+#endif
+	char *br_ptr;
+        // This function may modify ttyMT3 to ttyMT0 if needed
+        adjust_kernel_cmd_line_setting_for_console(cmdline_tag->u.cmdline.cmdline, *cmdline);
+#ifdef CONFIG_FIQ_DEBUGGER
+        if ((console_ptr=strstr(*cmdline, "ttyMT")) != 0)
+        {
+            uart_port = console_ptr[5] - '0';
+            if (uart_port > 3)
+                uart_port = -1;
+
+            fiq_uart_fixup(uart_port);
+        }
+#endif
+
+        cmdline_filter(cmdline_tag, *cmdline);
+		if ((br_ptr = strstr(*cmdline, "boot_reason=")) != 0) {
+			/* get boot reason */
+			g_boot_reason = br_ptr[12] - '0';
+		}
+        /* Use the default cmdline */
+        memcpy((void*)cmdline_tag,
+               (void*)tag_next(cmdline_tag),
+               /* ATAG_NONE actual size */
+               (uint32_t)(none_tag) - (uint32_t)(tag_next(cmdline_tag)) + 8);
+    }
+}
 
 struct platform_device auxadc_device = {
     .name   = "mt-auxadc",
@@ -916,25 +1216,56 @@ struct platform_device sensor_barometer = {
 	.name	       = "barometer",
 	.id            = -1,
 };
+
+struct platform_device sensor_temperature = {
+	.name	       = "temperature",
+	.id            = -1,
+};
+
+struct platform_device sensor_batch = {
+	.name	       = "batchsensor",
+	.id            = -1,
+};
+
 /* hwmon sensor */
 struct platform_device hwmon_sensor = {
 	.name	       = "hwmsensor",
 	.id            = -1,
 };
 
-#if defined(CONFIG_NFC_PN547)
-struct platform_device nfc_pn547 = {
-	.name	       = "pn547",
+struct platform_device acc_sensor = {
+	.name	       = "m_acc_pl",
 	.id            = -1,
 };
-#endif
+struct platform_device mag_sensor = {
+	.name	       = "m_mag_pl",
+	.id            = -1,
+};
 
-#if defined(NMI5625)
-struct platform_device matv_nmi5625 = {
-	.name	       = "nmi5625",
+struct platform_device alsps_sensor = {
+	.name	       = "m_alsps_pl",
 	.id            = -1,
 };
-#endif
+
+struct platform_device gyro_sensor = {
+	.name	       = "m_gyro_pl",
+	.id            = -1,
+};
+
+struct platform_device barometer_sensor = {
+	.name	       = "m_baro_pl",
+	.id            = -1,
+};
+
+struct platform_device temp_sensor = {
+	.name	       = "m_temp_pl",
+	.id            = -1,
+};
+
+struct platform_device batch_sensor = {
+	.name	       = "m_batch_pl",
+	.id            = -1,
+};
 
 /*=======================================================================*/
 /* Camera ISP                                                            */
@@ -1036,15 +1367,17 @@ static struct platform_device mt65xx_leds_device = {
 /*=======================================================================*/
 /* NFC                                                                          */
 /*=======================================================================*/
+#if defined(CONFIG_MTK_NFC) //NFC
 static struct platform_device mtk_nfc_6605_dev = {
     .name   = "mt6605",
     .id     = -1,
 };
+#endif
 
 /*=======================================================================*/
 /* Unused Memory Allocation                                              */
 /*=======================================================================*/
-#ifdef MTK_USE_RESERVED_EXT_MEM
+#if defined (MTK_USE_RESERVED_EXT_MEM) && defined (CONFIG_MT_ENG_BUILD)
 static struct platform_device mt_extmem = {
 	.name           = "mt-extmem",
 	.id             = 0,
@@ -1058,6 +1391,15 @@ static struct platform_device ssw_device = {
 	.name = "sim-switch",	
 	.id = -1};
 #endif
+
+
+/*=======================================================================*/
+/* battery driver                                                         */
+/*=======================================================================*/
+struct platform_device battery_device = {
+    .name   = "battery",
+    .id        = -1,
+};
 
 /*=======================================================================*/
 /* MT6572 Board Device Initialization                                    */
@@ -1214,12 +1556,7 @@ __init int mt_board_init(void)
     }
 #endif
 
-#if defined(CONFIG_MTK_FB)
-extern unsigned int get_fb_start(void);
-extern unsigned int get_fb_size(void);
-extern void   mtkfb_set_lcm_inited(bool isLcmInited);  
-#define FB_START get_fb_start()
-#define FB_SIZE get_fb_size()
+#if defined(CONFIG_MTK_FB) 
     /*
      * Bypass matching the frame buffer info. between boot loader and kernel
      * if the limited memory size of the kernel is smaller than the
@@ -1227,13 +1564,13 @@ extern void   mtkfb_set_lcm_inited(bool isLcmInited);
      */
     if (((bl_fb.base == FB_START) && (bl_fb.size == FB_SIZE)) ||
          (use_bl_fb == 2)) {
-        printk("FB is initialized by BL(%d)\n", use_bl_fb);
+        printk(KERN_ALERT"FB is initialized by BL(%d)\n", use_bl_fb);
         mtkfb_set_lcm_inited(1);
     } else if ((bl_fb.base == 0) && (bl_fb.size == 0)) {
-        printk("FB is not initialized(%d)\n", use_bl_fb);
+        printk(KERN_ALERT"FB is not initialized(%d)\n", use_bl_fb);
         mtkfb_set_lcm_inited(0);
     } else {
-        printk(
+        printk(KERN_ALERT
 "******************************************************************************\n"
 "   WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING\n"
 "******************************************************************************\n"
@@ -1247,7 +1584,7 @@ extern void   mtkfb_set_lcm_inited(bool isLcmInited);
 "******************************************************************************\n"
 "   WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING\n"
 "******************************************************************************\n"
-"\n",   bl_fb.base, bl_fb.size, FB_START, FB_SIZE);
+"\n",   bl_fb.base, bl_fb.size, (unsigned long int)FB_START, FB_SIZE);
         /* workaround for TEST_3D_START */
         mtkfb_set_lcm_inited(1);
 #if 0
@@ -1256,10 +1593,10 @@ extern void   mtkfb_set_lcm_inited(bool isLcmInited);
 #endif
     }
 
-    resource_fb[0].start = FB_START;
-    resource_fb[0].end   = FB_START + FB_SIZE - 1;
+	resource_fb[0].start = FB_START;
+	resource_fb[0].end   = FB_START + FB_SIZE - 1;
 
-    printk("FB start: 0x%x end: 0x%x\n", resource_fb[0].start,
+    printk(KERN_ALERT"FB start: 0x%x end: 0x%x\n", resource_fb[0].start,
                                          resource_fb[0].end);
 
     retval = platform_device_register(&mt6575_device_fb);
@@ -1362,6 +1699,41 @@ extern void   mtkfb_set_lcm_inited(bool isLcmInited);
 	if (retval != 0)
 		return retval;
 
+	retval = platform_device_register(&batch_sensor);
+    printk("[%s]: batch_sensor, retval=%d \n!", __func__, retval);
+	if (retval != 0)
+		return retval;
+
+    retval = platform_device_register(&acc_sensor);
+	printk("acc_sensor device!");
+	if (retval != 0)
+		return retval;
+
+	retval = platform_device_register(&mag_sensor);
+	printk("mag_sensor device!");
+	if (retval != 0)
+		return retval;
+	
+	retval = platform_device_register(&gyro_sensor);
+    printk("[%s]: gyro_sensor, retval=%d \n!", __func__, retval);
+	if (retval != 0)
+		return retval;
+	
+	retval = platform_device_register(&alsps_sensor);
+    printk("[%s]: alsps_sensor, retval=%d \n!", __func__, retval);
+	if (retval != 0)
+		return retval;	
+
+	retval = platform_device_register(&barometer_sensor);
+    printk("[%s]: barometer_sensor, retval=%d \n!", __func__, retval);
+	if (retval != 0)
+		return retval;
+
+	retval = platform_device_register(&temp_sensor);
+    printk("[%s]: temp_sensor, retval=%d \n!", __func__, retval);
+	if (retval != 0)
+		return retval;
+
 #if defined(CUSTOM_KERNEL_ACCELEROMETER)
 	retval = platform_device_register(&sensor_gsensor);
 		printk("sensor_gsensor device!");
@@ -1402,6 +1774,15 @@ extern void   mtkfb_set_lcm_inited(bool isLcmInited);
 	if (retval != 0)
 		return retval;
 #endif
+
+#if defined(CUSTOM_KERNEL_TEMPERATURE)
+	retval = platform_device_register(&sensor_temperature);
+    printk("[%s]: sensor_temperature, retval=%d \n!", __func__, retval);
+		printk("sensor_temperature device!");
+	if (retval != 0)
+		return retval;
+#endif
+
 #endif
 
 #if defined(CONFIG_MTK_USBFSH)
@@ -1421,6 +1802,15 @@ extern void   mtkfb_set_lcm_inited(bool isLcmInited);
 	printk("mt_device_usb register fail\n");
         return retval;
 	}
+#endif
+
+/* battery_device must be behind the mt_device_usb for charger type detection */
+#if 1
+   retval = platform_device_register(&battery_device);
+   if (retval) {
+	   printk("[battery_driver] Unable to device register\n");
+   return retval;
+   }
 #endif
 
 #if defined(CONFIG_MTK_TOUCHPANEL)
@@ -1596,20 +1986,6 @@ retval = platform_device_register(&dummychar_device);
 	}
 #endif
 
-#if defined(CONFIG_NFC_PN547)
-	retval = platform_device_register(&nfc_pn547);
-		printk("nfc_pn547 device!");
-	if (retval != 0)
-		return retval;
-#endif
-
-#if defined(NMI5625)
-	retval = platform_device_register(&matv_nmi5625);
-		printk("matv_nmi5625 device!");
-	if (retval != 0)
-		return retval;
-#endif
-
 #if defined (CUSTOM_KERNEL_SSW)	
 	retval = platform_device_register(&ssw_device);    
 	if (retval != 0) {        
@@ -1617,7 +1993,7 @@ retval = platform_device_register(&dummychar_device);
 	}
 #endif
 
-#ifdef MTK_USE_RESERVED_EXT_MEM	
+#if defined (MTK_USE_RESERVED_EXT_MEM) && defined (CONFIG_MT_ENG_BUILD)	
 	retval = platform_device_register(&mt_extmem);
 	
 	printk("%s[%d] ret: %d\n", __FILE__, __LINE__, retval);
@@ -1626,5 +2002,97 @@ retval = platform_device_register(&dummychar_device);
 	}	
 #endif
 
+    retval = platform_device_register(&masp_device);
+    if (retval != 0){
+        return retval;
+    }
+
     return 0;
+}
+
+/*
+ * is_pmem_range
+ * Input
+ *   base: buffer base physical address
+ *   size: buffer len in byte
+ * Return
+ *   1: buffer is located in pmem address range
+ *   0: buffer is out of pmem address range
+ */
+int is_pmem_range(unsigned long *base, unsigned long size)
+{
+        unsigned long start = (unsigned long)base;
+        unsigned long end = start + size;
+
+        //printk("[PMEM] start=0x%p,end=0x%p,size=%d\n", start, end, size);
+        //printk("[PMEM] PMEM_MM_START=0x%p,PMEM_MM_SIZE=%d\n", PMEM_MM_START, PMEM_MM_SIZE);
+
+        if (start < PMEM_MM_START)
+                return 0;
+        if (end >= PMEM_MM_START + PMEM_MM_SIZE)
+                return 0;
+
+        return 1;
+}
+EXPORT_SYMBOL(is_pmem_range);
+
+// return the actual physical DRAM size
+unsigned int mtk_get_max_DRAM_size(void)
+{
+    return kernel_mem_sz + RESERVED_MEM_MODEM + RESERVED_MEM_SIZE_FOR_CONNSYS;
+}
+
+// return the physical DRAM size (passed down from Boot Loader)
+resource_size_t get_actual_DRAM_size(void)
+{
+        return bl_mem_sz;
+}
+EXPORT_SYMBOL(get_actual_DRAM_size);
+
+unsigned int get_phys_offset(void)
+{
+	return PHYS_OFFSET;
+}
+EXPORT_SYMBOL(get_phys_offset);
+
+// return maximum phys addr that AP processor accesses
+unsigned int get_max_phys_addr(void)
+{
+    // MT6572 reserved 1MB for CONNSYS via PHYS_OFFSET,
+    // and kernel_mem_sz already subtracted such value.
+    return PHYS_OFFSET + kernel_mem_sz + RESERVED_MEM_MODEM;
+}
+EXPORT_SYMBOL(get_max_phys_addr);
+
+#include <asm/sections.h>
+void get_text_region (unsigned int *s, unsigned int *e)
+{
+    *s = (unsigned int)_text, *e=(unsigned int)_etext ;
+}
+EXPORT_SYMBOL(get_text_region) ;
+
+void __weak mtk_wcn_consys_memory_reserve(void)
+{
+    printk(KERN_ERR"weak reserve function: %s", __FUNCTION__);
+}
+
+void __weak ccci_md_mem_reserve(void) 
+{
+    printk(KERN_ERR"calling weak function %s\n", __FUNCTION__);
+}
+
+void mt_reserve(void)
+{
+
+    /* 
+     * Dynamic reserved memory (by arm_memblock_steal) 
+     *
+     * *** DO NOT CHANGE THE RESERVE ORDER ***
+     *
+     * New memory reserve functions should be APPENDED to old funtions 
+     */
+	mtk_wcn_consys_memory_reserve();
+	ccci_md_mem_reserve();
+
+    /* Last line of dynamic reserve functions */
 }

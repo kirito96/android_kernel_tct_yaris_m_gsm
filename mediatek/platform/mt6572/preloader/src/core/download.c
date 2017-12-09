@@ -1,3 +1,39 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ *
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #define CFG_I2C_SUPPORT            (1)
 
@@ -11,6 +47,10 @@
 #include "cust_sec_ctrl.h"
 #include "buffer.h"
 #include "sec_region.h"
+
+#ifdef FEATURE_DOWNLOAD_INFO
+#include "lg_partition.h"
+#endif
 
 #define CMD_GET_HW_SW_VER          0xfc
 #define CMD_GET_HW_CODE            0xfd
@@ -46,7 +86,7 @@
 #define TGT_CFG_DAA_EN             0x00000004
 
 #define DA_ARG_MAGIC               0x58885168
-#define DA_ARG_VER                 1
+#define DA_ARG_VER                 2
 
 #define DA_FLAG_SKIP_PLL_INIT      0x00000001
 #define DA_FLAG_SKIP_EMI_INIT      0x00000002
@@ -68,7 +108,25 @@ typedef struct {
     u32 magic;
     u32 ver;
     u32 flags;
-} DownloadArg;
+} DownloadArg_v1;
+
+#define DA_MAX_IMEI_LEN             (16)
+#define DA_MAX_PID_LEN              (64)
+#define DA_MAX_SWV_LEN              (128)
+
+typedef struct {
+    u32 magic;
+    u32 ver;
+    u32 flags;
+
+    /* v2 added */
+    u8  imei[DA_MAX_IMEI_LEN];       /* IMEI */
+    u32 imei_len;
+    u8  pid[DA_MAX_PID_LEN];         /* product id */
+    u32 pid_len;
+    u8  sw_ver[DA_MAX_SWV_LEN];      /* software version */
+    u32 sw_ver_len;
+} DownloadArg_v2;
 
 #if CFG_USB_DOWNLOAD && !CFG_LEGACY_USB_DOWNLOAD
 
@@ -571,7 +629,7 @@ static void usbdl_jump_da(void)
 
     u32 da_addr;
     u16 status = 0;
-    DownloadArg *da_arg;
+    DownloadArg_v2 *da_arg;
 
     /* get DA jump addr */
     usbdl_get_dword(&da_addr);
@@ -592,15 +650,57 @@ static void usbdl_jump_da(void)
 #ifdef CFG_DA_RAM_ADDR
     da_addr = CFG_DA_RAM_ADDR;
 #endif
-    da_arg = (DownloadArg*)(CFG_DA_RAM_ADDR - sizeof(DownloadArg));
+    da_arg = (DownloadArg_v2*)(CFG_DA_RAM_ADDR - sizeof(DownloadArg_v2));
 
     BUG_ON((u32)da_arg > CFG_DA_RAM_ADDR);
+
+    memset(da_arg, 0, sizeof(DownloadArg_v2));
 
     da_arg->magic = DA_ARG_MAGIC;
     da_arg->ver   = DA_ARG_VER;
     da_arg->flags = DA_FLAG_SKIP_PLL_INIT | DA_FLAG_SKIP_EMI_INIT;
 
-    apmcu_disable_dcache();
+    /* prepare IMEI, PID, SWV in share memory for download agent */
+#ifdef FEATURE_DOWNLOAD_INFO
+#if 0
+#define LGE_FAC_IMEI_LEN    16
+#define LGE_FAC_PID_LEN     64
+#define LGE_FAC_SV_LEN      128
+#endif
+    COMPILE_ASSERT(LGE_FAC_IMEI_LEN <= DA_MAX_IMEI_LEN);
+    COMPILE_ASSERT(LGE_FAC_PID_LEN <= DA_MAX_PID_LEN);
+    COMPILE_ASSERT(LGE_FAC_SV_LEN <= DA_MAX_SWV_LEN);
+    #if 1
+
+    //for write test value into storage device
+    //LGE_API_test();
+    if (LGE_FacReadImei(TRUE, &da_arg->imei[0])) {
+        print("%s IMEI: %s\n", MOD, da_arg->imei);
+        da_arg->imei_len = LGE_FAC_IMEI_LEN;
+    }
+    if (LGE_FacReadPid(&da_arg->pid[0])) {
+        print("%s PID : %s\n", MOD, da_arg->pid);
+        da_arg->pid_len = LGE_FAC_PID_LEN;
+    }
+    LGE_FacGetSoftwareversion(TRUE, &da_arg->sw_ver[0]);
+    print("%s SWV : %s\n", MOD, da_arg->sw_ver);
+    da_arg->sw_ver_len = LGE_FAC_SV_LEN;
+    #else   /* for test */
+    {
+        memcpy(&da_arg->imei, "123456789012345", strlen("123456789012345"));
+        memcpy(&da_arg->pid, "LGE7xPHONEv3", strlen("LGE7xPHONEv3"));
+        memcpy(&da_arg->sw_ver, "LGE7xSWV0001", strlen("LGE7xSWV0001"));
+
+        da_arg->imei_len = strlen("123456789012345");
+        da_arg->pid_len = strlen("LGE7xPHONEv3");
+        da_arg->sw_ver_len = strlen("LGE7xSWV0001");
+        print("%s IMEI: %s\n", MOD, da_arg->imei);
+        print("%s PID : %s\n", MOD, da_arg->pid);
+        print("%s SWV : %s\n", MOD, da_arg->sw_ver);
+    }
+    #endif
+#endif
+
     apmcu_dcache_clean_invalidate();
     apmcu_dsb();
     apmcu_icache_invalidate();
@@ -617,7 +717,6 @@ static void usbdl_jump_da(void)
         blkdev_t *bdev = blkdev_get(CFG_BOOT_DEV);
         part_t *part;
         u64 src;
-	da_info_t da_info;
 
 	/* load second bootloader */
         if (NULL == (part = part_get(PART_UBOOT)))
@@ -635,21 +734,21 @@ static void usbdl_jump_da(void)
 	/* prepare to jump to second bootloader */
 	g_boot_mode = DOWNLOAD_BOOT;
 
-	memset(&da_info, 0x0, sizeof(da_info_t));
-	da_info.addr = da_addr;
-	da_info.arg1 = (u32)da_arg;
-	da_info.arg2 = (u32)sizeof(DownloadArg);
-
+            /* prepare boot arguments */
 	platform_set_boot_args();
-	platform_set_dl_boot_args(&da_info);
+
+    /* prepare da address and da argument information to boot argument */
+    bootarg->da_info.addr = da_addr;
+    bootarg->da_info.arg1 = (u32)da_arg;
+    bootarg->da_info.arg2 = (u32)sizeof(DownloadArg_v2);
 
 	bldr_jump(addr, BOOT_ARGUMENT_ADDR, sizeof(boot_arg_t));
 
 error:
-	bldr_jump(da_addr, (u32)da_arg, (u32)sizeof(DownloadArg));
+        bldr_jump(da_addr, (u32)da_arg, (u32)sizeof(DownloadArg_v2));
     }
 #else
-    bldr_jump(da_addr, (u32)da_arg, (u32)sizeof(DownloadArg));
+    bldr_jump(da_addr, (u32)da_arg, (u32)sizeof(DownloadArg_v2));
 #endif
 }
 

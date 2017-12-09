@@ -18,8 +18,6 @@
 
 #include "power.h"
 
-static unsigned char no_suspend = 0;
-
 #define HIB_PM_DEBUG 0
 extern bool console_suspend_enabled; // from printk.c
 #define _TAG_HIB_M "HIB/PM"
@@ -253,7 +251,6 @@ static int __init pm_debugfs_init(void)
 {
 	debugfs_create_file("suspend_stats", S_IFREG | S_IRUGO,
 			NULL, NULL, &suspend_stats_operations);
-	debugfs_create_u8("no_suspend", S_IFREG | S_IRUGO | S_IWUSR, NULL, &no_suspend);
 	return 0;
 }
 
@@ -373,11 +370,6 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
     state = decode_state(buf, n);
     hib_log("entry (%d)\n", state);
 #endif
-    if (no_suspend && len == 3 && !strncmp(buf, "mem", len))
-    {
-        printk("suspend disabled\n");
-        goto Exit;
-    }
 
 #ifdef CONFIG_MTK_HIBERNATION
     if (len == 8 && !strncmp(buf, "hibabort", len)) {

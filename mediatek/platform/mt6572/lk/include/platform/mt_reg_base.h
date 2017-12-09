@@ -50,6 +50,7 @@
 #define MSDC_0_BASE                  0x11120000	//MT6572
 #define MSDC_1_BASE                  0x11130000	//MT6572
 #define AUDIO_BASE                   0x11140000	//MT6572
+#define AHB_MONITOR_BASE             0x11150000	//MT6572
 
 /* infrasys AO */
 #define TOPCKGEN_BASE                0x10000000	//MT6572
@@ -75,7 +76,7 @@
 
 /* infrasys */
 #define MCUSYS_CFGREG_BASE           0x10200000	//MT6572
-#define INFRA_SYS_CFG_BASE           0x10201000	//MT6572
+//#define INFRA_SYS_CFG_BASE           0x10201000	//MT6572
 #define SYS_CIRQ_BASE                0x10202000	//MT6572
 #define M4U_CFG_BASE                 0x10203000	//MT6572
 #define DEVICE_APC_BASE              0x10204000	//MT6572
@@ -92,7 +93,9 @@
 /* Device Info */
 #define DEVINFO_BASE                 0x08000000 //MT6572
 
+#ifndef RTC_BASE
 #define RTC_BASE 		     0x8000 //MT6572
+#endif
 
 //======================================================
 //         following are OLD, to be removed
@@ -182,6 +185,26 @@
 // xuecheng, define this because we use zlib for boot logo compression
 #define CONFIG_ZLIB 	1
 
+/**************************************************
+ *         Memory Preserved Mode pc, fp, sp       *
+ **************************************************/
+#define DBG_CORE0_PC        (MCUSYS_CFGREG_BASE + 0x0300)
+#define DBG_CORE0_FP        (MCUSYS_CFGREG_BASE + 0x0304)
+#define DBG_CORE0_SP        (MCUSYS_CFGREG_BASE + 0x0308)
+#define DBG_CORE1_PC        (MCUSYS_CFGREG_BASE + 0x0310)
+#define DBG_CORE1_FP        (MCUSYS_CFGREG_BASE + 0x0314)
+#define DBG_CORE1_SP        (MCUSYS_CFGREG_BASE + 0x0318)
+
+#define AHBABT_ADDR1        (AHB_MONITOR_BASE   + 0x0020)
+#define AHBABT_ADDR2        (AHB_MONITOR_BASE   + 0x0024)
+#define AHBABT_ADDR3        (AHB_MONITOR_BASE   + 0x0028)
+#define AHBABT_ADDR4        (AHB_MONITOR_BASE   + 0x002C)
+#define AHBABT_RDY_CNT1     (AHB_MONITOR_BASE   + 0x0030)
+#define AHBABT_RDY_CNT2     (AHB_MONITOR_BASE   + 0x0034)
+#define AHBABT_RDY_CNT3     (AHB_MONITOR_BASE   + 0x0038)
+#define AHBABT_RDY_CNT4     (AHB_MONITOR_BASE   + 0x003C)
+
+#define CARD_DETECT_PIN     (86)
 // =======================================================================
 // UBOOT DEBUG CONTROL
 // =======================================================================
@@ -203,7 +226,6 @@
 #endif
 #define RIL_SIZE	0x100000 //for connsys memory
 
-
 #define MEM_PRELOADER_START             (DRAM_PHY_ADDR) //placed mem in RIL 256KB
 #define MEM_PRELOADER_SIZE              (0x20000)
 
@@ -212,6 +234,7 @@
 // only build in Eng build
 #if defined(MTK_MEM_PRESERVED_MODE_ENABLE) && !defined(USER_BUILD)
 //#define MEM_PRESERVED_MODE_ENABLE
+//#define MEM_PRESERVED_MODE_VIDEO_PRINT
 #endif
 
 #define RESERVE_MEM_SIZE                (RIL_SIZE)

@@ -17,11 +17,7 @@
  *   
  *
  ****************************************************************************/
-
-#include <ccci_common.h>
-#include <ccmni_net.h>
-
-
+#include <ccci.h>
 extern int  ccmni_v1_init(int md_id);
 extern void ccmni_v1_exit(int md_id);
 extern int  ccmni_v2_init(int md_id);

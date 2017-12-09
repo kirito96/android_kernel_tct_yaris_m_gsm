@@ -12,6 +12,8 @@
 #include "osal_typedef.h"
 #include "osal.h"
 #include "stp_wmt.h"
+#include "wmt_plat.h"
+#include "wmt_idc.h"
 
 /*******************************************************************************
 *                         C O M P I L E R   F L A G S
@@ -57,25 +59,14 @@ typedef enum _ENUM_STP_BTM_OPID_T {
     STP_OPID_BTM_FULL_DUMP = 0x6,
     STP_OPID_BTM_PAGED_TRACE = 0x7,
     STP_OPID_BTM_FORCE_FW_ASSERT = 0x8,
+#if CFG_WMT_LTE_COEX_HANDLING
+    STP_OPID_BTM_WMT_LTE_COEX = 0x9,
+#endif
     STP_OPID_BTM_EXIT,
     STP_OPID_BTM_NUM
 } ENUM_STP_BTM_OPID_T, *P_ENUM_STP_BTM_OPID_T;
 
-typedef enum _ENUM_HOST_DUMP_STATE_T{
-	STP_HOST_DUMP_NOT_START = 0,
-	STP_HOST_DUMP_GET = 1,
-	STP_HOST_DUMP_GET_DONE = 2,
-	STP_HOST_DUMP_END = 3,
-	STP_HOST_DUMP_MAX
-}ENUM_HOST_DUMP_STATE,*P_ENUM_HOST_DUMP_STATE_T;
 
-typedef enum _ENUM_CHIP_DUMP_STATE_T{
-	STP_CHIP_DUMP_NOT_START = 0,
-	STP_CHIP_DUMP_PUT = 1,
-	STP_CHIP_DUMP_PUT_DONE = 2,
-	STP_CHIP_DUMP_END = 3,
-	STP_CHIP_DUMP_MAX
-}ENUM_CHIP_DUMP_STATE,*P_ENUM_CHIP_DUMP_STATE_T;
 
 typedef OSAL_OP_DAT STP_BTM_OP;
 typedef P_OSAL_OP_DAT P_STP_BTM_OP;
@@ -121,6 +112,7 @@ INT32 stp_notify_btm_poll_cpupcr(MTKSTP_BTM_T *stp_btm,UINT32 times, UINT32 slee
 INT32 stp_notify_btm_poll_cpupcr_ctrl(UINT32 en);
 INT32 stp_btm_notify_wmt_trace_wq(MTKSTP_BTM_T *stp_btm);
 INT32 stp_notify_btm_do_fw_assert_via_emi(MTKSTP_BTM_T *stp_btm);
+INT32 stp_notify_btm_handle_wmt_lte_coex(MTKSTP_BTM_T *stp_btm);
 
 MTKSTP_BTM_T *stp_btm_init(void);
 

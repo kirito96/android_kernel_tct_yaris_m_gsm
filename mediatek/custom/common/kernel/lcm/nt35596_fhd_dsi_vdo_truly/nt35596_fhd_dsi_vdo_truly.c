@@ -1,10 +1,12 @@
 #ifndef BUILD_LK
 #include <linux/string.h>
+#include <linux/kernel.h>
 #endif
 #include "lcm_drv.h"
 
 #ifdef BUILD_LK
 	#include <platform/mt_gpio.h>
+	#include <string.h>
 #elif defined(BUILD_UBOOT)
 	#include <asm/arch/mt_gpio.h>
 #else
@@ -49,6 +51,7 @@ static LCM_UTIL_FUNCS lcm_util = {0};
 
 #define   LCM_DSI_CMD_MODE							0
 
+static bool lcm_is_init = false;
 
 void TC358768_DCS_write_1A_1P(unsigned char cmd, unsigned char para)
 {
@@ -873,6 +876,7 @@ static void lcm_get_params(LCM_PARAMS *params)
 
 static void lcm_init(void)
 {
+	lcm_is_init = true;
 	// Enable EN_PWR for NT50198 PMIC
 	dsi_lcm_set_gpio_mode(GPIO139, GPIO_MODE_GPIO);
 	dsi_lcm_set_gpio_dir(GPIO139, GPIO_DIR_OUT);
@@ -911,7 +915,8 @@ static void lcm_suspend(void)
 	SET_RESET_PIN(0);
 
 	dsi_lcm_set_gpio_out(GPIO139, GPIO_OUT_ZERO);
-	
+
+	lcm_is_init = false;
 }
 
 
@@ -919,8 +924,8 @@ static void lcm_resume(void)
 {
 	//unsigned int data_array[16];
 	//unsigned char buffer[2];
-	
-	lcm_init();
+	if(!lcm_is_init)
+		lcm_init();
 
 #if 0//ndef BUILD_LK
 	data_array[0] = 0x00013700;// read id return two byte,version and id

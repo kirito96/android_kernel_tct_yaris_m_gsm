@@ -53,7 +53,6 @@
 #else //CONFIG_MT6572_FPGA_CA7
 #define AUDIO_BASE                   0xF1140000	//MT6572
 #endif //CONFIG_MT6572_FPGA_CA7
-#define AHBABT_BASE                  0xF1150000 //MT6572
 
 /* infrasys AO */
 #define TOPCKGEN_BASE                0xF0000000	//MT6572

@@ -1,6 +1,21 @@
+/*
+ * Copyright (C) 2011 MediaTek, Inc.
+ *
+ * Author: Holmes Chiou <holmes.chiou@mediatek.com>
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
 
 #define __MT_FREQHOPPING_C__
-
+ 
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
@@ -28,6 +43,8 @@
 #include "mach/sync_write.h"
 #include "mach/mt_sleep.h"
 #include "mach/mt_idle.h"
+
+#include <mach/mt_freqhopping_drv.h>
 
 ///////////////////////////////////////////////////////////
 // Local Defination
@@ -116,7 +133,6 @@ do {    \
 // Local variable
 ///////////////////////////////////////////////////////////
 static UINT32 freqhop_initiated = 0;
-static UINT32 fhctl_sm_store[NUM_OF_PLL_ID] = {0, 0};
 
 FHCTL_STATIC const UINT32 fhctl_rfid2rfenbitmap[7]	= {	(1<<RG_FHCTL_2G1_ON_BIT),
 													   	(1<<RG_FHCTL_2G2_ON_BIT),
@@ -125,7 +141,7 @@ FHCTL_STATIC const UINT32 fhctl_rfid2rfenbitmap[7]	= {	(1<<RG_FHCTL_2G1_ON_BIT),
 														(1<<RG_FHCTL_BT_ON_BIT),
 														(1<<RG_FHCTL_WF_ON_BIT),
 														(1<<RG_FHCTL_FM_ON_BIT)};
-
+														
 FHCTL_STATIC const char rfid_to_rfname[NUM_OF_RF_ID][4]		= {"2G1", "2G2", "IMD", "EMD", "BT", "WF", "FM"};
 FHCTL_STATIC const char pllid_to_pllname[NUM_OF_PLL_ID][8]	= {"ARMPLL", "MAINPLL"};
 FHCTL_STATIC const FREQHOP_REG_MAP fhctl_reg_map[NUM_OF_FHCTL_REGS]	= {
@@ -164,15 +180,15 @@ FHCTL_STATIC const FREQHOP_REG_MAP fhctl_reg_map[NUM_OF_FHCTL_REGS]	= {
 FHCTL_STATIC const UINT32 pll_con0[NUM_OF_PLL_ID] 		= {ARMPLL_CON0, MAINPLL_CON0};
 FHCTL_STATIC const UINT32 pll_con1_addr[NUM_OF_PLL_ID] 	= {ARMPLL_CON1, MAINPLL_CON1};
 FHCTL_STATIC const UINT32 pll_con2_addr[NUM_OF_PLL_ID] 	= {ARMPLL_CON2, MAINPLL_CON2};
-FHCTL_STATIC const FREQHOP_REG_MAP fhpll_reg_map[7]	= {
-															__REGXfer(PLL_HP_CON0	),
-															__REGXfer(ARMPLL_CON0	),
-															__REGXfer(ARMPLL_CON1	),
-															__REGXfer(ARMPLL_CON2	),
-															__REGXfer(MAINPLL_CON0	),
-															__REGXfer(MAINPLL_CON1	),
-															__REGXfer(MAINPLL_CON2	),
-														 };
+
+#if 0
+FHCTL_STATIC FREQHOP_PLLSettings freqhop_pll_default_settings[NUM_OF_PLL_ID] = {
+			// ----------- ARM PLL -----------
+			{1001000, 0 ,9 ,0, 40, 0, 0x3AE, 0x9A000},// 1.001GHz , 0.27us, 0.023437500, +0% ~ -4%, 38.5
+			// ----------- MAIN PLL -----------
+			{1599000, 0, 9, 0 ,40, 0, 0x4EB, 0xF6000}, // 1.599GHz, , 0.27us, 0.023437500, +0% ~ -4%, 61.5
+};
+#endif
 
 FHCTL_STATIC FREQHOP_PLLSettings freqhop_pll_settings[NUM_OF_PLL_ID][FREQHOP_PLLSETTINGS_MAXNUMBER] = {
 		// { target_vco_freq, dt, df, uplimit, downlimit, dds_val }
@@ -209,23 +225,26 @@ FHCTL_STATIC INT32 freqhop_init(UINT32 option);
 FHCTL_STATIC const char rfid_to_rfname[NUM_OF_RF_ID][4];
 FHCTL_STATIC const char pllid_to_pllname[NUM_OF_PLL_ID][8];
 FHCTL_STATIC const FREQHOP_REG_MAP fhctl_reg_map[NUM_OF_FHCTL_REGS];
-FHCTL_STATIC const FREQHOP_REG_MAP fhpll_reg_map[7];
 FHCTL_STATIC FREQHOP_PLLSettings freqhop_pll_settings[NUM_OF_PLL_ID][FREQHOP_PLLSETTINGS_MAXNUMBER];
 
+FHCTL_STATIC void freqhop_fhctlx_set_DVFS(UINT32 pll_id, UINT32 dds);
+FHCTL_STATIC void freqhop_setbit_FHCTLx_cfg(UINT32 pll_id, UINT32 field, UINT32 mode);
+
+#if 0
 FHCTL_STATIC void freqhop_delay_task(UINT32 time_in_ticks);
 FHCTL_STATIC void freqhop_sram_blkcpy(UINT32 pll_id, UINT32 *pDDS);
 FHCTL_STATIC void freqhop_rf_src_hopping_enable(UINT32 rf_id, UINT32 enable);
 FHCTL_STATIC void freqhop_set_priority(UINT32 order, UINT32 order_md);
 FHCTL_STATIC void freqhop_set_dma_mode(UINT32 mode);
-FHCTL_STATIC void freqhop_fhctlx_set_DVFS(UINT32 pll_id, UINT32 dds);
 FHCTL_STATIC void freqhop_rf_src_trigger_ch(UINT32 rf_id, UINT32 channel);
 FHCTL_STATIC UINT32 freqhop_get_pll_mon_dss(UINT32 pll_id);
 FHCTL_STATIC UINT32 freqhop_get_pll_fhctlx_dss(UINT32 pll_id);
 FHCTL_STATIC void freqhop_sram_init(UINT32 *pDDS);
 FHCTL_STATIC void freqhop_sram_blkcpy(UINT32 pll_id, UINT32 *pDDS);
-FHCTL_STATIC void freqhop_setbit_FHCTLx_cfg(UINT32 pll_id, UINT32 field, UINT32 mode);
 FHCTL_STATIC void freqhop_set_fhctlx_updnlmt(UINT32 pll_id, UINT32 uplimit, UINT32 downlimit);
 FHCTL_STATIC void freqhop_set_fhctlx_slope(UINT32 pll_id, UINT32 dts, UINT32 dys);
+#endif
+
 #endif //- !__FHCTL_CTP__
 
 
@@ -288,16 +307,19 @@ UINT32 freqhop_sram_read_data_with_offset(UINT32 offset)
 	return fhctl_read_reg(FHSRAM_RD);
 }
 
-void freqhop_sram_init(UINT32 *pDDS)
+// -----------------------------------------------------
+// Misc
+// -----------------------------------------------------
+#if 0
+void freqhop_delay_task(UINT32 time_in_ticks)
 {
-	volatile UINT32 i;
 
-	freqhop_sram_enable_with_offset(FREQHOP_PLLID2SRAMOFFSET(ARMPLL_ID));
-	for (i=0; i<SRAM_TABLE_SIZE_BY_PLL*NUM_OF_PLL_ID; i++)
-	{
-		freqhop_sram_write_data(*pDDS);
-		pDDS ++;
-	}
+    volatile UINT32 i;
+
+    if (time_in_ticks)
+    {
+        for (i = 0; i < time_in_ticks; i++) {;}
+    }
 }
 
 void freqhop_sram_blkcpy(UINT32 pll_id, UINT32 *pDDS)
@@ -310,25 +332,6 @@ void freqhop_sram_blkcpy(UINT32 pll_id, UINT32 *pDDS)
 		freqhop_sram_write_data(*pDDS);
 		pDDS ++;
 	}
-}
-
-// -----------------------------------------------------
-// Misc
-// -----------------------------------------------------
-void freqhop_delay_task(UINT32 time_in_ticks)
-{
-
-    volatile UINT32 i;
-
-    if (time_in_ticks)
-    {
-        for (i = 0; i < time_in_ticks; i++) {;}
-    }
-}
-
-void freqhop_rf_src_trigger_ch(UINT32 rf_id, UINT32 channel)
-{
-	fhctl_write_reg(channel, FHCTL_RFx_CH(rf_id));
 }
 
 void freqhop_rf_src_hopping_enable(UINT32 rf_id, UINT32 enable)
@@ -350,6 +353,8 @@ void freqhop_rf_src_hopping_enable(UINT32 rf_id, UINT32 enable)
 	fhctl_write_reg(reg, FHCTL_CFG);
 }
 
+
+
 void freqhop_set_priority(UINT32 order, UINT32 order_md)
 {
 	UINT32 reg = fhctl_read_reg(FHCTL_CFG);
@@ -367,6 +372,101 @@ void freqhop_set_dma_mode(UINT32 mode)
 	fhctl_clr_and_set_field (reg, mode, RG_FHDMA_MODE);
 
 	fhctl_write_reg(reg, FHDMA_CFG);
+}
+
+void freqhop_rf_src_trigger_ch(UINT32 rf_id, UINT32 channel)
+{
+	fhctl_write_reg(channel, FHCTL_RFx_CH(rf_id));
+}
+
+UINT32 freqhop_get_pll_mon_dss(UINT32 pll_id)
+{
+	UINT32 reg = fhctl_read_reg(FHCTLx_MON(pll_id)) & RG_FHCTLx_DDS_MASK;
+
+	//UINT32 dds = fhctl_read_reg(FHCTLx_MON(pll_id)) & 0x1fffff;
+	fhctl_info("[FreqHop] %s() MON_DDS_%d = 0x%08X\n", __func__, pll_id, reg) ;
+
+	return reg;
+}
+
+UINT32 freqhop_get_pll_fhctlx_dss(UINT32 pll_id)
+{
+	UINT32 reg = fhctl_read_reg(FHCTLx_DDS(pll_id)) & RG_FHCTLx_DDS_MASK;
+
+	//UINT32 dds = fhctl_read_reg(FHCTLx_MON(pll_id)) & 0x1fffff;
+	fhctl_info ("[FreqHop] %s() fhctl_DDS_%d = 0x%08X\n", __func__, pll_id, reg) ;
+
+	return reg;
+}
+
+void freqhop_sram_init(UINT32 *pDDS)
+{
+	volatile UINT32 i;
+
+	freqhop_sram_enable_with_offset(FREQHOP_PLLID2SRAMOFFSET(ARMPLL_ID));
+	for (i=0; i<SRAM_TABLE_SIZE_BY_PLL*NUM_OF_PLL_ID; i++)
+	{
+		freqhop_sram_write_data(*pDDS);
+		pDDS ++;
+	}
+}
+
+void freqhop_set_fhctlx_updnlmt(UINT32 pll_id, UINT32 uplimit, UINT32 downlimit)
+{
+	UINT32 rval = fhctl_read_reg(FHCTLx_UPDNLMT(pll_id));
+
+	fhctl_clr_and_set_field (rval, uplimit, RG_FRDDSx_UPLMT);
+	fhctl_clr_and_set_field (rval, downlimit, RG_FRDDSx_DNLMT);
+
+	fhctl_write_reg(rval, FHCTLx_UPDNLMT(pll_id));
+}
+
+void freqhop_set_fhctlx_slope(UINT32 pll_id, UINT32 dts, UINT32 dys)
+{
+	UINT32 rval = fhctl_read_reg(FHCTLx_CFG(pll_id));
+
+	fhctl_clr_and_set_field (rval, dts, RG_FRDDSx_DTS);
+	fhctl_clr_and_set_field (rval, dys, RG_FRDDSx_DYS);
+
+	fhctl_write_reg(rval, FHCTLx_CFG(pll_id));
+}
+#endif
+
+void freqhop_dump_regs(void)
+{
+	int i;
+
+	fhctl_info("\n==  FHCTL FreqHop ==\n", __func__) ;
+
+	for(i = FHDMA_CFG ; i <= FHCTL_FM_CH ; i += 4)
+	{
+		fhctl_info("[0x%X] = 0x%08X\n", i, fhctl_read_reg(i)) ;
+	}
+
+	fhctl_info("\n==  FHCTLx FreqHop ==\n", __func__) ;
+	for(i = ARMPLL_ID ; i < NUM_OF_PLL_ID; i++)
+	{
+		fhctl_info("0x%X ", fhctl_read_reg(FHCTLx_CFG(i))) ;
+		fhctl_info("0x%X ", fhctl_read_reg(FHCTLx_UPDNLMT(i))) ;
+		fhctl_info("0x%X ", fhctl_read_reg(FHCTLx_DDS(i))) ;
+		fhctl_info("0x%X ", fhctl_read_reg(FHCTLx_DVFS(i))) ;
+		fhctl_info("0x%X ", fhctl_read_reg(FHCTLx_MON(i))) ;
+		fhctl_info("- %s \n", pllid_to_pllname[i]) ;
+	}
+
+	fhctl_info("PLL_HP_CON0 = 0x%08X\n", fhctl_read_reg(PLL_HP_CON0)) ;
+	for(i = ARMPLL_ID ; i < NUM_OF_PLL_ID ; i++)
+	{
+		fhctl_info("%s pll_con0 ori 0x%08X = 0x%08X\n", pllid_to_pllname[i], pll_con0[i], 		fhctl_read_reg(pll_con0[i])) ;
+		fhctl_info("%s pll_con1 ori 0x%08X = 0x%08X\n", pllid_to_pllname[i], pll_con1_addr[i],	fhctl_read_reg(pll_con1_addr[i])) ;
+	}
+
+	fhctl_info("\nARMPLL_CON2 = 0x%08X\n", fhctl_read_reg(ARMPLL_CON2)) ;
+	fhctl_info("MAINPLL_CON2 = 0x%08X\n", fhctl_read_reg(MAINPLL_CON2)) ;
+
+	fhctl_info("\n") ;
+
+	return ;
 }
 
 void freqhop_set_hopping_slope (UINT32 dy, UINT32 dt)
@@ -389,7 +489,7 @@ void freqhop_fhctlx_set_DVFS(UINT32 pll_id, UINT32 dds)
 	fhctl_write_reg(dds, FHCTLx_DVFS(pll_id));
 }
 
-void freqhop_ddscpy_pllcon(UINT32 pll_id, UINT32 mode)
+void freqhop_ddscpy_pllcon1(UINT32 pll_id, UINT32 mode)
 {
 	UINT32 reg;
 	UINT32 dds_ori = 0;
@@ -398,26 +498,24 @@ void freqhop_ddscpy_pllcon(UINT32 pll_id, UINT32 mode)
 	{
 		//- read pllgp_dds
 		dds_ori = fhctl_read_reg(pll_con1_addr[pll_id]) & RG_FHCTLx_DDS_MASK;
-		fhctl_info("Read %s_DDS = 0x%08X\n", pllid_to_pllname[pll_id], dds_ori);
+		fhctl_info("PLL%d_DDS is 0x%08X\n", pll_id, dds_ori);
 
 		reg = fhctl_read_reg(FHCTLx_DDS(pll_id));
 		//- write pllgp_dds to fhctl_dds
 		fhctl_clr_and_set_field (reg, 1, RG_FHCTLx_PLL_TGL_ORG);
 		fhctl_clr_and_set_field (reg, dds_ori, RG_FHCTLx_PLL_ORG);
 		fhctl_write_reg(reg, FHCTLx_DDS(pll_id));
-		fhctl_info("Set %s_FHCTL_DDS = 0x%08X\n", pllid_to_pllname[pll_id], RG_FHCTLx_DDS_MASK & fhctl_read_reg(FHCTLx_DDS(pll_id)));
+		fhctl_info("FHCTL%d_DDS = 0x%08X\n", pll_id, RG_FHCTLx_DDS_MASK & fhctl_read_reg(FHCTLx_DDS(pll_id)));
 	}
 	else
 	{
 		//- read fhctl_dds
 		dds_ori = fhctl_read_reg(FHCTLx_DDS(pll_id)) & RG_FHCTLx_DDS_MASK;
-		fhctl_info("Read %s_FHCTL_DDS = 0x%08X\n", pllid_to_pllname[pll_id], dds_ori);
-		dds_ori = freqhop_pll_settings[pll_id][0].dds_val & RG_FHCTLx_DDS_MASK;
-		fhctl_info("Read %s_FHCTL_DDS_Ori = 0x%08X\n", pllid_to_pllname[pll_id], dds_ori);
+		fhctl_info("FHCTL%d_DDS = 0x%08X\n", pll_id, dds_ori);
 
 		//- write fhctl_dds to pllgp_dds
 		fhctl_write_reg(dds_ori, pll_con1_addr[pll_id]);
-		fhctl_info("Set %s_FHCTL_DDS = 0x%08X\n", pllid_to_pllname[pll_id], fhctl_read_reg(pll_con1_addr[pll_id]));
+		fhctl_info("FHCTL%d_DDS = 0x%08X\n", pll_id, fhctl_read_reg(pll_con1_addr[pll_id]));
 	}
 }
 
@@ -441,34 +539,11 @@ void freqhop_fhctlx_pllmux(UINT32 pll_id, UINT32 mode)
 	}
 }
 
-void freqhop_set_fhctlx_updnlmt(UINT32 pll_id, UINT32 uplimit, UINT32 downlimit)
-{
-	UINT32 rval = fhctl_read_reg(FHCTLx_UPDNLMT(pll_id));
-
-	fhctl_clr_and_set_field (rval, uplimit, RG_FRDDSx_UPLMT);
-	fhctl_clr_and_set_field (rval, downlimit, RG_FRDDSx_DNLMT);
-
-	fhctl_write_reg(rval, FHCTLx_UPDNLMT(pll_id));
-}
-
-void freqhop_set_fhctlx_slope(UINT32 pll_id, UINT32 dts, UINT32 dys)
-{
-	UINT32 rval = fhctl_read_reg(FHCTLx_CFG(pll_id));
-
-	fhctl_clr_and_set_field (rval, dts, RG_FRDDSx_DTS);
-	fhctl_clr_and_set_field (rval, dys, RG_FRDDSx_DYS);
-
-	fhctl_write_reg(rval, FHCTLx_CFG(pll_id));
-}
-
 void freqhop_fhctlx_enable (UINT32 pll_id, UINT32 mode, FREQHOP_PLLSettings *pSetting)
 {
 	UINT32 cfg_reg_val;
 	UINT32 updnlmt_reg_val = 0;
-	UINT32 reg;
 	UINT32 fhctl_sm_ori;
-
-	fhctl_info("Enter: %s\n",__func__);
 
 	//uplmt, dnlmt
 	fhctl_set_field (updnlmt_reg_val, pSetting->uplimit, RG_FRDDSx_UPLMT);
@@ -493,14 +568,10 @@ void freqhop_fhctlx_enable (UINT32 pll_id, UINT32 mode, FREQHOP_PLLSettings *pSe
 	}
 	else
 	{	//- FHCTL disabled originally, switch pll mux control
-		freqhop_ddscpy_pllcon(pll_id, SWITCH_PLLCON2FHCTL);
+		freqhop_ddscpy_pllcon1(pll_id, SWITCH_PLLCON2FHCTL);
 		freqhop_fhctlx_pllmux(pll_id, SWITCH_PLLCON2FHCTL);
 	}
 	fhctl_write_reg(cfg_reg_val, FHCTLx_CFG(pll_id));
-
-	//store sm mode
-	fhctl_sm_store[pll_id] = cfg_reg_val & FHCTL_MODE_MASK;
-
 }
 
 void freqhop_fhctlx_disable (UINT32 pll_id, UINT32 mode, UINT32 switch_mux)
@@ -509,8 +580,6 @@ void freqhop_fhctlx_disable (UINT32 pll_id, UINT32 mode, UINT32 switch_mux)
 	UINT32 disable_sm = 0;
 	UINT32 dds_mon;
 	UINT32 dds_fhx;
-
-	fhctl_info("Enter: %s\n",__func__);
 
 	reg = fhctl_read_reg(FHCTLx_CFG(pll_id));
 	mode &= FHCTL_MODE_MASK;
@@ -547,6 +616,7 @@ void freqhop_fhctlx_disable (UINT32 pll_id, UINT32 mode, UINT32 switch_mux)
 		}
 	}
 
+
 	if (disable_sm)
 	{
 		//- disable both SSC and hopping
@@ -565,8 +635,8 @@ void freqhop_fhctlx_disable (UINT32 pll_id, UINT32 mode, UINT32 switch_mux)
 
 		if (switch_mux)
 		{
-			freqhop_ddscpy_pllcon(pll_id, SWITCH_FHCTL2PLLCON);
-			freqhop_fhctlx_pllmux(pll_id, SWITCH_FHCTL2PLLCON);
+			freqhop_ddscpy_pllcon1(pll_id, SWITCH_PLLCON2FHCTL);
+			freqhop_fhctlx_pllmux(pll_id, SWITCH_PLLCON2FHCTL);
 		}
 	}
 }
@@ -579,30 +649,6 @@ void freqhop_setbit_FHCTLx_cfg(UINT32 pll_id, UINT32 field, UINT32 mode)
 	reg &= (~(1 << field));
 	reg |= (mode << field);
 	fhctl_write_reg(reg, FHCTLx_CFG(pll_id));
-
-	//store sm mode
-	fhctl_sm_store[pll_id] = reg & FHCTL_MODE_MASK;
-
-}
-
-UINT32 freqhop_get_pll_mon_dss(UINT32 pll_id)
-{
-	UINT32 reg = fhctl_read_reg(FHCTLx_MON(pll_id)) & RG_FHCTLx_DDS_MASK;
-
-	//UINT32 dds = fhctl_read_reg(FHCTLx_MON(pll_id)) & 0x1fffff;
-	fhctl_info("[FreqHop] %s() MON_DDS_%d = 0x%08X\n", __func__, pll_id, reg) ;
-
-	return reg;
-}
-
-UINT32 freqhop_get_pll_fhctlx_dss(UINT32 pll_id)
-{
-	UINT32 reg = fhctl_read_reg(FHCTLx_DDS(pll_id)) & RG_FHCTLx_DDS_MASK;
-
-	//UINT32 dds = fhctl_read_reg(FHCTLx_MON(pll_id)) & 0x1fffff;
-	fhctl_info ("[FreqHop] %s() fhctl_DDS_%d = 0x%08X\n", __func__, pll_id, reg) ;
-
-	return reg;
 }
 
 void freqhop_get_all_pll_mon_dss(UINT32 *pBuffer)
@@ -630,8 +676,8 @@ void freqhop_fill_setting_from_dds (UINT32 dds, FREQHOP_PLLSettings *pSetting)
 //- bit 1:		MAINPLL SSC default on
 INT32 freqhop_init(UINT32 option)
 {
-    UINT32 id;
-    UINT32 reg_con0,reg_con1,reg_con2;
+    UINT32 id, dds_con1;
+    UINT32 reg_con0,reg_con1;
 
 	if (freqhop_initiated)	return FHCTL_SUCCESS;
 
@@ -648,24 +694,23 @@ INT32 freqhop_init(UINT32 option)
     for(id=ARMPLL_ID; id<NUM_OF_PLL_ID; id++)
     {
     	FHCTL_LOCK;
-
+    	
+	    dds_con1 = fhctl_read_reg(pll_con1_addr[id]);
 	    reg_con0 = fhctl_read_reg(pll_con0[id]);
 	    reg_con1 = fhctl_read_reg(pll_con1_addr[id]);
-	    reg_con2 = fhctl_read_reg(pll_con2_addr[id]);
 	    //- re-fill setting from PLL_CON1
 		freqhop_pll_settings[id][0].dds_val = reg_con1 & RG_FHCTLx_DDS_MASK;
-	    freqhop_fill_setting_from_dds ((reg_con1 & RG_FHCTLx_DDS_MASK), &(freqhop_pll_settings[id][0]));
+	    freqhop_fill_setting_from_dds ((dds_con1 & RG_FHCTLx_DDS_MASK), &(freqhop_pll_settings[id][0]));
 
 		if (option & (1 << id))
 		{	//- SSC default on ???
 			freqhop_fhctlx_enable (id, FHCTL_SM | FHCTL_SSC, &(freqhop_pll_settings[id][0]));
 		}
-
+		
 		FHCTL_UNLOCK;
-
+		
 	    fhctl_info("%s pll_con0 ori = 0x%08X\n", pllid_to_pllname[id], reg_con0);
 	    fhctl_info("%s pll_con1 ori = 0x%08X\n", pllid_to_pllname[id], reg_con1);
-	    fhctl_info("%s pll_con2 ori = 0x%08X\n", pllid_to_pllname[id], reg_con2);
     }
 
 
@@ -679,7 +724,7 @@ INT32 freqhop_init(UINT32 option)
 //--------------------------------
 //-  sysfs
 //--------------------------------
-static INT32 freqhop_proc_dbg_write (struct file *file, const char *buffer, UINT32 count, void *data)
+static INT32 freqhop_proc_dbg_write (struct file *file, const char *buffer, unsigned long count, void *data)
 {
 	INT32 		ret;
 	char 		kbuf[256];
@@ -687,7 +732,7 @@ static INT32 freqhop_proc_dbg_write (struct file *file, const char *buffer, UINT
 	UINT32		p1,p2,p3,p4,p5,p6,p7,p8;
 
 	fhctl_info("Enter: %s\n",__func__);
-	len = min(count, (UINT32)(sizeof(kbuf)-1));
+	len = min(count, (unsigned long)(sizeof(kbuf)-1));
 	if (count == 0)		return -1;
 	if(count > 255)		count = 255;
 	ret = copy_from_user(kbuf, buffer, count);
@@ -702,7 +747,7 @@ static INT32 freqhop_proc_dbg_write (struct file *file, const char *buffer, UINT
 				freqhop_set_hopping_slope (p3, p4);
 			}break;
 		case 2:{	//- config hopping => 2   x   pll_id   dds   hop_dds   0   0
-					//- disable FIRST
+					//- disable FIRST	
 				freqhop_fhctlx_disable (p3, FHCTL_HOPPING, 1);
 				if (p2 == 0)
 				{	//- disable
@@ -714,7 +759,7 @@ static INT32 freqhop_proc_dbg_write (struct file *file, const char *buffer, UINT
 					freqhop_fhctlx_set_DVFS (p3, p5);
 				}
 			}break;
-		case 3:{	//- config SSC => 3    x   pll_id   dds   ssc_df   ssc_dt   uplmt   dnlmt
+		case 3:{	//- config SSC => 3    x   pll_id   dds   ssc_df   ssc_dt   uplmt   dnlmt					
 				if (p2 == 0)
 				{	//- disable FIRST
 					freqhop_fhctlx_disable (p3, FHCTL_SSC, 1);
@@ -741,14 +786,14 @@ static INT32 freqhop_proc_dbg_write (struct file *file, const char *buffer, UINT
 				else if (p2 == 4)
 				{	//- disable ALL SSC
 					freqhop_fhctlx_disable (ARMPLL_ID, FHCTL_SSC, 1);
-					freqhop_fhctlx_disable (MAINPLL_ID, FHCTL_SSC, 1);
+					freqhop_fhctlx_disable (MAINPLL_ID, FHCTL_SSC, 1);					
 				}
 			}break;
 		default:
 			break;
 	}
 	FHCTL_UNLOCK;
-
+	
 	return count;
 }
 
@@ -774,16 +819,16 @@ static INT32 freqhop_proc_dbg_read (char *page, char **start, off_t off, INT32 c
 		dds = fhctl_read_reg(pll_con1_addr[id]);
 		if (reg & (1 << FHCTLx_EN))
 		{
-			//- dds = fhctl_read_reg (FHCTLx_DDS(id));
+			dds = fhctl_read_reg (FHCTLx_DDS(id));
 			if (reg & (1 << FRDDSx_EN))		{ssc = 1;}
 			if (reg & (1 << SFSTRx_EN))		{hop = 1;}
 			dds_mon = fhctl_read_reg (FHCTLx_MON(id));
 		}
 		else
-		{
+		{			
 			dds_mon = 0;
 		}
-		p += sprintf(p, "%s :  ssc_en=%d, hop_en=%d, dds=0x%06X, dds_mon=0x%06X, df=0x%01X, dt=0x%01X, up=%2d, dn=%2d\n",	pllid_to_pllname[id],
+		p += sprintf(p, "%s :  ssc_en=%d, hop_en=%d, dds=0x%06X, dds_mon=0x%06X, df=0x%01X, dt=0x%01X, up=%2d, dn=%2d\n",	pllid_to_pllname[id],  
 																															ssc, hop, dds, dds_mon,
 																															freqhop_pll_settings[id][0].df,
 																															freqhop_pll_settings[id][0].dt,
@@ -801,7 +846,7 @@ static INT32 freqhop_proc_dbg_read (char *page, char **start, off_t off, INT32 c
 
 }
 
-static INT32 freqhop_proc_dumpregs_write (struct file *file, const char *buffer, UINT32 count, void *data)
+static INT32 freqhop_proc_dumpregs_write (struct file *file, const char *buffer, unsigned long count, void *data)
 {
 	fhctl_info("Enter: %s\n",__func__);
 
@@ -822,11 +867,6 @@ static INT32 freqhop_proc_dumpregs_read (char *page, char **start, off_t off, IN
 
 	fhctl_info("Enter: %s\n",__func__);
 
-	for (i=0; i<7; i++)
-	{
-		p += sprintf(p, "0x%08X, %s\r\n", fhctl_read_reg(fhpll_reg_map[i].addr), fhpll_reg_map[i].name);
-	}
-
 	for (i=0; i<NUM_OF_FHCTL_REGS; i++)
 	{
 		p += sprintf(p, "0x%08X, %s\r\n", fhctl_read_reg(fhctl_reg_map[i].addr), fhctl_reg_map[i].name);
@@ -841,7 +881,7 @@ static INT32 freqhop_proc_dumpregs_read (char *page, char **start, off_t off, IN
 
 }
 
-static INT32 freqhop_proc_help_write (struct file *file, const char *buffer, UINT32 count, void *data)
+static INT32 freqhop_proc_help_write (struct file *file, const char *buffer, unsigned long count, void *data)
 {
 	fhctl_info("Enter: %s\n",__func__);
 
@@ -852,7 +892,6 @@ static INT32 freqhop_proc_help_read (char *page, char **start, off_t off, INT32 
 {
 	char *p = page;
 	UINT32 len = 0;
-	UINT32 i, num, pll_id, reg;
 
 	if (off > 0)
 	{
@@ -862,67 +901,7 @@ static INT32 freqhop_proc_help_read (char *page, char **start, off_t off, INT32 
 
 	fhctl_info("Enter: %s\n",__func__);
 
-	//- slope (26f/16384)/((t+2)/26) =(26*26*f)/(16384*t+2)
-	reg = fhctl_read_reg(FHCTL_CON);
-	num = 825 * ((reg >> RG_FHCTL_SFDY_BIT) & RG_FHCTL_SFDY_MASK) / (20 * (2 + ((reg >> RG_FHCTL_SFDT_BIT) & RG_FHCTL_SFDT_MASK)));
-	i = num / 1000;
-	p += sprintf(p, "***Current Status***\nHop Slope %d.%d MHz/us\n", i, num - 1000*i);
-	for(pll_id=ARMPLL_ID; pll_id<NUM_OF_PLL_ID; pll_id++)
-	{
-		p += sprintf(p, "%s :\n", pllid_to_pllname[pll_id]);
-		p += sprintf(p, "sm   ssc   hop   \n", pllid_to_pllname[pll_id]);
-		reg = fhctl_read_reg(FHCTLx_CFG(pll_id));
-
-
-		if (reg & FHCTL_SM)			{p += sprintf(p, "on   ");}
-		else						{p += sprintf(p, "---  ");}
-
-		if (reg & FHCTL_SSC)		{p += sprintf(p, "  on  ");}
-		else						{p += sprintf(p, "  --- ");}
-
-		if (reg & FHCTL_HOPPING)	{p += sprintf(p, "   on  ");}
-		else						{p += sprintf(p, "   --- ");}
-
-		reg = fhctl_read_reg(pll_con2_addr[pll_id]) & RG_FHCTLx_DDS_MASK;
-		p += sprintf(p, "\nPLLCON2 = 0x%05X\n\n", reg);
-	}
-
-	p += sprintf(p, "SSC Slope\n"
-					"DY : in MHz\n"
-					"0x0: 0.000938691\n"
-					"0x1: 0.003173820\n"
-					"0x2: 0.006347666\n"
-					"0x3: 0.012695306\n"
-					"0x4: 0.025390612\n"
-					"0x5: 0.05078125\n"
-					"0x6: 0.1015625\n"
-					"0x7: 0.203125\n"
-					"0x8: 0.40625\n"
-					"0x9: 0.609375\n"
-					"0xA: 0.8125\n"
-					"0xB: 1.21875\n"
-					"0xC: 1.625\n"
-					"0xD: 2.4375\n"
-					"0xE: 3.25\n"
-					"0xF: 6.5\n"
-					"DT : in us\n"
-					"0x0: 0.27\n"
-					"0x1: 0.50\n"
-					"0x2: 0.77\n"
-					"0x3: 1.00\n"
-					"0x4: 1.26\n"
-					"0x5: 1.50\n"
-					"0x6: 1.73\n"
-					"0x7: 2.00\n"
-					"0x8: 2.23\n"
-					"0x9: 2.50\n"
-					"0xA: 2.76\n"
-					"0xB: 3.00\n"
-					"0xC: 4.00\n"
-					"0xD: 8.00\n"
-					"0xE: 10.00\n"
-					"0xF: 20.00\n"
-				);
+	p += sprintf(p, "\r\nhelp!!!\r\n");
 
 	*start = page + off;
 	len = p - page;
@@ -948,7 +927,7 @@ do {                                                                            
 		}																					\
 } while (0)
 
-void mt_freqhopping_init (void)
+void mt_freqhop_init (void)
 {
 	struct proc_dir_entry *proc_dir = NULL;
 
@@ -969,39 +948,32 @@ void mt_freqhopping_init (void)
 		fhctl_create_proc (help);
 	}
 
-	//- #if (defined (MT_FREQHOP_DEFAULT_ON) && defined(CONFIG_MTK_LDVT))
-	#if (defined (MT_FREQHOP_DEFAULT_ON))
-	freqhop_init (FHCTL_MAINPLL_SSC_ON);
+	#if (defined (MT_FREQHOP_DEFAULT_ON) && defined(CONFIG_MTK_LDVT))
+	freqhop_init (FHCTL_MAINPLL_SSC_ON);	
 	#else
 	freqhop_init (0);
 	#endif
 }
 
-INT32 freqhopping_config(UINT32 pll_id, UINT32 vco_freq, UINT32 enable)
+int freqhop_config(unsigned int pll_id, unsigned long vco_freq, unsigned int enable)
 {
 	FHCTL_LOCK;
 
-	if (enable)
-	{
-		freqhop_fill_setting_from_dds (RG_FHCTLx_DDS_MASK & fhctl_read_reg(pll_con1_addr[pll_id]), &(freqhop_pll_settings[pll_id][0]));
-		freqhop_fhctlx_enable (pll_id, fhctl_sm_store[pll_id], &(freqhop_pll_settings[pll_id][0]));
-	}
-	else
-	{
-		freqhop_fhctlx_disable (pll_id, FHCTL_SM, 1);
-	}
+	freqhop_fhctlx_disable (pll_id, FHCTL_SM, 1);
+	freqhop_fill_setting_from_dds (RG_FHCTLx_DDS_MASK & fhctl_read_reg(pll_con1_addr[pll_id]), &(freqhop_pll_settings[pll_id][0]));
+	freqhop_fhctlx_enable (pll_id, FHCTL_SSC | FHCTL_SM, &(freqhop_pll_settings[pll_id][0]));
 
 	FHCTL_UNLOCK;
 
-	return FHCTL_SUCCESS;
+	return 0;
 }
 
-void mt_fh_popod_save(void)
+void mt_freqhop_popod_save(void)
 {
 	fhctl_info("Enter: %s\n",__func__);
 }
 
-void mt_fh_popod_restore(void)
+void mt_freqhop_popod_restore(void)
 {
 	fhctl_info("Enter: %s\n",__func__);
 }
@@ -1013,7 +985,7 @@ void mt_fh_query_SSC_boundary (UINT32 pll_id, UINT32* uplmt_10, UINT32* dnlmt_10
 	FHCTL_LOCK;
 	reg = fhctl_read_reg(FHCTLx_CFG(pll_id));
 	if (reg & FHCTL_SSC)
-	{
+	{	
 		*uplmt_10 = freqhop_pll_settings[pll_id][0].uplimit_percent_10;
 		*uplmt_10 = freqhop_pll_settings[pll_id][0].downlimit_percent_10;
 	}
@@ -1024,4 +996,186 @@ void mt_fh_query_SSC_boundary (UINT32 pll_id, UINT32* uplmt_10, UINT32* dnlmt_10
 	}
 	FHCTL_UNLOCK;
 }
+
+//--------------------------------
+//-  HAL porting start
+//--------------------------------
+static void mt_fh_hal_init(void)
+{
+	FH_BUG_ON(1);
+}
+static int freqhopping_clkgen_proc_read(char *page, char **start, off_t off, int count, int *eof, void *data)
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+static int freqhopping_clkgen_proc_write(struct file *file, const char *buffer, unsigned long count, void *data)
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+static int freqhopping_dramc_proc_read(struct seq_file* m, void* v)
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+static int freqhopping_dramc_proc_write(struct file *file, const char *buffer, unsigned long count, void *data)
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+static int freqhopping_dumpregs_proc_read(struct seq_file* m, void* v)
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+static int freqhopping_dvfs_proc_read(struct seq_file* m, void* v)
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+static int freqhopping_dvfs_proc_write(struct file *file, const char *buffer, unsigned long count, void *data)
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+static int __freqhopping_ctrl(struct freqhopping_ioctl* fh_ctl,bool enable)
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+static void mt_fh_hal_lock(unsigned long *flags)
+{
+	FH_BUG_ON(1);
+}
+
+static void mt_fh_hal_unlock(unsigned long *flags)
+{
+	FH_BUG_ON(1);
+}
+
+static int mt_fh_hal_get_init(void)
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+static void mt_fh_hal_popod_restore(void)
+{
+	FH_BUG_ON(1);
+}
+
+static void mt_fh_hal_popod_save(void)
+{
+	FH_BUG_ON(1);
+}
+
+//mempll 200->266MHz using FHCTL
+static int mt_fh_hal_l2h_mempll(void)  //mempll low to high (200->266MHz)
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+//mempll 266->200MHz using FHCTL
+static int mt_fh_hal_h2l_mempll(void)  //mempll low to high (200->266MHz)
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+static int mt_fh_hal_l2h_dvfs_mempll(void)  //mempll low to high (200->266MHz)
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+static int mt_fh_hal_h2l_dvfs_mempll(void)  //mempll high to low(266->200MHz)
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+static int mt_fh_hal_dfs_armpll(unsigned int current_freq, unsigned int target_freq)  //armpll dfs mdoe
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+static int mt_fh_hal_is_support_DFS_mode(void)
+{
+	FH_BUG_ON(1);
+	return FALSE;
+}
+
+static int mt_fh_hal_dram_overclock(int clk)
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+static int mt_fh_hal_get_dramc(void)
+{
+	FH_BUG_ON(1);
+	return 0;
+}
+
+static struct mt_fh_hal_driver g_fh_hal_drv;
+
+struct mt_fh_hal_driver *mt_get_fh_hal_drv(void)
+{
+	memset(&g_fh_hal_drv, 0, sizeof(g_fh_hal_drv));
+	
+	g_fh_hal_drv.fh_pll			= NULL;
+	g_fh_hal_drv.fh_usrdef			= NULL;
+	g_fh_hal_drv.pll_cnt 			= MT658X_FH_MINIMUMM_PLL;
+	g_fh_hal_drv.mempll 			= -1;
+	g_fh_hal_drv.mainpll 			= -1;
+	g_fh_hal_drv.msdcpll 			= -1;
+	g_fh_hal_drv.mmpll 			= -1;
+	g_fh_hal_drv.vencpll 			= -1;
+	g_fh_hal_drv.lvdspll 			= -1;
+	
+	g_fh_hal_drv.mt_fh_hal_init 		=  mt_fh_hal_init;
+
+	g_fh_hal_drv.proc.clk_gen_read 		=  freqhopping_clkgen_proc_read;
+	g_fh_hal_drv.proc.clk_gen_write 	=  freqhopping_clkgen_proc_write;
+	
+	g_fh_hal_drv.proc.dramc_read 		=  freqhopping_dramc_proc_read;
+	g_fh_hal_drv.proc.dramc_write 		=  freqhopping_dramc_proc_write;	
+	g_fh_hal_drv.proc.dumpregs_read 	=  freqhopping_dumpregs_proc_read;
+
+	g_fh_hal_drv.proc.dvfs_read 		=  freqhopping_dvfs_proc_read;
+	g_fh_hal_drv.proc.dvfs_write 		=  freqhopping_dvfs_proc_write;	
+
+	g_fh_hal_drv.mt_fh_hal_ctrl		= __freqhopping_ctrl;
+	g_fh_hal_drv.mt_fh_lock			= mt_fh_hal_lock;
+	g_fh_hal_drv.mt_fh_unlock		= mt_fh_hal_unlock;
+	g_fh_hal_drv.mt_fh_get_init		= mt_fh_hal_get_init;
+
+	g_fh_hal_drv.mt_fh_popod_restore 	= mt_fh_hal_popod_restore;
+	g_fh_hal_drv.mt_fh_popod_save		= mt_fh_hal_popod_save;
+
+	g_fh_hal_drv.mt_l2h_mempll		= mt_fh_hal_l2h_mempll;
+	g_fh_hal_drv.mt_h2l_mempll		= mt_fh_hal_h2l_mempll;
+	g_fh_hal_drv.mt_l2h_dvfs_mempll		= mt_fh_hal_l2h_dvfs_mempll;
+	g_fh_hal_drv.mt_h2l_dvfs_mempll		= mt_fh_hal_h2l_dvfs_mempll;
+	g_fh_hal_drv.mt_dfs_armpll		= mt_fh_hal_dfs_armpll;
+	g_fh_hal_drv.mt_is_support_DFS_mode		= mt_fh_hal_is_support_DFS_mode;
+	g_fh_hal_drv.mt_dram_overclock		= mt_fh_hal_dram_overclock;
+	g_fh_hal_drv.mt_get_dramc		= mt_fh_hal_get_dramc;
+
+	return (&g_fh_hal_drv);
+}
+//--------------------------------
+//-  HAL porting end
+//--------------------------------
 #endif //- !__FHCTL_CTP__

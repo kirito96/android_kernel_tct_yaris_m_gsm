@@ -51,6 +51,7 @@ typedef enum {
 	ID_SET_MD_TX_LEVEL = 5,
 	ID_GET_TXPOWER = 6,			// For thermal
 	ID_IPO_H_RESTORE_CB = 7,
+	ID_FORCE_MD_ASSERT = 8,
 }KERN_FUNC_ID;
 
 // System channel, AP -->(/ <-->) MD message start from 0x100
@@ -61,6 +62,7 @@ enum {
 	MD_RF_TEMPERATURE = 0x103,
 	MD_RF_TEMPERATURE_3G = 0x104,
 	MD_GET_BATTERY_INFO = 0x105,
+	MD_SIM_TYPE = 0x107,	//for regional phone boot animation
 };
 
 typedef enum {
@@ -140,7 +142,7 @@ unsigned int get_resv_mem_size_for_md(int md_id);
 unsigned int get_resv_share_mem_size_for_md(int md_id);
 void get_md_post_fix(int md_id, char buf[], char buf_ex[]);
 unsigned int get_modem_support(int md_id);
-
+unsigned int set_modem_support(int md_id, int md_type);
 
 
 int register_filter_func(char cmd[], ccci_filter_cb_func_t store, ccci_filter_cb_func_t show);
@@ -160,6 +162,5 @@ int register_ccci_sys_call_back(int md_id, unsigned int id, ccci_sys_cb_func_t f
 void exec_ccci_sys_call_back(int md_id, int cb_id, int data);
 
 void ccci_helper_exit(void);
-
-
+void ccci_md_mem_reserve(void);
 #endif

@@ -34,7 +34,6 @@
 #include <linux/time.h>
 #include <linux/hrtimer.h>
 
-#include <mach/mt_devs.h>
 #include <mach/mt_typedefs.h>
 #include <mach/mt_gpio.h>
 #include <mach/mt_pm_ldo.h>
@@ -177,7 +176,7 @@ static int mmc3416x_SetPowerMode(struct i2c_client *client, bool enable)
 	u8 databuf[2];    
 	int res = 0;
 	u8 addr = MMC3416X_REG_CTRL;
-	struct mmc3416x_i2c_data *obj = i2c_get_clientdata(client);
+	//struct mmc3416x_i2c_data *obj = i2c_get_clientdata(client);
 
 	if(hwmsen_read_byte(client, addr, databuf))
 	{
@@ -267,7 +266,7 @@ static int I2C_RxData(char *rxData, int length)
 
 	for(loop_i = 0; loop_i < MMC3416X_RETRY_COUNT; loop_i++)
 	{
-		this_client->addr = this_client->addr & I2C_MASK_FLAG | I2C_WR_FLAG;
+		this_client->addr = (this_client->addr & I2C_MASK_FLAG) | (I2C_WR_FLAG);
 		if(i2c_master_send(this_client, (const char*)rxData, ((length<<0X08) | 0X01)))
 		{
 			break;
@@ -370,11 +369,11 @@ static int ECS_SaveData(int buf[12])
 static int ECS_ReadXYZData(int *vec, int size)
 {
 	unsigned char data[6] = {0,0,0,0,0,0};
-	ktime_t expires;
-	int wait_n=0;
-	int MD_times = 0;
+	//ktime_t expires;
+	//int wait_n=0;
+	//int MD_times = 0;
 	static int last_data[3];
-	struct timespec time1, time2, time3,time4,delay,aa;
+	struct timespec time1, time2, time3;//,time4,delay,aa;
 #if DEBUG	
 	struct i2c_client *client = this_client;  
 	struct mmc3416x_i2c_data *clientdata = i2c_get_clientdata(client);
@@ -622,7 +621,7 @@ static ssize_t show_layout_value(struct device_driver *ddri, char *buf)
 		data->cvt.sign[2],data->cvt.map[0], data->cvt.map[1], data->cvt.map[2]);            
 }
 /*----------------------------------------------------------------------------*/
-static ssize_t store_layout_value(struct device_driver *ddri, char *buf, size_t count)
+static ssize_t store_layout_value(struct device_driver *ddri, const char *buf, size_t count)
 {
 	struct i2c_client *client = this_client;  
 	struct mmc3416x_i2c_data *data = i2c_get_clientdata(client);
@@ -687,7 +686,7 @@ static ssize_t show_trace_value(struct device_driver *ddri, char *buf)
 	return res;    
 }
 /*----------------------------------------------------------------------------*/
-static ssize_t store_trace_value(struct device_driver *ddri, char *buf, size_t count)
+static ssize_t store_trace_value(struct device_driver *ddri, const char *buf, size_t count)
 {
 	struct mmc3416x_i2c_data *obj = i2c_get_clientdata(this_client);
 	int trace;
@@ -745,7 +744,7 @@ static int mmc3416x_create_attr(struct device_driver *driver)
 
 	for(idx = 0; idx < num; idx++)
 	{
-		if(err = driver_create_file(driver, mmc3416x_attr_list[idx]))
+		if((err = driver_create_file(driver, mmc3416x_attr_list[idx])))
 		{            
 			printk(KERN_ERR "driver_create_file (%s) = %d\n", mmc3416x_attr_list[idx]->attr.name, err);
 			break;
@@ -803,7 +802,7 @@ static int mmc3416x_release(struct inode *inode, struct file *file)
 }
 /*----------------------------------------------------------------------------*/
 //static int mmc3416x_ioctl(struct inode *inode, struct file *file, unsigned int cmd,unsigned long arg)
-	static int mmc3416x_unlocked_ioctl( struct file *file, unsigned int cmd,unsigned long arg)
+	static long mmc3416x_unlocked_ioctl( struct file *file, unsigned int cmd,unsigned long arg)
 
 {
 	void __user *argp = (void __user *)arg;
@@ -1421,46 +1420,46 @@ static int mmc3416x_i2c_probe(struct i2c_client *client, const struct i2c_device
 #if 1
 	tmp[0] = MMC3416X_REG_CTRL;
 	tmp[1] = MMC3416X_CTRL_REFILL;
-	if (I2C_TxData(data, 2) < 0) {
+	if (I2C_TxData(tmp, 2) < 0) {
 	}
 	msleep(MMC3416X_DELAY_SET);
 
 	tmp[0] = MMC3416X_REG_CTRL;
 	tmp[1] = MMC3416X_CTRL_SET;
-	if (I2C_TxData(data, 2) < 0) {
+	if (I2C_TxData(tmp, 2) < 0) {
 	}
 	msleep(1);
 	tmp[0] = MMC3416X_REG_CTRL;
 	tmp[1] = 0;
-	if (I2C_TxData(data, 2) < 0) {
+	if (I2C_TxData(tmp, 2) < 0) {
 	}
 	msleep(MMC3416X_DELAY_SET);
 
 	tmp[0] = MMC3416X_REG_CTRL;
 	tmp[1] = MMC3416X_CTRL_REFILL;
-	if (I2C_TxData(data, 2) < 0) {
+	if (I2C_TxData(tmp, 2) < 0) {
 	}
 	msleep(MMC3416X_DELAY_RST);
 	tmp[0] = MMC3416X_REG_CTRL;
 	tmp[1] = MMC3416X_CTRL_RESET;
-	if (I2C_TxData(data, 2) < 0) {
+	if (I2C_TxData(tmp, 2) < 0) {
 	}
 	msleep(1);
 	tmp[0] = MMC3416X_REG_CTRL;
 	tmp[1] = 0;
-	if (I2C_TxData(data, 2) < 0) {
+	if (I2C_TxData(tmp, 2) < 0) {
 	}
 	msleep(1);
 
 	tmp[0] = MMC3416X_REG_BITS;
 	tmp[1] = MMC3416X_BITS_SLOW_16;
-	if (I2C_TxData(data, 2) < 0) {
+	if (I2C_TxData(tmp, 2) < 0) {
 	}
 	msleep(MMC3416X_DELAY_TM);
 
 	tmp[0] = MMC3416X_REG_CTRL;
 	tmp[1] = MMC3416X_CTRL_TM;
-	if (I2C_TxData(data, 2) < 0) {
+	if (I2C_TxData(tmp, 2) < 0) {
 	}
 	msleep(MMC3416X_DELAY_TM);
 
@@ -1469,14 +1468,14 @@ static int mmc3416x_i2c_probe(struct i2c_client *client, const struct i2c_device
 
 
 	/* Register sysfs attribute */
-	if(err = mmc3416x_create_attr(&mmc_sensor_driver.driver))
+	if((err = mmc3416x_create_attr(&mmc_sensor_driver.driver)))
 	{
 		printk(KERN_ERR "create attribute err = %d\n", err);
 		goto exit_sysfs_create_group_failed;
 	}
 
 	
-	if(err = misc_register(&mmc3416x_device))
+	if((err = misc_register(&mmc3416x_device)))
 	{
 		printk(KERN_ERR "mmc3416x_device register failed\n");
 		goto exit_misc_device_register_failed;	}    
@@ -1484,7 +1483,7 @@ static int mmc3416x_i2c_probe(struct i2c_client *client, const struct i2c_device
 	sobj_m.self = data;
     sobj_m.polling = 1;
     sobj_m.sensor_operate = mmc3416x_operate;
-	if(err = hwmsen_attach(ID_MAGNETIC, &sobj_m))
+	if((err = hwmsen_attach(ID_MAGNETIC, &sobj_m)))
 	{
 		printk(KERN_ERR "attach fail = %d\n", err);
 		goto exit_kfree;
@@ -1493,7 +1492,7 @@ static int mmc3416x_i2c_probe(struct i2c_client *client, const struct i2c_device
 	sobj_o.self = data;
     sobj_o.polling = 1;
     sobj_o.sensor_operate = mmc3416x_orientation_operate;
-	if(err = hwmsen_attach(ID_ORIENTATION, &sobj_o))
+	if((err = hwmsen_attach(ID_ORIENTATION, &sobj_o)))
 	{
 		printk(KERN_ERR "attach fail = %d\n", err);
 		goto exit_kfree;
@@ -1522,7 +1521,7 @@ static int mmc3416x_i2c_remove(struct i2c_client *client)
 {
 	int err;	
 	
-	if(err = mmc3416x_delete_attr(&mmc_sensor_driver.driver))
+	if((err = mmc3416x_delete_attr(&mmc_sensor_driver.driver)))
 	{
 		printk(KERN_ERR "mmc3416x_delete_attr fail: %d\n", err);
 	}

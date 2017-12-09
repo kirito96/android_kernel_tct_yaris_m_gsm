@@ -1,4 +1,3 @@
-
 #ifndef __CAMERA_CUSTOM_MSDK_H
 #define __CAMERA_CUSTOM_MSDK_H
 
@@ -11,6 +10,9 @@ extern MSDK_LENS_INIT_FUNCTION_STRUCT LensInitFunc[MAX_NUM_OF_SUPPORT_LENS];
 extern MUINT32 gMainLensIdx;
 extern MUINT32 gSubLensIdx;
 
+/*******************************************************************************
+*
+********************************************************************************/
 MUINT32 cameraCustomInit();
 void GetCameraDefaultPara(MUINT32 SensorId,
 						  PNVRAM_CAMERA_ISP_PARAM_STRUCT pCameraISPDefault,

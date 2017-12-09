@@ -1,5 +1,118 @@
+/*****************************************************************************
+*  Copyright Statement:
+*  --------------------
+*  This software is protected by Copyright and the information contained
+*  herein is confidential. The software may not be copied and the information
+*  contained herein may not be used or disclosed except with the written
+*  permission of MediaTek Inc. (C) 2008
+*
+*  BY OPENING THIS FILE, BUYER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+*  THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+*  RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO BUYER ON
+*  AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+*  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+*  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+*  NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+*  SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+*  SUPPLIED WITH THE MEDIATEK SOFTWARE, AND BUYER AGREES TO LOOK ONLY TO SUCH
+*  THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. MEDIATEK SHALL ALSO
+*  NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE RELEASES MADE TO BUYER'S
+*  SPECIFICATION OR TO CONFORM TO A PARTICULAR STANDARD OR OPEN FORUM.
+*
+*  BUYER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND CUMULATIVE
+*  LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+*  AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+*  OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY BUYER TO
+*  MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+*
+*  THE TRANSACTION CONTEMPLATED HEREUNDER SHALL BE CONSTRUED IN ACCORDANCE
+*  WITH THE LAWS OF THE STATE OF CALIFORNIA, USA, EXCLUDING ITS CONFLICT OF
+*  LAWS PRINCIPLES.  ANY DISPUTES, CONTROVERSIES OR CLAIMS ARISING THEREOF AND
+*  RELATED THERETO SHALL BE SETTLED BY ARBITRATION IN SAN FRANCISCO, CA, UNDER
+*  THE RULES OF THE INTERNATIONAL CHAMBER OF COMMERCE (ICC).
+*
+*****************************************************************************/
 
 
+/*******************************************************************************
+ *
+ * Filename:
+ * ---------
+ *   FT_fnc.c
+ *
+ * Project:
+ * --------
+ *   YUSU
+ *
+ * Description:
+ * ------------
+ *    driver main function
+ *
+ * Author:
+ * -------
+ *   Lu.Zhang (MTK80251) 09/11/2009
+ *
+ *------------------------------------------------------------------------------
+ * $Revision:$
+ * $Modtime:$
+ * $Log:$
+ *
+ * 09 05 2010 siyang.miao
+ * [ALPS00003981] Add reboot feature in meta
+ * .
+ *
+ * 09 02 2010 sean.cheng
+ * [ALPS00003477] [Need Patch] [Volunteer Patch] ALPS.W10.34 migrate camera function from 2.1 to 2.2
+ * .Turn the CCAP / CCT Meta function
+ *
+ * 08 28 2010 qiuhuan.zhao
+ * [ALPS00123522] [GPS] Android 2.2 porting
+ * GPS META and FM porting.
+ *
+ * 08 28 2010 chunhui.li
+ * [ALPS00123709] [Bluetooth] meta mode check in
+ * for META mode check in.
+ *
+ * 08 14 2010 chipeng.chang
+ * [ALPS00003297] [Need Patch] [Volunteer Patch] android 2.2 migration
+ * add audio meta ft main.
+ *
+ * 07 16 2010 siyang.miao
+ * [ALPS00122025]TST/FT for G-Sensor calibration
+ * .
+ *
+ * 04 24 2010 lu.zhang
+ * [ALPS00005327]CCAP
+ * [ALPS00005327] CCAP
+ * .
+ *
+ * 04 24 2010 lu.zhang
+ * [ALPS00005327]CCAP
+ * .
+ *
+ * 03 19 2010 lu.zhang
+ * [ALPS00004362]CCAP APIs
+ * .
+ *
+ * 03 18 2010 lu.zhang
+ * [ALPS00004362]CCAP APIs
+ * for CCAP APIs
+ *
+ * 03 09 2010 ch.yeh
+ * [ALPS00001276][BT]Migration to Android 2.1
+ * [BT][meta]enable Bluetooth META function.
+ *
+ * 02 26 2010 lu.zhang
+ * [ALPS00004332]Create META
+ * .
+ *
+ * 01 20 2010 lu.zhang
+ * [ALPS00004332]Create META
+ * .
+ *
+ *
+ *
+ *******************************************************************************/
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdio.h>
@@ -21,11 +134,11 @@
 #include "FT_Public.h"
 #include <DfoDefines.h>
 
-
+#include "hardware/ccci_intf.h"
 
 // required META_DLL version
 #define FT_REQUIRED_META_VER	0x03050002
-#define	MAX_PATH				256
+#define	MAX_PATH				1024
 
 #define VERSION_FILE_PATH           "/system/build.prop"
 
@@ -45,15 +158,53 @@
 #define COM_PORT_TYPE_FILE "/sys/bus/platform/drivers/meta_com_type_info/meta_com_type_info"
 #define COM_PORT_TYPE_STR_LEN 1
 
+static int dumpLogState = 0;
+static int md5_device_note = -1;
 
-int FT_Module_Init(void)
+/********************************************************************************
+//FUNCTION:
+//		FT_Module_Init
+//DESCRIPTION:
+//		this function is called to initial the FT module and other neccessary module.
+//
+//PARAMETERS:
+//		None
+//RETURN VALUE:
+//		TRUE is success, otherwise is fail
+//
+//DEPENDENCY:
+//		None
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
+
+int FT_Module_Init(int device_note)
 {
     //cpu and pmic is comon module, we init these here.
-
+    md5_device_note = device_note;
+    dumpLogState = 0;
     return 1;
 }
 
 
+/********************************************************************************
+//FUNCTION:
+//		FT_Module_Deinit
+//DESCRIPTION:
+//		this function is called to releaes all meta module
+//
+//PARAMETERS:
+//		None
+//RETURN VALUE:
+//		TRUE is success, otherwise is fail
+//
+//DEPENDENCY:
+//		FT_Module_Init must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 int FT_Module_Deinit(void)
 {
     //deinit all modules to release the system resource.
@@ -61,47 +212,185 @@ int FT_Module_Deinit(void)
     //META_CCAP_deinit();
     return 1;
 }
+/********************************************************************************
+//FUNCTION:
+//		FT_MODEM_INFO_OP
+//DESCRIPTION:
+//		this function is called to get modem information
+//
+//PARAMETERS:
+//		req:		[IN]	refers to the define of "FT_MODEM_REQ"
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 
 void FT_MODEM_INFO_OP(FT_MODEM_REQ *pLocalBuf, char *pft_PeerBuf, kal_int16 ft_peer_len)
 {
 	FT_MODEM_CNF ft_cnf;
 	int modem_req=0;
 	int modem_number=0;
-	int modem_id=0;
-	
+	int active_modem_id=0;
+	int modem_type=0;
+	int fd = -1;
+	int type_define=0;
+	char dev_node[32] = {0};
+
 	FT_LOG("[FTT_Drv:] FT_MODEM_INFO_OP ");
-	
 	memset(&ft_cnf, 0, sizeof(FT_MODEM_CNF));
-	
+	ft_cnf.status = META_FAILED;
 
-	if (MTK_ENABLE_MD1)
+	if(pLocalBuf->type == FT_MODEM_OP_QUERY_INFO)
 	{
-		   modem_number = 1;
-		   modem_id = 1;
+		type_define = 1;
+		modem_number = FT_GetModemType(&active_modem_id,&modem_type);			
 
+		ft_cnf.result.query_modem_info_cnf.modem_number = modem_number;
+		ft_cnf.result.query_modem_info_cnf.modem_id = active_modem_id;
+
+		ft_cnf.status = META_SUCCESS;
+	}
+	else if(pLocalBuf->type == FT_MODEM_OP_CAPABILITY_LIST)
+	{
+		type_define = 1;
+		MODEM_CAPABILITY_LIST modem_capa;
+		memset(&modem_capa, 0, sizeof(MODEM_CAPABILITY_LIST));
+		FT_GetModemCapability(&modem_capa);
+		memcpy(&ft_cnf.result.query_modem_cap_cnf,&modem_capa,sizeof(MODEM_CAPABILITY_LIST));
+		ft_cnf.status = META_SUCCESS;
 	}
 
-	if (MTK_ENABLE_MD2)
-	{
-		   modem_number+=1;
-		   modem_id = 2;
-		if (MTK_ENABLE_MD1)
-		{
-			      modem_id = 1;
-		}
-	}	
+#ifdef MTK_TLR_SUPPORT
 
+	if(MTK_ENABLE_MD5)
+	{			
+		fd = md5_device_note;
+	}
+	else
+	{		
+		snprintf(dev_node, 32, "%s", ccci_get_node_name(USR_META_IOCTL,MD_SYS1));
+		fd = open(dev_node, O_RDWR|O_NOCTTY|O_NDELAY );		
+	}
+
+	if(fd < 0 && (pLocalBuf->type == FT_MODEM_OP_SET_MODEMTYPE || pLocalBuf->type == FT_MODEM_OP_GET_CURENTMODEMTYPE|| pLocalBuf->type == FT_MODEM_OP_QUERY_MDIMGTYPE))
+	{
+		ft_cnf.status = META_FAILED;
+		FT_LOG("[FTT_Drv:]Open device note: %s fail %d",dev_node,fd );
+		ft_cnf.header.id = pLocalBuf->header.id +1;
+    	ft_cnf.header.token = pLocalBuf->header.token;
+		ft_cnf.type = pLocalBuf->type;	
+	
+		WriteDataToPC(&ft_cnf, sizeof(FT_MODEM_CNF),NULL, 0);
+		return;
+	}
+	
+
+	if(pLocalBuf->type == FT_MODEM_OP_SET_MODEMTYPE)
+	{
+		type_define = 1;
+		unsigned int modem_type = pLocalBuf->cmd.set_modem_type_req.modem_type;
+		 
+	
+		if (0 == ioctl(fd, CCCI_IOC_RELOAD_MD_TYPE, &modem_type))
+		{
+			if (0 == ioctl(fd, CCCI_IOC_MD_RESET))
+			{
+				ft_cnf.status = META_SUCCESS;		
+			}
+			else
+			{
+				ft_cnf.status = META_FAILED;
+				FT_LOG("[FTT_Drv:]ioctl CCCI_IOC_MD_RESET fail " );	
+			}
+		}
+		else
+		{
+			ft_cnf.status = META_FAILED;
+			FT_LOG("[FTT_Drv:]ioctl CCCI_IOC_RELOAD_MD_TYPE fail modem_type = %d", modem_type);	
+		}
+	}
+	else if(pLocalBuf->type == FT_MODEM_OP_GET_CURENTMODEMTYPE)
+	{
+		unsigned int modem_type=0;
+		type_define = 1;
+		
+		if (0 == ioctl(fd, CCCI_IOC_GET_MD_TYPE, &modem_type))
+		{
+			ft_cnf.status = META_SUCCESS;
+			ft_cnf.result.get_currentmodem_type_cnf.current_modem_type = modem_type;	
+			FT_LOG("[FTT_Drv:]ioctl CCCI_IOC_GET_MD_TYPE success modem_type = %d", modem_type);
+		}
+		else
+		{
+			ft_cnf.status = META_FAILED;
+			FT_LOG("[FTT_Drv:]ioctl CCCI_IOC_GET_MD_TYPE fail");	
+		}	
+		
+	}
+	else if(pLocalBuf->type == FT_MODEM_OP_QUERY_MDIMGTYPE)
+	{
+		unsigned int mdimg_type[16]={0};
+		type_define = 1;
+
+		if (0 == ioctl(fd, CCCI_IOC_GET_MD_IMG_EXIST, &mdimg_type))
+		{
+			ft_cnf.status = META_SUCCESS;
+			memcpy(ft_cnf.result.query_modem_imgtype_cnf.mdimg_type,mdimg_type,16*sizeof(unsigned int));
+
+			for(int i = 0;i<16;i++)
+			{
+				FT_LOG("mdimg_type[%d] %d",i, mdimg_type[i]);	
+			}
+				
+		}
+		else
+		{
+			ft_cnf.status = META_FAILED;
+			FT_LOG("[FTT_Drv:]ioctl CCCI_IOC_GET_MD_IMG_EXIST fail");	
+		}	
+	}
+
+	if(!MTK_ENABLE_MD5)
+	{
+		close(fd);
+	}
+#endif
+
+	if(type_define == 0)
+	{
+		FT_LOG("[FTT_Drv:]FT_MODEM_REQ have no this type %d",pLocalBuf->type );	
+	}
+	
 	ft_cnf.header.id = pLocalBuf->header.id +1;
     ft_cnf.header.token = pLocalBuf->header.token;
-	ft_cnf.result.query_modem_info_cnf.modem_number = modem_number;
-	ft_cnf.result.query_modem_info_cnf.modem_id = modem_id;
-	ft_cnf.status = META_SUCCESS;
-	ft_cnf.type = pLocalBuf->type;
+	ft_cnf.type = pLocalBuf->type;	
 	
 	WriteDataToPC(&ft_cnf, sizeof(FT_MODEM_CNF),NULL, 0);
 }
 
 
+/********************************************************************************
+//FUNCTION:
+//		FT_TestAlive
+//DESCRIPTION:
+//		this function is called to tell pc the ft module is alive
+//
+//PARAMETERS:
+//		req:		[IN]	refers to the define of "FT_IS_ALIVE_REQ"
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_TestAlive(FT_IS_ALIVE_REQ *req)
 {
     FT_IS_ALIVE_CNF ft_cnf;
@@ -115,22 +404,41 @@ void FT_TestAlive(FT_IS_ALIVE_REQ *req)
     WriteDataToPC(&ft_cnf, sizeof(FT_IS_ALIVE_CNF),NULL, 0);
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_GetVersionInfo
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "FT_VER_INFO_REQ"
+//		pft_PeerBuf: 	[IN]	peer buff
+//		ft_peer_len	[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_GetVersionInfo(FT_VER_INFO_REQ *req, char *pft_PeerBuf, kal_int16 ft_peer_len)
 {
     FT_VER_INFO_CNF ft_cnf;
-	unsigned int dwRc ;
-	unsigned int dwValSize;
-	unsigned int dwValType;
-	char szBuffer[MAX_PATH];
+	unsigned int dwRc = 0;
+	unsigned int dwValSize = 0;
+	unsigned int dwValType = 0;
+	char szBuffer[MAX_PATH] = {0};
     FILE *fd = 0;
-    char str[256];
-    char *loc;
+    char str[256] = {0};
+    char *loc = NULL;
 
     memset(&ft_cnf, 0, sizeof(ft_cnf));
     memset(szBuffer,0, sizeof(szBuffer));
-	  char* tmp;
-	  char platform[256];
-	  char chipVersion[256];
+	char* tmp = NULL;
+	char platform[256] = {0};
+	char chipVersion[256] = {0};
 
     //initail the value of ft header
     ft_cnf.header.id = req->header.id +1;
@@ -153,12 +461,12 @@ void FT_GetVersionInfo(FT_VER_INFO_REQ *req, char *pft_PeerBuf, kal_int16 ft_pee
             if(!strcmp(loc, RELEASE_SW_TOKEN))
             {
                 FT_LOG("[FT_GetVersionInfo] SW Version = %s\n", tmp);
-                strcpy((char*)ft_cnf.sw_ver, tmp);
+                strncpy((char*)ft_cnf.sw_ver, tmp, 63);
             }
             if(!strcmp(loc, RELEASE_PLATFORM_TOKEN))
             {
                 FT_LOG("[FT_GetVersionInfo] Platform = %s\n", tmp);
-				strcpy(platform, tmp);
+				strncpy(platform, tmp, 255);
             }
             if(!strcmp(loc, RELEASE_PRODUCT_TOKEN))
             {
@@ -167,13 +475,13 @@ void FT_GetVersionInfo(FT_VER_INFO_REQ *req, char *pft_PeerBuf, kal_int16 ft_pee
             if(!strcmp(loc, RELEASE_CHIP_TOKEN))
             {
                 FT_LOG("[FT_GetVersionInfo] Chip Version = %s\n", tmp);
-                strcpy(chipVersion, tmp);
-                strcpy((char*)ft_cnf.hw_ver, tmp);
+                strncpy(chipVersion, tmp, 255);
+                strncpy((char*)ft_cnf.hw_ver, tmp, 63);
             }
             if(!strcmp(loc, RELEASE_BUILD_TIME_TOKEN))
             {
                 FT_LOG("[FT_GetVersionInfo] Build Time = %s\n", tmp);
-                strcpy((char*)ft_cnf.sw_time, tmp);
+                strncpy((char*)ft_cnf.sw_time, tmp, 63);
             }
         }
     }
@@ -199,7 +507,7 @@ void FT_GetVersionInfo(FT_VER_INFO_REQ *req, char *pft_PeerBuf, kal_int16 ft_pee
 	szBuffer[k++] = '\0';
 	if (strlen(szBuffer) <= 64)
 	{
-		strcpy((char*)ft_cnf.bb_chip, szBuffer);
+		strncpy((char*)ft_cnf.bb_chip, szBuffer, strlen(szBuffer));
 	}
 	else
 	{
@@ -223,6 +531,23 @@ Ver_error:
     WriteDataToPC(&ft_cnf, sizeof(ft_cnf),NULL, 0);
 }
 
+/********************************************************************************
+//FUNCTION:
+//		Meta_Mobile_Log
+//DESCRIPTION:
+//		this function is called to send stop command to mobilelog if eng build
+//
+//PARAMETERS:
+//		None
+//RETURN VALUE:
+//		BOOL: if success the return value is TRUE, else it is FALSE.
+//
+//DEPENDENCY:
+//		None
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 BOOL Meta_Mobile_Log()
 {        
     int fd = 0;
@@ -232,7 +557,7 @@ BOOL Meta_Mobile_Log()
 	FT_LOG("[FTT_Drv:] Meta_Mobile_Log ");
 
     //support end load and user load,send stop command to mobilelog 
-	
+
 	fd = socket_local_client("mobilelogd", ANDROID_SOCKET_NAMESPACE_ABSTRACT, SOCK_STREAM);
 	if (fd < 0) 
 	{
@@ -251,13 +576,30 @@ BOOL Meta_Mobile_Log()
 		ret = TRUE;
 	}
 	close(fd);
-	sleep(4);	      	
+	sleep(4);	      
 	return ret;
 	
 }
 
 
 
+/********************************************************************************
+//FUNCTION:
+//		FT_PowerOff
+//DESCRIPTION:
+//		this function is called to power off target
+//
+//PARAMETERS:
+//		None
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		None
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 
 void FT_PowerOff(FT_POWER_OFF_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len )
 {
@@ -274,19 +616,18 @@ void FT_PowerOff(FT_POWER_OFF_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len )
     if(comPortType == META_USB_COM)
     {
 
-	FILE *PUsbFile;
+	    FILE *PUsbFile = NULL;
         PUsbFile = fopen("sys/devices/platform/mt_usb/cmode","w");
-	if(PUsbFile == NULL)
-	{
-           // printf("Could not open sys/devices/platform/mt_usb/cmode: %s",strerror(errno));
-           FT_LOG("[FTT_Drv:] Could not open sys/devices/platform/mt_usb/cmode ");
-	}
-	else
-	{
+	    if(PUsbFile == NULL)
+	    {
+             // printf("Could not open sys/devices/platform/mt_usb/cmode: %s",strerror(errno));		 
+             FT_LOG("[FTT_Drv:] Could not open sys/devices/platform/mt_usb/cmode ");
+	    }
+	    else
+	    {
             fputc('0',PUsbFile);
-	}
-
-	fclose(PUsbFile);
+	        fclose(PUsbFile);
+	    }	
     }
     else
     {
@@ -295,18 +636,82 @@ void FT_PowerOff(FT_POWER_OFF_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len )
     if(pFTReq->dummy == 0)
     {
         usleep(1000 * 1000);
-	reboot(RB_POWER_OFF);
-}
+	    reboot(RB_POWER_OFF);
+    }
     if(pFTReq->dummy == 2)
     {
-	usleep(1000 * 1000);
-	reboot(RB_AUTOBOOT);
+	    usleep(1000 * 1000);
+	    reboot(RB_AUTOBOOT);
     }
 }
 
 
+/********************************************************************************
+//FUNCTION:
+//		FT_CheckMetaDllVersion
+//DESCRIPTION:
+//		this function is called to check dll version with meta dll. this function is reserved now.
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "FT_CHECK_META_VER_REQ"
+//		pft_PeerBuf: 	[IN]	peer buff
+//		ft_peer_len	[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		None
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
+/*
+void FT_CheckMetaDllVersion(FT_CHECK_META_VER_REQ  *pFTReq, char *pPeerBuf, kal_int16 peer_len)
+{
+
+    FT_CHECK_META_VER_CNF	ft_cnf;
+    memset(&ft_cnf, 0, sizeof(ft_cnf));
+
+    //initail the value of ft header
+    ft_cnf.header.id = pFTReq->header.id +1;;
+    ft_cnf.header.token = pFTReq->header.token;
+    ft_cnf.status= META_SUCCESS;
+
+    //if the version is not right ,just give the error information
+    if ( ((pFTReq->meta_ver_from_pc&0xFFFF0000) != (FT_REQUIRED_META_VER&0xFFFF0000)) ||
+            ((pFTReq->meta_ver_from_pc&0x0000FFFF) <  (FT_REQUIRED_META_VER&0x0000FFFF)))
+    {
+        MetaLogMsg(FTT_DBG, (TEXT("[FTT_Drv:] FT_CheckMetaDllVersion is not right ")));
+    }
+
+    ///ft_cnf.header.ft_msg_id = FT_CHECK_META_VER_CNF_ID;
+    ft_cnf.meta_ver_required_by_target = FT_REQUIRED_META_VER;
+
+    WriteDataToPC(&ft_cnf, sizeof(ft_cnf),NULL, 0);
+
+}
+*/
 
 
+/********************************************************************************
+//FUNCTION:
+//		FT_CPURegW_OP
+//DESCRIPTION:
+//		this function is called to write the value of Chip registor to chip
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "FT_REG_WRITE_REQ"
+//		pft_PeerBuf: 	[IN]	peer buff
+//		ft_peer_len	[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		None
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 
 void FT_CPURegW_OP(FT_REG_WRITE_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
@@ -326,6 +731,25 @@ void FT_CPURegW_OP(FT_REG_WRITE_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
     WriteDataToPC(&CpuWriteCnf, sizeof(FT_REG_WRITE_CNF),NULL, 0);
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_CPURegR_OP
+//DESCRIPTION:
+//		this function is called to read the value of Chip registor
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "FT_REG_READ_REQ"
+//		pft_PeerBuf: 	[IN]	peer buff
+//		ft_peer_len	[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		None
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_CPURegR_OP(FT_REG_READ_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
 
@@ -345,6 +769,25 @@ void FT_CPURegR_OP(FT_REG_READ_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
     WriteDataToPC(&CpuReadCnf, sizeof(FT_REG_READ_CNF),NULL, 0);
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_PMICRegR_OP
+//DESCRIPTION:
+//		this function is called to read the value of PMIC chip registor
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "FT_PMIC_REG_READ"
+//		pft_PeerBuf: 	[IN]	peer buff
+//		ft_peer_len	[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		None
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_PMICRegR_OP(FT_PMIC_REG_READ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
     FT_PMIC_REG_READ_CNF ft_cnf;
@@ -363,6 +806,25 @@ void FT_PMICRegR_OP(FT_PMIC_REG_READ *pFTReq, char *pPeerBuf, kal_int16 peer_len
     WriteDataToPC(&ft_cnf, sizeof(FT_PMIC_REG_READ_CNF),NULL, 0);
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_PMICRegW_OP
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "FT_PMIC_REG_WRITE"
+//		pft_PeerBuf: 	[IN]	peer buff
+//		ft_peer_len	[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		None
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_PMICRegW_OP(FT_PMIC_REG_WRITE *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
     FT_PMIC_REG_WRITE_CNF ft_cnf;
@@ -381,6 +843,24 @@ void FT_PMICRegW_OP(FT_PMIC_REG_WRITE *pFTReq, char *pPeerBuf, kal_int16 peer_le
     WriteDataToPC(&ft_cnf, sizeof(FT_PMIC_REG_WRITE_CNF),NULL, 0);
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_UtilCheckIfFuncExist
+//DESCRIPTION:
+//		this function is called to which module are suppoted in target side.
+//
+//PARAMETERS:
+//		req:			[IN]		refers to the define of "FT_UTILITY_COMMAND_REQ"
+//		cnf: 		[OUT]	refers to the define of "FT_UTILITY_COMMAND_REQ"
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		None
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_UtilCheckIfFuncExist(FT_UTILITY_COMMAND_REQ  *req, FT_UTILITY_COMMAND_CNF  *cnf)
 {
 
@@ -388,72 +868,61 @@ void FT_UtilCheckIfFuncExist(FT_UTILITY_COMMAND_REQ  *req, FT_UTILITY_COMMAND_CN
     kal_uint32	query_op_code = req->cmd.CheckIfFuncExist.query_op_code;
     FT_LOG("[FTT_Drv:] FT_UtilCheckIfFuncExist META Test ");
     cnf->status = FT_CNF_FAIL;
+
+	FT_LOG("request id = %d op = %d",query_ft_msg_id,query_op_code);
     switch (query_ft_msg_id)
     {
-    /*
-    case FT_REG_READ_ID:					//cpu registor read
-    case FT_REG_WRITE_ID:					//cpu registor write
-    case FT_ADC_GETMEADATA_ID:				//adc meta
-    case FT_IS_ALIVE_REQ_ID:				//ft alive query
-    case FT_POWER_OFF_REQ_ID:				// power off query
-    case FT_CHECK_META_VER_REQ_ID:			//
-    case FT_NVRAM_GET_DISK_INFO_REQ_ID:
-    case FT_NVRAM_RESET_REQ_ID:
-    case FT_NVRAM_LOCK_REQ_ID:
-    case FT_NVRAM_READ_REQ_ID:
-    case FT_NVRAM_WRITE_REQ_ID:
-    case FT_VER_INFO_REQ_ID:
-        cnf->status = FT_CNF_OK;
-        break;
-    */
 
-    case FT_UTILITY_COMMAND_REQ_ID:
-		FT_LOG("[FTT_Drv:] PRIMITIVE_ID IS FT_UTILITY_COMMAND_REQ_ID");
-        if ( FT_UTILCMD_END > query_op_code )
-        {
-            switch (query_op_code)
-            {
-            case FT_UTILCMD_CHECK_IF_AUDIOPARAM45_SUPPORT:
-				FT_LOG("[FTT_Drv:] OP IS FT_UTILCMD_CHECK_IF_AUDIOPARAM45_SUPPORT");
-                break;
+#ifdef FT_FM_FEATURE 
+    	case FT_FM_REQ_ID:
+			if(query_op_code == 0)//FT_FM_OP_READ_CHIP_ID
+			{
+				cnf->status = FT_CNF_OK; 
+			}        	
+        	break;
+#endif
 
-            default:
-                cnf->status = FT_CNF_OK;
-				FT_LOG("[FTT_Drv:] OP IS NOT FT_UTILCMD_CHECK_IF_AUDIOPARAM45_SUPPORT");
-                break;
-            }
-        }
-        break;
-    case FT_FM_REQ_ID:
-        cnf->status = FT_CNF_OK; //FMR_CheckOption();//FT_CNF_OK;   // 0: enable, 1: disable FM radio
-        break;
-
-    case FT_TDMB_REQ_ID:
-    {
-        cnf->status = FT_CNF_OK;
-        break;
-    }
-
-    case FT_WIFI_REQ_ID:
-        cnf->status = FT_CNF_OK;
-        break;
-
-    case FT_BT_REQ_ID:
-        cnf->status = FT_CNF_OK;
-        break;
-	case FT_L4AUD_REQ_ID:
-		cnf->status = FT_CNF_OK;
-        break;
-	case FT_CRYPTFS_REQ_ID:
-		cnf->status = FT_CNF_OK;
-        break;
-	case FT_MODEM_REQ_ID:
-		cnf->status = FT_CNF_OK;
-		break;
-    default:
-		FT_LOG("[FTT_Drv:] NOT FOUND THE PRIMITIVE_ID");
-        cnf->status = FT_CNF_FAIL;		
-        break;
+#ifdef FT_EMMC_FEATURE
+		case FT_CRYPTFS_REQ_ID:
+			if(query_op_code == 0)//FT_CRYPTFS_OP_QUERYSUPPORT
+			{
+				cnf->status = FT_CNF_OK;
+			}
+			else if(query_op_code == 1)//FT_CRYPTFS_OP_VERITIFY
+			{
+				cnf->status = FT_CNF_OK;
+			}
+        	break;
+#endif
+			
+		case FT_MODEM_REQ_ID:
+			if(query_op_code == FT_MODEM_OP_QUERY_INFO )
+			{
+				cnf->status = FT_CNF_OK;
+			}
+			else if(query_op_code == FT_MODEM_OP_CAPABILITY_LIST)
+			{
+				cnf->status = FT_CNF_OK;
+			}
+#ifdef MTK_TLR_SUPPORT
+			else if(query_op_code == FT_MODEM_OP_SET_MODEMTYPE)
+			{
+				cnf->status = FT_CNF_OK;
+			}
+			else if(query_op_code == FT_MODEM_OP_GET_CURENTMODEMTYPE)
+			{
+				cnf->status = FT_CNF_OK;
+			}
+			else if(query_op_code == FT_MODEM_OP_QUERY_MDIMGTYPE )
+			{
+				cnf->status = FT_CNF_OK;
+			}
+#endif
+			break;
+    	default:
+			FT_LOG("[FTT_Drv:] NOT FOUND THE PRIMITIVE_ID");
+        	cnf->status = FT_CNF_FAIL;		
+        	break;
     }
     
 
@@ -463,6 +932,26 @@ void FT_UtilCheckIfFuncExist(FT_UTILITY_COMMAND_REQ  *req, FT_UTILITY_COMMAND_CN
 }
 
 
+/********************************************************************************
+//FUNCTION:
+//		FT_Peripheral_OP
+//DESCRIPTION:
+//		this function is called to do the peripheral related module test: lcd backlight, keypad backlight,
+//		nled, vibrate, query single flash featuure and RTC, and set clean boot flag.
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "FT_UTILITY_COMMAND_REQ"
+//		pft_PeerBuf: 	[IN]	peer buff
+//		ft_peer_len	[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		None
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_Peripheral_OP(FT_UTILITY_COMMAND_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
     FT_UTILITY_COMMAND_CNF UtilityCnf;
@@ -470,6 +959,7 @@ void FT_Peripheral_OP(FT_UTILITY_COMMAND_REQ *pFTReq, char *pPeerBuf, kal_int16 
     static META_BOOL bLCDBKInitFlag_Peri = FALSE;
     static META_BOOL bLCDFtInitFlag_Peri = FALSE;
     static META_BOOL bVibratorInitFlag_Peri = FALSE;
+	int nNVRAMFlag = 0;
 
     //cleanBootProcInfo.hProcess = NULL;
     //cleanBootProcInfo.hThread = NULL;
@@ -500,7 +990,7 @@ void FT_Peripheral_OP(FT_UTILITY_COMMAND_REQ *pFTReq, char *pPeerBuf, kal_int16 
 
     case FT_UTILCMD_MAIN_SUB_LCD_LIGHT_LEVEL:	//test lcd backlight from meta lcd backlight lig
         FT_LOG("[FTT_Drv:] FT_Peripheral_OP pFTReq->type is FT_UTILCMD_MAIN_SUB_LCD_LIGHT_LEVEL ");
-	if(bLCDBKInitFlag_Peri==FALSE)
+	    if(bLCDBKInitFlag_Peri==FALSE)
      	{   		
 			if (!Meta_LCDBK_Init())
 			{
@@ -513,9 +1003,9 @@ void FT_Peripheral_OP(FT_UTILITY_COMMAND_REQ *pFTReq, char *pPeerBuf, kal_int16 
         UtilityCnf.status= META_SUCCESS;
         break;
 
-	  case FT_UTILCMD_LCD_COLOR_TEST:
+	case FT_UTILCMD_LCD_COLOR_TEST:
         FT_LOG("[FTT_Drv:] FT_Peripheral_OP pFTReq->type is FT_UTILCMD_LCD_COLOR_TEST ");
-	if(bLCDFtInitFlag_Peri==FALSE)
+	    if(bLCDFtInitFlag_Peri==FALSE)
      	{   					
 			if (!Meta_LCDFt_Init())
 			{
@@ -536,7 +1026,7 @@ void FT_Peripheral_OP(FT_UTILITY_COMMAND_REQ *pFTReq, char *pPeerBuf, kal_int16 
 
     case FT_UTILCMD_VIBRATOR_ONOFF:				//test vibrate and indicator from meta nled lib
         FT_LOG("[FTT_Drv:] FT_Peripheral_OP pFTReq->type is FT_UTILCMD_VIBRATOR_ONOFF ");
-	if(bVibratorInitFlag_Peri==FALSE)
+	    if(bVibratorInitFlag_Peri==FALSE)
      	{
     		if (!Meta_Vibrator_Init())
         	{
@@ -556,11 +1046,16 @@ void FT_Peripheral_OP(FT_UTILITY_COMMAND_REQ *pFTReq, char *pPeerBuf, kal_int16 
         break;
 
     case FT_UTILCMD_SET_CLEAN_BOOT_FLAG:		
-        FT_LOG("[FTT_Drv:] FT_Peripheral_OP pFTReq->type is FT_UTILCMD_SET_CLEAN_BOOT_FLAG ");
+        nNVRAMFlag = pFTReq->cmd.m_SetCleanBootFlagReq.Notused;		
+        FT_LOG("[FTT_Drv:] FT_Peripheral_OP pFTReq->type is FT_UTILCMD_SET_CLEAN_BOOT_FLAG, nNVRAMFlag =%d",nNVRAMFlag);
         FT_LOG("[FTT_Drv:] FT_UTILCMD_SET_CLEAN_BOOT_FLAG META Test %s,%d,%s",__FILE__,__LINE__,__FUNCTION__);	
-        if((UtilityCnf.result.m_SetCleanBootFlagCnf.drv_statsu= FileOp_BackupToBinRegion_All())==true)
+		if ( nNVRAMFlag == 1 || nNVRAMFlag == 2 || nNVRAMFlag == 3 ) //For NVRAM to record write barcode(1) and IMEI(2) and both barcode and IMEI(3) history
         {
-            UtilityCnf.result.m_SetCleanBootFlagCnf.drv_statsu= FileOp_SetCleanBootFlag(true);
+		    UtilityCnf.result.m_SetCleanBootFlagCnf.drv_statsu = FileOp_BackupToBinRegion_All_Ex(nNVRAMFlag);  
+		}
+		else //default
+        {
+            UtilityCnf.result.m_SetCleanBootFlagCnf.drv_statsu = FileOp_BackupToBinRegion_All(); 
         }
 		UtilityCnf.status=META_SUCCESS;
         break;
@@ -576,6 +1071,13 @@ void FT_Peripheral_OP(FT_UTILITY_COMMAND_REQ *pFTReq, char *pPeerBuf, kal_int16 
         UtilityCnf.result.m_SaveMobileLogCnf.drv_status = Meta_Mobile_Log();
         UtilityCnf.status = META_SUCCESS;
 		break;
+	case FT_UTILCMD_OPEN_DUMP_LOG:                           //save mobile log
+        FT_LOG("[FTT_Drv:] FT_Peripheral_OP pFTReq->type is FT_UTILCMD_OPEN_DUMP_LOG ");
+        FT_LOG("[FTT_Drv:] FT_UTILCMD_OPEN_DUMP_LOG META Test %s,%d,%s",__FILE__,__LINE__,__FUNCTION__);
+		dumpLogState = 1;
+        UtilityCnf.result.m_OpenDumpLogCnf.drv_status = true;
+        UtilityCnf.status = META_SUCCESS;
+		break;
 
     default:
         FT_LOG("[FTT_Drv:] FT_Peripheral_OP pFTReq->type error ");
@@ -589,6 +1091,24 @@ Per_Exit:
 
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_APEditorRead_OP
+//DESCRIPTION:
+//		this function is called to read a record of nvram file.
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "FT_AP_Editor_read_req"
+//
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		None.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_APEditorRead_OP(FT_AP_Editor_read_req *pFTReq)
 {
     FT_LOG("[FTT_Drv:] FT_APEditorRead_OP META Test ");
@@ -598,6 +1118,25 @@ void FT_APEditorRead_OP(FT_AP_Editor_read_req *pFTReq)
         FT_LOG("[FTT_Drv:] FT_APEditorR_OP META Test Fail");
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_APEditorWrite_OP
+//DESCRIPTION:
+//		this function is called to write a record of nvram file to flash
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "FT_AP_Editor_write_req"
+//		pft_PeerBuf: 	[IN]	peer buff (the data of record)
+//		ft_peer_len	[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		None.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_APEditorWrite_OP(FT_AP_Editor_write_req *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
     FT_AP_Editor_write_cnf ft_cnf;
@@ -617,6 +1156,24 @@ void FT_APEditorWrite_OP(FT_AP_Editor_write_req *pFTReq, char *pPeerBuf, kal_int
 
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_APEditorReset_OP
+//DESCRIPTION:
+//		this function is called to reset a nvram file to default value.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "FT_VER_INFO_REQ"
+//
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		None
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_APEditorReset_OP(FT_AP_Editor_reset_req *pFTReq)
 {
     FT_AP_Editor_reset_cnf ft_cnf;
@@ -638,6 +1195,25 @@ void FT_APEditorReset_OP(FT_AP_Editor_reset_req *pFTReq)
     WriteDataToPC(&ft_cnf, sizeof(FT_AP_Editor_reset_cnf),NULL, 0);
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_BT_OP
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "BT_REQ"
+//		pft_PeerBuf: 	[IN]	peer buff
+//		ft_peer_len	[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 
 #ifdef FT_BT_FEATURE  
 
@@ -683,6 +1259,25 @@ BT_Exit:
 #endif
 
 
+/********************************************************************************
+//FUNCTION:
+//		FT_FM_OP
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "BT_REQ"
+//		pft_PeerBuf: 	[IN]	peer buff
+//		ft_peer_len	[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 
 #ifdef FT_FM_FEATURE 
 
@@ -720,8 +1315,134 @@ FM_Exit:
 }
 
 #endif
+/********************************************************************************
+//FUNCTION:
+//		FT_DVBT_OP
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "FT_DVB_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
+/*
+void FT_DVBT_OP(FT_DVB_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
+{
+    FT_DVB_CNF ft_cnf;
+    static META_BOOL bInitFlag_DBT = FALSE;
 
+    memset(&ft_cnf, 0, sizeof(FT_DVB_CNF));
 
+    if (FALSE == bInitFlag_DBT)
+    {
+        // initial the DVB module when it is called first time
+        if (!META_DVB_Init())
+        {
+            ft_cnf.header.id = pFTReq->header.id +1;
+            ft_cnf.header.token = pFTReq->header.token;
+            ft_cnf.type = pFTReq->type;
+            ft_cnf.status = META_FAILED;
+
+            MetaLogMsg(FTT_DBG, (TEXT("[FTT_Drv:] FT_DVBT_OP META_DVB_Init Fail ")));
+            goto DVBT_Exit ;
+        }
+        bInitFlag_DBT = TRUE;
+    }
+    MetaLogMsg(FTT_DBG, (TEXT("[FTT_Drv:] FT_DVBT_OPMETA Test req: %d , %d "), sizeof(FT_DVB_REQ), sizeof(FT_DVB_CNF)));
+
+    META_DVB_T_OP(pFTReq, (PVOID *)pPeerBuf, peer_len);
+    return;
+
+DVBT_Exit:
+
+    WriteDataToPC(&ft_cnf, sizeof(ft_cnf),NULL, 0);
+
+}
+*/
+
+/********************************************************************************
+//FUNCTION:
+//		FT_BAT_OP
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "FT_BATT_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
+/*
+void FT_BAT_OP(FT_BATT_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
+{
+    FT_BATT_CNF ft_cnf;
+    static META_BOOL bInitFlag_BAT = FALSE;
+
+    memset(&ft_cnf, 0, sizeof(FT_BATT_CNF));
+
+    if (FALSE == bInitFlag_BAT)
+    {
+        // initial the bat module when it is called first time
+        if (!Meta_Battery_Init())
+        {
+            ft_cnf.header.id = pFTReq->header.id +1;
+            ft_cnf.header.token = pFTReq->header.token;
+            ft_cnf.type = pFTReq->type;
+            ft_cnf.status = META_FAILED;
+
+            //MetaLogMsg(FTT_DBG, (TEXT("[FTT_Drv:] FT_BAT_OP Meta_Battery_Init Fail ")));
+            FT_LOG("[FTT_Drv:] FT_BAT_OP Meta_Battery_Init Fail ");
+            goto  BAT_Exit;
+        }
+        bInitFlag_BAT = TRUE;
+    }
+
+    // //do the bat test by called the interface in meta bat lib
+    Meta_Battery_OP(pFTReq, (BYTE *)pPeerBuf, peer_len);
+
+    return;
+
+BAT_Exit:
+    WriteDataToPC(&ft_cnf, sizeof(ft_cnf),NULL, 0);
+
+}
+*/
+
+/********************************************************************************
+//FUNCTION:
+//		FT_AUXADC_OP
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "AUXADC_REQ"
+//		pft_PeerBuf: 	[IN]	peer buff
+//		ft_peer_len	[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_AUXADC_OP(AUXADC_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
     AUXADC_CNF ft_cnf;
@@ -755,6 +1476,25 @@ ADC_Exit:
     WriteDataToPC(&ft_cnf, sizeof(ft_cnf),NULL, 0);
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_WIFI_OP
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "FT_WM_WIFI_REQ"
+//		pft_PeerBuf: 	[IN]	peer buff
+//		ft_peer_len	[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 #ifdef FT_WIFI_FEATURE 
 
 void FT_WIFI_OP(FT_WM_WIFI_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
@@ -796,6 +1536,25 @@ WIFI_Exit:
 #endif
 
 
+/********************************************************************************
+//FUNCTION:
+//		FT_GPS_OP
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "GPS_REQ"
+//		pft_PeerBuf: 	[IN]	peer buff
+//		ft_peer_len	[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 #ifdef FT_GPS_FEATURE 
 
 void FT_GPS_OP(GPS_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
@@ -809,6 +1568,25 @@ void FT_GPS_OP(GPS_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 
 
 
+/********************************************************************************
+//FUNCTION:
+//		FT_NFC_OP
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "GPS_REQ"
+//		pft_PeerBuf: 	[IN]	peer buff
+//		ft_peer_len	[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 
 #ifdef FT_NFC_FEATURE
 
@@ -842,6 +1620,25 @@ void FT_NFC_OP(NFC_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 }
 #endif
 
+/********************************************************************************
+//FUNCTION:
+//		FT_BAT_OP
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "FT_BATT_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_BAT_ChipUpdate_OP(FT_BATT_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
     FT_BATT_CNF ft_cnf;
@@ -942,6 +1739,26 @@ L4AUDIO_Exit:
 	WriteDataToPC(&ft_cnf, sizeof(ft_cnf),NULL, 0);
 }
 
+
+/********************************************************************************
+//FUNCTION:
+//		FT_SDcard_OP
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "SDCARD_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_SDcard_OP(SDCARD_REQ *req, char *pPeerBuf, kal_int16 peer_len)
 {
 
@@ -978,6 +1795,25 @@ SDcard_Exit:
 
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_LOW_POWER_OP
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "LOW_POWER_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 bool lcd_brightness_set (int level)
 {
 	bool ret = false;
@@ -1022,6 +1858,25 @@ EXIT:
 }
 
 
+/********************************************************************************
+//FUNCTION:
+//		FT_LOW_POWER_OP
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "LOW_POWER_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_LOW_POWER_OP(FT_LOW_POWER_REQ *req, char *pPeerBuf, kal_int16 peer_len)
 {
 
@@ -1050,7 +1905,7 @@ void FT_LOW_POWER_OP(FT_LOW_POWER_REQ *req, char *pPeerBuf, kal_int16 peer_len)
 void FT_CCAP_OP(FT_CCT_REQ *FTReq, char *pPeerBuf, kal_int16 peer_len)
 {
 // FPGA workaround: disable CCAP since ACDK is not ready yet.
-#if 1
+
     FT_CCT_CNF ft_cnf;
     static bool bInitFlag_CCT = false;
     FT_LOG("[FTT_Drv:] FT_CCAP_OP META Test ");
@@ -1076,12 +1931,30 @@ void FT_CCAP_OP(FT_CCT_REQ *FTReq, char *pPeerBuf, kal_int16 peer_len)
 
 CCT_Exit:
     WriteDataToPC(&ft_cnf, sizeof(ft_cnf),NULL, 0);
-#endif
+
 }
 
 
 
-
+/********************************************************************************
+//FUNCTION:
+//		FT_GPIO_OP
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "GPIO_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_GPIO_OP(GPIO_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
     GPIO_CNF ft_cnf;
@@ -1117,11 +1990,11 @@ GPIO_Exit:
 const char* makepath(unsigned char file_ID)
 {
 	if(file_ID == 0)
-		return "/data/AllMap";
+		return "/data/nvram/AllMap";
 	else
 	{
 		if(file_ID == 1)
-			return "/data/AllFile";
+			return "/data/nvram/AllFile";
 		else
 		{
 			FT_LOG("[FTT_Drv:] makepath error: invalid file_ID %d! ", file_ID);
@@ -1143,6 +2016,24 @@ unsigned int getFileSize(int fd)
 	}
 }
 
+/********************************************************************************
+//FUNCTION:
+//		SendNVRAMFile
+//DESCRIPTION:
+//		this function is called to read NVRAM file and send it to PC.
+//
+//PARAMETERS:
+//		file_ID [IN] the id of NVRAM  file
+
+//RETURN VALUE:
+//		TRUE is success, otherwise is fail
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 bool SendNVRAMFile(unsigned char file_ID, FT_NVRAM_BACKUP_CNF* pft_cnf)
 {
 	int backupFd;
@@ -1219,6 +2110,26 @@ bool SendNVRAMFile(unsigned char file_ID, FT_NVRAM_BACKUP_CNF* pft_cnf)
 
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_NVRAM_Backup_OP
+//DESCRIPTION:
+//		this function is called to backup nvram of target to PC.
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "FT_NVRAM_BACKUP_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_NVRAM_Backup_OP(FT_NVRAM_BACKUP_REQ* req, char* pPeerBuf, kal_int16 peer_len)
 {
 	FT_LOG("[FTT_Drv:] FT_NVRAM_Backup_OP ");
@@ -1270,6 +2181,26 @@ void FT_NVRAM_Backup_OP(FT_NVRAM_BACKUP_REQ* req, char* pPeerBuf, kal_int16 peer
 
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_NVRAM_Restore_OP
+//DESCRIPTION:
+//		this function is called to backup nvram of target to PC.
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "FT_NVRAM_RESTORE_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_NVRAM_Restore_OP(FT_NVRAM_RESTORE_REQ * req, char* pPeerBuf, kal_int16 peer_len)
 {
 
@@ -1347,6 +2278,25 @@ void FT_NVRAM_Restore_OP(FT_NVRAM_RESTORE_REQ * req, char* pPeerBuf, kal_int16 p
 
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_GSENSOR_OP
+//DESCRIPTION:
+//		this function is called to perform G-Sensor operations.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "GS_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 
 void FT_GSENSOR_OP(GS_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
@@ -1382,6 +2332,25 @@ GS_Exit:
 }
 
 
+/********************************************************************************
+//FUNCTION:
+//		FT_GYROSENSOR_OP
+//DESCRIPTION:
+//		this function is called to perform gyroscope operations.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "GYRO_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 
 void FT_GYROSENSOR_OP(GYRO_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
@@ -1417,30 +2386,49 @@ GYRO_Exit:
 }
 
 
-void FT_META_MODE_LOCK(FT_META_MODE_LOCK_REQ *pFTReq)
-{
-	FT_META_MODE_LOCK_CNF ft_cnf;
-
-    FT_LOG("[FTT_Drv:] FT_META_MODE_LOCK ");
-
-    memset(&ft_cnf, 0, sizeof(FT_META_MODE_LOCK_CNF));
-    unsigned char lock_status = META_Lock_OP();
-
-    ft_cnf.header.id = pFTReq->header.id +1;
-    ft_cnf.header.token = pFTReq->header.token;
-    ft_cnf.status = lock_status;
-
-    FT_LOG("[FTT_Drv:] FT_META_MODE_LOCK Status is %d", lock_status);
-
-    WriteDataToPC(&ft_cnf, sizeof(FT_META_MODE_LOCK_CNF),NULL, 0);
-}
 #ifdef FT_MATV_FEATURE
+/********************************************************************************
+//FUNCTION:
+//		FT_MATV_OP
+//DESCRIPTION:
+//		this function is called to perform MATV operations.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "FT_MATV_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_MATV_OP(FT_MATV_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
     FT_LOG("[FTT_Drv:] FT_MATV_OP META Test ");
 	META_MATV_OP(pFTReq);
 }
 #endif
+/********************************************************************************
+//FUNCTION:
+//		FT_Reboot
+//DESCRIPTION:
+//		this function is called to reboot target
+//
+//PARAMETERS:
+//		None
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		None
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_Reboot(FT_META_REBOOT_REQ *pFTReq)
 {
     FT_LOG("[FTT_Drv:] FT_Reboot: Device will reboot after %d seconds. ", pFTReq->delay);
@@ -1451,6 +2439,25 @@ void FT_Reboot(FT_META_REBOOT_REQ *pFTReq)
 	reboot(RB_AUTOBOOT);
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_CUSTOMER_OP
+//DESCRIPTION:
+//		this function is called to perform customer operations.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "FT_CUSTOMER_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_CUSTOMER_OP(FT_CUSTOMER_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
     FT_LOG("[FTT_Drv:] FT_CUSTOMER_OP!");
@@ -1472,6 +2479,25 @@ void FT_CUSTOMER_OP(FT_CUSTOMER_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
     WriteDataToPC(&ft_cnf, sizeof(ft_cnf), peer_buf, peer_buff_size);
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_GET_CHIPID_OP
+//DESCRIPTION:
+//		this function is called to get chip ID.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "FT_GET_CHIPID_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_GET_CHIPID_OP(FT_GET_CHIPID_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
     FT_LOG("[FTT_Drv:] FT_GET_CHIPID_OP!");
@@ -1512,12 +2538,31 @@ void FT_GET_CHIPID_OP(FT_GET_CHIPID_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_
     WriteDataToPC(&ft_cnf, sizeof(ft_cnf), NULL, 0);
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_MSENSOR_OP
+//DESCRIPTION:
+//		this function is called to perform M-Sensor operations.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "FT_MSENSOR_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_MSENSOR_OP(FT_MSENSOR_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
 	FT_LOG("[FTT_Drv:] FT_MSENSOR_OP");
     FT_MSENSOR_CNF ft_cnf;
     static META_BOOL bInitFlag_MS = FALSE;
-	int res;
+	int res = -1;
 
 
     memset(&ft_cnf, 0, sizeof(FT_MSENSOR_CNF));
@@ -1537,8 +2582,19 @@ void FT_MSENSOR_OP(FT_MSENSOR_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
         bInitFlag_MS = TRUE;
     }
 	
-    WriteDataToPC(&ft_cnf, sizeof(ft_cnf),NULL, 0);
+	res = Meta_MSensor_OP();
+	if (0 == res)
+	{
+	    FT_LOG("[FTT_Drv:] FT_MSENSOR_OP Meta_MSensor_OP success!");
+	    ft_cnf.status = META_SUCCESS;
+	}
+	else
+	{
+	    FT_LOG("[FTT_Drv:] FT_MSENSOR_OP Meta_MSensor_OP failed!");
+	    ft_cnf.status = META_FAILED;
+	}
 
+    WriteDataToPC(&ft_cnf, sizeof(ft_cnf),NULL, 0);
 	return;
 
 	
@@ -1547,12 +2603,31 @@ MS_Exit:
 
 }
 
+/********************************************************************************
+//FUNCTION:
+//		FT_ALSPS_OP
+//DESCRIPTION:
+//		this function is called to perform ALS_PS operations.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "FT_ALSPS_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_ALSPS_OP(FT_ALSPS_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
 	FT_LOG("[FTT_Drv:] FT_ALSPS_OP");
     FT_ALSPS_CNF ft_cnf;
     static BOOL bInitFlag_ALSPS = FALSE;
-	int res;
+	int res = -1;
 
 
     memset(&ft_cnf, 0, sizeof(FT_ALSPS_CNF));
@@ -1572,6 +2647,17 @@ void FT_ALSPS_OP(FT_ALSPS_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
         bInitFlag_ALSPS = TRUE;
     }
 
+    res = Meta_ALSPS_OP();
+    if (0 == res)
+    {
+        FT_LOG("[FTT_Drv:] FT_ALSPS_OP Meta_ALSPS_OP success!");
+        ft_cnf.status = META_SUCCESS;
+    }
+	else
+	{
+	    FT_LOG("[FTT_Drv:] FT_ALSPS_OP Meta_ALSPS_OP failed!");
+	    ft_cnf.status = META_FAILED;
+	}
     WriteDataToPC(&ft_cnf, sizeof(ft_cnf),NULL, 0);
 	
 	return;
@@ -1581,6 +2667,27 @@ MS_Exit:
     WriteDataToPC(&ft_cnf, sizeof(ft_cnf),NULL, 0);
 
 }
+/******************************************************************************
+**
+//FUNCTION:
+//		FT_CTP_OP
+//DESCRIPTION:
+//		this function is called to perform touch panel operations.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "FT_CTP_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+*******************************************************************************
+*/
 void FT_CTP_OP(Touch_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
 	FT_LOG("[FTT_Drv:] FT_CTP_OP");
@@ -1632,6 +2739,27 @@ void FT_CRYPTFS_OP(FT_CRYPTFS_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 
 
 
+/******************************************************************************
+**
+//FUNCTION:
+//		FT_DFO_OP
+//DESCRIPTION:
+//		this function is called to read and write dfo value.
+//
+//PARAMETERS:
+//		pFTReq:		[IN]	refers to the define of "FT_DFO_REQ"
+//		pPeerBuf: 	[IN]	peer buff
+//		peer_len:		[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+*******************************************************************************
+*/
 void FT_DFO_OP(FT_DFO_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
     META_LOG("[FTT_Drv:] FT_DFO_OP");
@@ -1667,22 +2795,41 @@ DFO_Exit:
 
 
 
+/********************************************************************************
+//FUNCTION:
+//		FT_GetVersionInfoV2
+//DESCRIPTION:
+//		this function is called to get the version information of target side.
+//
+//PARAMETERS:
+//		req:			[IN]	refers to the define of "FT_VER_INFO_V2_REQ"
+//		pft_PeerBuf: 	[IN]	peer buff
+//		ft_peer_len	[IN]	peer buff size
+//RETURN VALUE:
+//		None
+//
+//DEPENDENCY:
+//		the FT module must have been loaded.
+//
+//GLOBALS AFFECTED
+//		None
+********************************************************************************/
 void FT_GetVersionInfoV2(FT_VER_INFO_V2_REQ *req, char *pft_PeerBuf, kal_int16 ft_peer_len)
 {
     FT_VER_INFO_V2_CNF ft_cnf;
-    unsigned int dwRc ;
-    unsigned int dwValSize;
-    unsigned int dwValType;
-    char szBuffer[MAX_PATH];
+    unsigned int dwRc = 0;
+    unsigned int dwValSize = 0;
+    unsigned int dwValType = 0;
+    char szBuffer[MAX_PATH] = {0};
     FILE *fd = 0;
-    char str[256];
-    char *loc;
+    char str[256] = {0};
+    char *loc = NULL;
 
     memset(&ft_cnf, 0, sizeof(ft_cnf));
     memset(szBuffer,0, sizeof(szBuffer));
-    char* tmp;
-    char platform[256];
-    char chipVersion[256];
+    char* tmp = NULL;
+    char platform[256] = {0};
+    char chipVersion[256] = {0};
 
     //initail the value of ft header
     ft_cnf.header.id = req->header.id +1;
@@ -1705,12 +2852,12 @@ void FT_GetVersionInfoV2(FT_VER_INFO_V2_REQ *req, char *pft_PeerBuf, kal_int16 f
             if(!strcmp(loc, RELEASE_SW_TOKEN))
             {
                 FT_LOG("[FT_GetVersionInfo] SW Version = %s\n", tmp);
-                strcpy((char*)ft_cnf.sw_ver, tmp);
+				strncpy((char*)ft_cnf.sw_ver, tmp, 63);
             }
             if(!strcmp(loc, RELEASE_PLATFORM_TOKEN))
             {
                 FT_LOG("[FT_GetVersionInfo] Platform = %s\n", tmp);
-                strcpy(platform, tmp);
+                strncpy(platform, tmp, 255);
             }
             if(!strcmp(loc, RELEASE_PRODUCT_TOKEN))
             {
@@ -1719,18 +2866,18 @@ void FT_GetVersionInfoV2(FT_VER_INFO_V2_REQ *req, char *pft_PeerBuf, kal_int16 f
             if(!strcmp(loc, RELEASE_CHIP_TOKEN))
             {
                 FT_LOG("[FT_GetVersionInfo] Chip Version = %s\n", tmp);
-                strcpy(chipVersion, tmp);
-                strcpy((char*)ft_cnf.hw_ver, tmp);
+				strncpy(chipVersion, tmp, 255);
+                strncpy((char*)ft_cnf.hw_ver, tmp, 63);
             }
             if(!strcmp(loc, RELEASE_BUILD_TIME_TOKEN))
             {
                 FT_LOG("[FT_GetVersionInfo] Build Time = %s\n", tmp);
-                strcpy((char*)ft_cnf.sw_time, tmp);
+				strncpy((char*)ft_cnf.sw_time, tmp, 63);
             }
             if(!strcmp(loc, RELEASE_BUILD_DISP_ID_TOKEN))
             {
                 FT_LOG("[FT_GetVersionInfo] Build Display ID = %s\n", tmp);
-                strcpy((char*)ft_cnf.build_disp_id, tmp);
+				strncpy((char*)ft_cnf.build_disp_id, tmp, 63);
             }
         }
     }
@@ -1756,7 +2903,7 @@ void FT_GetVersionInfoV2(FT_VER_INFO_V2_REQ *req, char *pft_PeerBuf, kal_int16 f
 	szBuffer[k++] = '\0';
 	if (strlen(szBuffer) <= 64)
 	{
-		strcpy((char*)ft_cnf.bb_chip, szBuffer);
+		strncpy((char*)ft_cnf.bb_chip, szBuffer,strlen(szBuffer));
 	}
 	else
 	{
@@ -1896,11 +3043,18 @@ void FT_SIM_NUM_OP(FT_GET_SIM_REQ *req, char *pft_PeerBuf, kal_int16 ft_peer_len
 
 }
 
-
 void FT_ADC_OP(ADC_REQ *pFTReq, char *pPeerBuf, kal_int16 peer_len)
 {
-      META_LOG("[FTT_Drv:] FT_ADC_OP");
-      Meta_ADC_OP(pFTReq, pPeerBuf, peer_len);	
-      return;
+    FT_LOG("[FTT_Drv:] FT_ADC_OP");
+    Meta_ADC_OP(pFTReq, pPeerBuf, peer_len);	
+    return;
+}
+
+
+int FT_GetDumpLogState()
+{
+	
+	FT_LOG("[FTT_Drv:] Dump Log State %d",dumpLogState);
+	return dumpLogState;
 }
 

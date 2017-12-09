@@ -47,6 +47,8 @@ extern int get_i_sense_volt(int times);
 extern int get_charger_volt(int times);
 extern int get_tbat_volt(int times);
 extern CHARGER_TYPE mt_charger_type_detection(void);
+extern void pmic_lock(void);
+extern void pmic_unlock(void);
 
 //==============================================================================
 // PMIC6323 Status Code

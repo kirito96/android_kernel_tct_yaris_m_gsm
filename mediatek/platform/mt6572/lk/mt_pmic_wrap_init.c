@@ -1,4 +1,46 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein
+ * is confidential and proprietary to MediaTek Inc. and/or its licensors.
+ * Without the prior written permission of MediaTek inc. and/or its licensors,
+ * any reproduction, modification, use or disclosure of MediaTek Software,
+ * and information contained herein, in whole or in part, shall be strictly prohibited.
+ */
+/* MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
+ * AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+ * NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+ * SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+ * SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
+ * THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
+ * THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
+ * CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
+ * SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
+ * CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+ * AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+ * OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
+ * MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek Software")
+ * have been modified by MediaTek Inc. All revisions are subject to any receiver's
+ * applicable license agreements with MediaTek Inc.
+ */
 
+/******************************************************************************
+ * mt_pmic_wrap.c - MT6572 PMIC Wrapper Driver
+ *
+ *
+ * DESCRIPTION:
+ *     This file provides wrapper functions for other drivers to access PMIC registers
+ *
+ ******************************************************************************/
 
 #include <printf.h>
 #include <platform/pll.h>
@@ -21,6 +63,9 @@ static S32 _pwrap_wacs2_nochk( U32 write, U32 adr, U32 wdata, U32 *rdata );
 void pwrap_dump_ap_register(void);
 //---end--internal API--------------------------------------------------
 
+/******************************************************************************
+ wrapper timeout
+******************************************************************************/
 #define PWRAP_TIMEOUT
 //use the same API name with kernel driver
 //however,the timeout API in lk use tick instead of ns
@@ -114,7 +159,7 @@ static inline U32 wait_for_state_ready_init(loop_condition_fp fp,U32 timeout_us,
 
     if (_pwrap_timeout_ns(start_time_ns, timeout_ns))
     {
-      PWRAPERR("wait_for_state_ready_init timeout when waiting for idle\n");
+      PWRAPERR("%s timeout when waiting for idle\n", __FUNCTION__);
       return E_PWR_WAIT_IDLE_TIMEOUT;
     }
   } while( fp(reg_rdata)); //IDLE State
@@ -152,7 +197,7 @@ static inline U32 wait_for_state_idle_init(loop_condition_fp fp,U32 timeout_us,U
     }
     if (_pwrap_timeout_ns(start_time_ns, timeout_ns))
     {
-      PWRAPERR("wait_for_state_idle_init timeout when waiting for idle\n");
+      PWRAPERR("%s timeout when waiting for idle\n", __FUNCTION__);
       pwrap_dump_ap_register();
       //pwrap_trace_wacs2();
       //BUG_ON(1);
@@ -163,6 +208,7 @@ static inline U32 wait_for_state_idle_init(loop_condition_fp fp,U32 timeout_us,U
    *read_reg=reg_rdata;
   return 0;
 }
+
 static inline U32 wait_for_state_idle(loop_condition_fp fp,U32 timeout_us,U32 wacs_register,U32 wacs_vldclr_register,U32 *read_reg)
 {
 
@@ -197,7 +243,7 @@ static inline U32 wait_for_state_idle(loop_condition_fp fp,U32 timeout_us,U32 wa
     }
     if (_pwrap_timeout_ns(start_time_ns, timeout_ns))
     {
-      PWRAPERR("wait_for_state_idle timeout when waiting for idle\n");
+      PWRAPERR("%s timeout when waiting for idle\n", __FUNCTION__);
       pwrap_dump_ap_register();
 //      pwrap_trace_wacs2();
 //      BUG_ON(1);
@@ -256,14 +302,13 @@ S32 pwrap_write( U32  adr, U32  wdata )
 //--------------------------------------------------------
 S32 pwrap_wacs2( U32  write, U32  adr, U32  wdata, U32 *rdata )
 {
-  U64 wrap_access_time=0x0;
-  U32 res=0;
+  //U64 wrap_access_time=0x0;
   U32 reg_rdata=0;
   U32 wacs_write=0;
   U32 wacs_adr=0;
   U32 wacs_cmd=0;
   U32 return_value=0;
-  unsigned long flags=0;
+  //unsigned long flags=0;
   //struct pmic_wrap_obj *pwrap_obj = g_pmic_wrap_obj;
   //if (!pwrap_obj)
   //      PWRAPERR("NULL pointer\n");
@@ -273,17 +318,17 @@ S32 pwrap_wacs2( U32  write, U32  adr, U32  wdata, U32 *rdata )
   // Check argument validation
   if( (write & ~(0x1))    != 0) {
     return_value = E_PWR_INVALID_RW;
-    PWRAPERR("argument error: %d\n", return_value);
+    PWRAPERR("argument error %d: 0x%x\n", return_value, write);
     return return_value;
   }
   if( (adr   & ~(0xffff)) != 0) {
     return_value = E_PWR_INVALID_ADDR;
-    PWRAPERR("argument error: %d\n", return_value);
+    PWRAPERR("argument error %d: 0x%x\n", return_value, adr);
     return return_value;
   }
   if( (wdata & ~(0xffff)) != 0) {
     return_value = E_PWR_INVALID_WDAT;
-    PWRAPERR("argument error: %d\n", return_value);
+    PWRAPERR("argument error %d: 0x%x\n", return_value, wdata);
     return return_value;
   }
 
@@ -324,11 +369,11 @@ FAIL:
   //spin_unlock_irqrestore(&pwrap_obj->spin_lock,flags);
   if(return_value!=0)
   {
-    PWRAPERR("pwrap_wacs2 fail,return_value=%d\n",return_value);
+    PWRAPERR("%s fail,return_value=%d\n", __FUNCTION__, return_value);
     PWRAPERR("timeout:BUG_ON here\n");
     //BUG_ON(1);
   }
-  wrap_access_time=_pwrap_get_current_time();
+  //wrap_access_time=_pwrap_get_current_time();
   //pwrap_trace(wrap_access_time,return_value,write, adr, wdata,rdata);
   return return_value;
 }
@@ -421,7 +466,7 @@ static S32 _pwrap_init_dio( U32 dio_en )
   return_value=wait_for_state_ready_init(wait_for_idle_and_sync,TIMEOUT_WAIT_IDLE,PMIC_WRAP_WACS2_RDATA,0);
   if(return_value!=0)
   {
-    PWRAPERR("_pwrap_init_dio fail,return_value=%x\n", return_value);
+    PWRAPERR("%s fail,return_value=%x\n", __FUNCTION__, return_value);
     return return_value;
   }
   WRAP_WR32(PMIC_WRAP_DIO_EN , dio_en);
@@ -507,7 +552,7 @@ static S32 _pwrap_init_cipher( void )
   pwrap_read_nochk(DEW_READ_TEST,&rdata);
   if( rdata != DEFAULT_VALUE_READ_TEST )
   {
-    PWRAPERR("_pwrap_init_cipher,read test error,error code=%x, rdata=%x\n", 1, rdata);
+    PWRAPERR("%s,read test error,error code=%x, rdata=%x\n", __FUNCTION__, 1, rdata);
     return E_PWR_READ_TEST_FAIL;
   }
 
@@ -525,7 +570,8 @@ static S32 _pwrap_init_sistrobe( void )
 {
   U32 arb_en_backup;
   U32 rdata;
-  S32 ind, tmp1, tmp2;
+  S32 ind;
+  U32 tmp1, tmp2;
   U32 result;
   U32 result_faulty;
   U32 leading_one, tailing_one;
@@ -544,13 +590,11 @@ static S32 _pwrap_init_sistrobe( void )
     WRAP_WR32(PMIC_WRAP_SI_CK_CON , (ind >> 2) & 0x7);
     WRAP_WR32(PMIC_WRAP_SIDLY ,0x3 - (ind & 0x3));
     _pwrap_wacs2_nochk(0, DEW_READ_TEST, 0, &rdata);
+
     if( rdata == DEFAULT_VALUE_READ_TEST )
-    {
-      PWRAPLOG("_pwrap_init_sistrobe [Read Test] pass,index=%d rdata=%x\n", ind,rdata);
       result |= (0x1 << ind);
-    }
-    else
-      PWRAPLOG("_pwrap_init_sistrobe [Read Test] fail,index=%d,rdata=%x\n", ind,rdata);
+
+    PWRAPLOG("%s [Read Test], index=%d, rdata=0x%x\n", __FUNCTION__, ind, rdata);
   }
 
   //---------------------------------------------------------------------
@@ -576,7 +620,7 @@ static S32 _pwrap_init_sistrobe( void )
   if( (tmp1 - tmp2) != result )
   {
     /*TERR = "[DrvPWRAP_InitSiStrobe] Fail, tmp1:%d, tmp2:%d", tmp1, tmp2*/
-    PWRAPERR("_pwrap_init_sistrobe Fail,tmp1=%x,tmp2=%x\n", tmp1,tmp2);
+    PWRAPERR("%s Fail,tmp1=%x,tmp2=%x\n", __FUNCTION__, tmp1, tmp2);
     result_faulty = 0x1;
   }
 
@@ -596,7 +640,7 @@ static S32 _pwrap_init_sistrobe( void )
     return 0;
   else
   {
-    PWRAPERR("_pwrap_init_sistrobe Fail,result=%x\n", result);
+    PWRAPERR("%s Fail,result=%x\n", __FUNCTION__, result);
     return result_faulty;
   }
 }
@@ -632,7 +676,7 @@ static S32 _pwrap_reset_spislv( void )
   return_value=wait_for_state_ready_init(wait_for_sync,TIMEOUT_WAIT_IDLE,PMIC_WRAP_WACS2_RDATA,0);
   if(return_value!=0)
   {
-    PWRAPERR("_pwrap_reset_spislv fail,return_value=%x\n", return_value);
+    PWRAPERR("%s fail,return_value=%x\n", __FUNCTION__, return_value);
     ret=E_PWR_TIMEOUT;
     goto timeout;
   }
@@ -679,12 +723,12 @@ static S32 _pwrap_init_reg_clock( U32 regck_sel )
 
 #ifdef SLV_6320
   if(rdata != wdata) {
-    PWRAPERR("%s,PMIC_TOP_CKCON2 Write Fail, rdata=%x\n", __func__, rdata);
+    PWRAPERR("%s,PMIC_TOP_CKCON2 Write Fail, rdata=%x\n", __FUNCTION__, rdata);
     return E_PWR_WRITE_TEST_FAIL;
   }
 #else
   if((rdata & 0x3) != 0) {
-    PWRAPERR("%s, TOP_CKCON1 Write Fail, rdata=%x\n", __func__, rdata);
+    PWRAPERR("%s, TOP_CKCON1 Write Fail, rdata=%x\n", __FUNCTION__, rdata);
     return E_PWR_WRITE_TEST_FAIL;
   }
 #endif
@@ -692,7 +736,7 @@ static S32 _pwrap_init_reg_clock( U32 regck_sel )
 // Set Dummy cycle for both 6320(assume 18MHz)/6323 (assume 12MHz)
 #ifdef SLV_6320
   WRAP_WR32(PMIC_WRAP_RDDMY, 0x5);
-#else  
+#else
   pwrap_write_nochk(DEW_RDDMY_NO, 0x8);
   WRAP_WR32(PMIC_WRAP_RDDMY, 0x8);
 #endif
@@ -701,7 +745,7 @@ static S32 _pwrap_init_reg_clock( U32 regck_sel )
   if( regck_sel == 1 ) { // 6MHz in 6323 => not support; 18MHz in 6320
     WRAP_WR32(PMIC_WRAP_CSHEXT_WRITE, 0x4); // wait data written into register => 3T_PMIC
     // for 6320, slave need enough time (4T of PMIC reg_ck) to back idle state
-    WRAP_WR32(PMIC_WRAP_CSHEXT_READ,  0x5); 
+    WRAP_WR32(PMIC_WRAP_CSHEXT_READ,  0x5);
     WRAP_WR32(PMIC_WRAP_CSLEXT_START, 0x0);
     WRAP_WR32(PMIC_WRAP_CSLEXT_END,   0x0);
   } else if( regck_sel == 2 ) { //12 MHz in 6323; 36MHz in 6320
@@ -742,23 +786,22 @@ S32 pwrap_init(void)
   //toggle PMIC_WRAP and pwrap_spictl reset
   //###############################
   // Turn off module clock
-  // FIXME: hard code??
   cg_mask = ((1 << 20) | (1 << 27) | (1 << 28) | (1 << 29));
-  backup = (~WRAP_RD32(CLK_SWCG_1)) & cg_mask; // backup for later turn on after reset?
+  backup = (~WRAP_RD32(CLK_SWCG_1)) & cg_mask; // backup for later turn on after reset
   WRAP_WR32(CLK_SETCG_1, cg_mask);
   // dummy read to add latency (to wait clock turning off)
-  rdata = WRAP_RD32(PMIC_WRAP_SWRST); 
-  
+  rdata = WRAP_RD32(PMIC_WRAP_SWRST);
+
   // Toggle module reset
   WRAP_WR32(PMIC_WRAP_SWRST, 1);
   rdata = WRAP_RD32(WDT_SWSYSRST);
   WRAP_WR32(WDT_SWSYSRST, (rdata | (0x1 << 11)) | (0x88 << 24));
   WRAP_WR32(WDT_SWSYSRST, (rdata & (~(0x1 << 11))) | (0x88 << 24));
   WRAP_WR32(PMIC_WRAP_SWRST, 0);
-  
+
   // Turn on module clock
   WRAP_WR32(CLK_CLRCG_1, backup | (1 << 20)); // ensure cg for AP is off;
-  
+
   // Turn on module clock dcm (in global_con)
   // WHQA_00014186: set PMIC bclk DCM default off due to HW issue
   // WRAP_WR32(CLK_SETCG_3, (1 << 2) | (1 << 1));
@@ -829,7 +872,7 @@ S32 pwrap_init(void)
   // SPI Waveform Configuration
   //###############################
   /* 0:safe mode, 1:6MHz, 2:12MHz
-   * no support 6MHz since the clock is too slow to transmit data 
+   * no support 6MHz since the clock is too slow to transmit data
    * (due to RDDMY's limit -> only 4'hf)
    */
   sub_return = _pwrap_init_reg_clock(2);
@@ -958,7 +1001,7 @@ void pwrap_dump_all_register(void)
   pwrap_dump_ap_register();
 
   PWRAPREG("dump dewrap register\n");
-  for (i = 0; i < 15; i++) {
+  for (i = 0; i < PMIC_SPISLV_REG_RANGE; i++) {
     reg_addr = (DEW_BASE + (i * 2));
     pwrap_read_nochk(reg_addr, &reg_value);
     PWRAPREG("0x%X = 0x%X\n", reg_addr, reg_value);
@@ -972,7 +1015,7 @@ void pwrap_dump_ap_register(void)
   U32 reg_value = 0;
 
   PWRAPREG("dump pwrap register\n");
-  for (i = 0; i < 86; i++) {
+  for (i = 0; i < PMIC_WRAP_REG_RANGE; i++) {
     reg_addr = (PMIC_WRAP_BASE + i * 4);
     reg_value = WRAP_RD32(reg_addr);
     PWRAPREG("0x%X = 0x%X\n", reg_addr, reg_value);
@@ -1005,14 +1048,13 @@ S32 pwrap_init_lk(void)
 }
 
 //--------------------------------------------------------
-//    Function : _pwrap_status_update_test()
+//    Function : _pwrap_status_update_test_porting()
 // Description :only for early porting
 //   Parameter :
 //      Return :
 //--------------------------------------------------------
 static S32 _pwrap_status_update_test_porting( void )
 {
-  U32 i, j;
   U32 rdata;
   volatile U32 delay=100*1000;
   PWRAPFUC();
@@ -1030,7 +1072,7 @@ static S32 _pwrap_status_update_test_porting( void )
   rdata=WRAP_RD32(PMIC_WRAP_SIG_ERRVAL);
   if( rdata != WRITE_TEST_VALUE )
   {
-    PWRAPERR("_pwrap_status_update_test error,error code=%x, rdata=%x\n", 1, rdata);
+    PWRAPERR("%s error,error code=%x, rdata=%x\n", __FUNCTION__, 1, rdata);
     //return 1;
   }
   WRAP_WR32(PMIC_WRAP_SIG_VALUE,WRITE_TEST_VALUE);//the same as write test
@@ -1058,8 +1100,9 @@ int  pwrap_init_for_early_porting(void)
     else
     {
       PWRAPLOG("error:wrapper_StatusUpdateTest fail.\n");
-    res+=1;
+      res+=1;
     }
 
+    return ret;
 }
 #endif // MACH_FPGA

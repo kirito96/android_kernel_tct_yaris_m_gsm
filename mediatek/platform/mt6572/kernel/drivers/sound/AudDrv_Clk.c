@@ -154,7 +154,8 @@ void AudDrv_Clk_Off(void)
 */
 void AudDrv_Suspend_Clk_On(void)
 {
-   spin_lock_bh(&auddrv_Clk_lock);
+    unsigned long flags;
+    spin_lock_irqsave(&auddrv_Clk_lock, flags);
 
    if(Aud_AFE_Clk_cntr>0)
    {
@@ -182,7 +183,7 @@ void AudDrv_Suspend_Clk_On(void)
       Afe_Set_Reg(AUDIO_AFE_TOP_CON0, 0x00004000, 0x00004044); // bit2: afe power on, bit6: I2S power on
       #endif
    }
-   spin_unlock_bh(&auddrv_Clk_lock);
+    spin_unlock_irqrestore(&auddrv_Clk_lock, flags);
    if(Aud_ANA_Clk_cntr >0)
    {
        PRINTK_AUD_CLK("AudDrv_Suspend_Clk_On Aud_AFE_Clk_cntr:%d ANA_Clk(%d) \n",Aud_AFE_Clk_cntr,Aud_ANA_Clk_cntr);
@@ -193,7 +194,8 @@ void AudDrv_Suspend_Clk_On(void)
 
 void AudDrv_Suspend_Clk_Off(void)
 {
-   spin_lock_bh(&auddrv_Clk_lock);
+    unsigned long flags;
+    spin_lock_irqsave(&auddrv_Clk_lock, flags);
    if(Aud_AFE_Clk_cntr>0)
    {
       PRINTK_AUD_CLK("AudDrv_Suspend_Clk_Off Aud_AFE_Clk_cntr:%d ANA_Clk(%d)\n",Aud_AFE_Clk_cntr,Aud_ANA_Clk_cntr);
@@ -213,7 +215,7 @@ void AudDrv_Suspend_Clk_Off(void)
       Afe_Set_Reg(AUDIO_AFE_TOP_CON0, 0x00004044, 0x00004044);  // bit2: afe power off, bit6: I2S power off
       #endif
    }
-   spin_unlock_bh(&auddrv_Clk_lock);
+    spin_unlock_irqrestore(&auddrv_Clk_lock, flags);
    if(Aud_ANA_Clk_cntr > 0)
    {
        PRINTK_AUD_CLK("AudDrv_Suspend_Clk_On Aud_AFE_Clk_cntr:%d ANA_Clk(%d) \n",Aud_AFE_Clk_cntr,Aud_ANA_Clk_cntr);
@@ -376,7 +378,8 @@ void AudDrv_ADC_Clk_Off(void)
  void AudDrv_Core_Clk_On(void)
  {
      //PRINTK_AUD_CLK("+AudDrv_Core_Clk_On, Aud_Core_Clk_cntr:%d \n", Aud_Core_Clk_cntr);
-     spin_lock(&auddrv_Clk_lock);
+    unsigned long flags;
+    spin_lock_irqsave(&auddrv_Clk_lock, flags);
      if(Aud_Core_Clk_cntr == 0 )
      {
          #ifdef PM_MANAGER_API
@@ -387,7 +390,7 @@ void AudDrv_ADC_Clk_Off(void)
          #endif
      }
      Aud_Core_Clk_cntr++;
-     spin_unlock(&auddrv_Clk_lock);
+    spin_unlock_irqrestore(&auddrv_Clk_lock, flags);
      //PRINTK_AUD_CLK("-AudDrv_Core_Clk_On, Aud_Core_Clk_cntr:%d \n", Aud_Core_Clk_cntr);
  }
 
@@ -395,7 +398,8 @@ void AudDrv_ADC_Clk_Off(void)
  void AudDrv_Core_Clk_Off(void)
  {
      //PRINTK_AUD_CLK("+AudDrv_Core_Clk_On, Aud_Core_Clk_cntr:%d \n", Aud_Core_Clk_cntr);
-     spin_lock(&auddrv_Clk_lock);
+    unsigned long flags;
+    spin_lock_irqsave(&auddrv_Clk_lock, flags);
      if(Aud_Core_Clk_cntr == 0 )
     {
         #ifdef PM_MANAGER_API
@@ -406,7 +410,7 @@ void AudDrv_ADC_Clk_Off(void)
         #endif
     }
     Aud_Core_Clk_cntr++;
-    spin_unlock(&auddrv_Clk_lock);
+    spin_unlock_irqrestore(&auddrv_Clk_lock, flags);
     //PRINTK_AUD_CLK("-AudDrv_Core_Clk_On, Aud_Core_Clk_cntr:%d \n", Aud_Core_Clk_cntr);
  }
 
@@ -492,6 +496,97 @@ void AudDrv_HDMI_Clk_Off(void)
      PRINTK_AUD_CLK("-AudDrv_I2S_Clk_Off, Aud_I2S_Clk_cntr:%d \n",Aud_HDMI_Clk_cntr);
 }
 
+void AudDrv_Clk_On_DisableISR(void)
+{
+    unsigned long flags;
+    PRINTK_AUD_CLK("+AudDrv_Clk_On_DisableISR");
+    spin_lock_irqsave(&auddrv_Clk_lock, flags);
+    if (Aud_AFE_Clk_cntr == 0)
+    {
+        PRINTK_AUD_CLK("+AudDrv_Clk_On, Aud_AFE_Clk_cntr:%d \n", Aud_AFE_Clk_cntr);
+#ifdef PM_MANAGER_API
+        if (enable_clock(MT_CG_AUDIO_SW_CG, "AUDIO"))
+        {
+            xlog_printk(ANDROID_LOG_ERROR, "Sound", "Aud enable_clock MT_CG_AUDIO_AFE fail !!!\n");
+        }
+        Afe_Set_Reg(AUDIO_AFE_TOP_CON0, 0x60004000, 0xffffffff);  // bit2: afe power on
+#else
+        Afe_Set_Reg(AUDIO_AFE_TOP_CON0, 0x60004000, 0xffffffff);  // bit2: afe power on
+#endif
+    }
+    
+    Afe_Set_Reg(AFE_IRQ_CON, 0, 0x03);  
+
+    if (Aud_AFE_Clk_cntr == 0)
+    {
+        PRINTK_AUD_CLK("+ AudDrv_Clk_Off, Aud_AFE_Clk_cntr:%d \n", Aud_AFE_Clk_cntr);
+        {
+            // Disable AFE clock
+#ifdef PM_MANAGER_API
+            Afe_Set_Reg(AUDIO_AFE_TOP_CON0, 0x00004044, 0x00004044);    // bit2: power down afe
+            if (disable_clock(MT_CG_AUDIO_SW_CG, "AUDIO"))
+            {
+                xlog_printk(ANDROID_LOG_ERROR, "Sound", "disable_clock MT_CG_AUDIO_AFE fail");
+            }
+#else
+            Afe_Set_Reg(AUDIO_AFE_TOP_CON0, 0x00000000, 0x00004043);  // bit2: power on
+#endif
+        }
+    }
+
+    spin_unlock_irqrestore(&auddrv_Clk_lock, flags);
+    PRINTK_AUD_CLK("-AudDrv_Clk_On_DisableISR");
+    //PRINTK_AUD_CLK("-!! AudDrv_Clk_Off, Aud_AFE_Clk_cntr:%d \n",Aud_AFE_Clk_cntr);
+}
+
+void AudDrv_Clk_On_ClrISRStatus(void)
+{
+    unsigned long flags;
+    PRINTK_AUD_CLK("+AudDrv_Clk_On_ClrISRStatus");
+    spin_lock_irqsave(&auddrv_Clk_lock, flags);
+    if (Aud_AFE_Clk_cntr == 0)
+    {
+        PRINTK_AUD_CLK("+AudDrv_Clk_On, Aud_AFE_Clk_cntr:%d \n", Aud_AFE_Clk_cntr);
+#ifdef PM_MANAGER_API
+        if (enable_clock(MT_CG_AUDIO_SW_CG, "AUDIO"))
+        {
+            xlog_printk(ANDROID_LOG_ERROR, "Sound", "Aud enable_clock MT_CG_AUDIO_AFE fail !!!\n");
+        }
+        Afe_Set_Reg(AUDIO_AFE_TOP_CON0, 0x60004000, 0xffffffff);  // bit2: afe power on
+#else
+        Afe_Set_Reg(AUDIO_AFE_TOP_CON0, 0x60004000, 0xffffffff);  // bit2: afe power on
+#endif
+    }
+    
+    Afe_Set_Reg(AFE_IRQ_CLR, 1 << 6 , 0xff);
+    Afe_Set_Reg(AFE_IRQ_CLR, 1 , 0xff);
+    Afe_Set_Reg(AFE_IRQ_CLR, 1 << 1 , 0xff);
+    Afe_Set_Reg(AFE_IRQ_CLR, 1 << 2 , 0xff);
+    Afe_Set_Reg(AFE_IRQ_CLR, 1 << 3 , 0xff);
+    Afe_Set_Reg(AFE_IRQ_CLR, 1 << 4 , 0xff);
+    Afe_Set_Reg(AFE_IRQ_CLR, 1 << 5 , 0xff);
+
+     if (Aud_AFE_Clk_cntr == 0)
+    {
+        PRINTK_AUD_CLK("+ AudDrv_Clk_Off, Aud_AFE_Clk_cntr:%d \n", Aud_AFE_Clk_cntr);
+        {
+            // Disable AFE clock
+#ifdef PM_MANAGER_API
+            Afe_Set_Reg(AUDIO_AFE_TOP_CON0, 0x00004044, 0x00004044);    // bit2: power down afe
+            if (disable_clock(MT_CG_AUDIO_SW_CG, "AUDIO"))
+            {
+                xlog_printk(ANDROID_LOG_ERROR, "Sound", "disable_clock MT_CG_AUDIO_AFE fail");
+            }
+#else
+            Afe_Set_Reg(AUDIO_AFE_TOP_CON0, 0x00000000, 0x00004043);  // bit2: power on
+#endif
+        }
+    }
+
+    spin_unlock_irqrestore(&auddrv_Clk_lock, flags);
+    PRINTK_AUD_CLK("-AudDrv_Clk_On_ClrISRStatus");
+    //PRINTK_AUD_CLK("-!! AudDrv_Clk_Off, Aud_AFE_Clk_cntr:%d \n",Aud_AFE_Clk_cntr);
+}
 // export symbol for other module use
 EXPORT_SYMBOL(AudDrv_Clk_On);
 EXPORT_SYMBOL(AudDrv_Clk_Off);

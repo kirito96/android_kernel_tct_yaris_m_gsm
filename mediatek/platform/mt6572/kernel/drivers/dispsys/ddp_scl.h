@@ -1,7 +1,10 @@
 #ifndef _DDP_SCL_API_H_
 #define _DDP_SCL_API_H_
 
+#include <mach/mt_typedefs.h>
+
 #include "ddp_drv.h"
+
 
 #define RDMA_INSTANCES  2
 #define RDMA_MAX_WIDTH  2047

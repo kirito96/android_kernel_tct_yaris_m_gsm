@@ -7,13 +7,12 @@
 #include <linux/uaccess.h>
 #include <linux/mm.h>
 #include <linux/kfifo.h>
-
 #include <linux/firmware.h>
 #include <linux/syscalls.h>
 #include <linux/uaccess.h>
 #include <linux/platform_device.h>
 #include <linux/proc_fs.h>
-#include <ccci_common.h>
+#include <ccci.h>
 
 
 #define CCCI_LOG_MAX_LEN 16

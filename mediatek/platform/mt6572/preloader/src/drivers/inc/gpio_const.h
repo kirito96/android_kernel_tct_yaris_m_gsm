@@ -1,19 +1,17 @@
 #ifndef _GPIO_CONST_H_
 #define _GPIO_CONST_H_
 
+#include <mt6572.h>
+
 #define GPIO_MODE_BITS                 4
-#define MAX_GPIO_PIN                   154
 #define MAX_GPIO_MODE_PER_REG          8
 #define MAX_GPIO_REG_BITS              32
 
-#define GPIO_BASE                      0x10005000
 #define IO_CFG_T_BASE                  0x10208000
 #define IO_CFG_B_BASE                  0x10209000
 #define IO_CFG_L_BASE                  0x1020A000
 #define IO_CFG_R_BASE                  0x1020B000
 #define MIPI_CFG_BASE                  0x10011000
-
-#define GPIO_EXTEND_START 154
 
 /******************************************************************************
 * Enumeration for GPIO pin
@@ -43,18 +41,13 @@ typedef enum GPIO_PIN
     GPIO144, GPIO145, GPIO146, GPIO147, GPIO148, GPIO149, GPIO150, GPIO151,
     GPIO152, GPIO153, MT_GPIO_BASE_MAX
 }GPIO_PIN;    
+#define MT_GPIO_BASE_START GPIO0
+#define MT_GPIO_EXT_START  MT_GPIO_BASE_MAX
 
 typedef enum GPIO_PIN_EXT
 {    
-    GPIO154 = GPIO_EXTEND_START,
-    GPIO155
-}GPIO_PIN_EXT;
-
-typedef enum GPIO_PIN_EXT1
-{    
-    GPIOEXT0 = GPIO_EXTEND_START,    
-    MT_GPIO_EXT_MAX
-}GPIO_PIN_EXT1;    
-#define GPIO_MAX 154
+    MT_GPIO_EXT_MAX = MT_GPIO_EXT_START
+}GPIO_PIN_EXT;    
+#define MT_GPIO_MAX_PIN MT_GPIO_EXT_MAX
 
 #endif //_GPIO_CONST_H_

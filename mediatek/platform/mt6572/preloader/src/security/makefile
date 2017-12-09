@@ -3,7 +3,7 @@
 ###################################################################
 
 MOD_SRC  = 
-MOD_OBJ  = $(D_ROOT)/out
+MOD_OBJ  = $(MTK_ROOT_OUT)/PRELOADER_OBJ/obj
 
 ###################################################################
 # source files
@@ -20,6 +20,10 @@ sec_secroimg.c \
 sec_util.c \
 sec_region.c \
 sec_flashtool_cfg.c \
+
+ifeq ($(CFG_TRUSTONIC_TEE_SUPPORT),1)
+SUBDIRS += trustzone
+endif
 
 ###################################################################
 # target

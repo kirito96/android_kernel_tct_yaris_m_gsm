@@ -1,7 +1,78 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein
+ * is confidential and proprietary to MediaTek Inc. and/or its licensors.
+ * Without the prior written permission of MediaTek inc. and/or its licensors,
+ * any reproduction, modification, use or disclosure of MediaTek Software,
+ * and information contained herein, in whole or in part, shall be strictly prohibited.
+ */
+/* MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
+ * AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+ * NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+ * SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+ * SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
+ * THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
+ * THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
+ * CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
+ * SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
+ * CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+ * AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+ * OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
+ * MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek Software")
+ * have been modified by MediaTek Inc. All revisions are subject to any receiver's
+ * applicable license agreements with MediaTek Inc.
+ */
 
+/*****************************************************************************
+*  Copyright Statement:
+*  --------------------
+*  This software is protected by Copyright and the information contained
+*  herein is confidential. The software may not be copied and the information
+*  contained herein may not be used or disclosed except with the written
+*  permission of MediaTek Inc. (C) 2008
+*
+*  BY OPENING THIS FILE, BUYER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+*  THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+*  RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO BUYER ON
+*  AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+*  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+*  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+*  NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+*  SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+*  SUPPLIED WITH THE MEDIATEK SOFTWARE, AND BUYER AGREES TO LOOK ONLY TO SUCH
+*  THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. MEDIATEK SHALL ALSO
+*  NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE RELEASES MADE TO BUYER'S
+*  SPECIFICATION OR TO CONFORM TO A PARTICULAR STANDARD OR OPEN FORUM.
+*
+*  BUYER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND CUMULATIVE
+*  LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+*  AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+*  OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY BUYER TO
+*  MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+*
+*  THE TRANSACTION CONTEMPLATED HEREUNDER SHALL BE CONSTRUED IN ACCORDANCE
+*  WITH THE LAWS OF THE STATE OF CALIFORNIA, USA, EXCLUDING ITS CONFLICT OF
+*  LAWS PRINCIPLES.  ANY DISPUTES, CONTROVERSIES OR CLAIMS ARISING THEREOF AND
+*  RELATED THERETO SHALL BE SETTLED BY ARBITRATION IN SAN FRANCISCO, CA, UNDER
+*  THE RULES OF THE INTERNATIONAL CHAMBER OF COMMERCE (ICC).
+*
+*****************************************************************************/
 #ifdef BUILD_LK
 #define ENABLE_DSI_INTERRUPT 0 
 
+#include <string.h>
+#include <platform/mt_gpt.h>
+#include <platform/mt_typedefs.h>
 #include <platform/sec_devinfo.h>
 #include <platform/disp_drv_platform.h>
 
@@ -45,14 +116,17 @@ void dsi_udelay(UINT32 ms)
 
 void dsi_mdelay(UINT32 ms)
 {
-    unsigned int i, j, k;
+    unsigned int i, j;
 
     for (i = 0; i < ms; i++)
         for (j = 0; j < 0xFF; j ++);
 }
 
-#define udelay(n) udelay((n))
-
+/*
+#define PLL_BASE			(0xF0060000)
+#define DSI_PHY_BASE		(0xF0060B00)
+#define DSI_BASE            	(0xF0140000)
+*/
 
 #if !(defined(CONFIG_MT6589_FPGA) || defined(BUILD_LK))
 //#define DSI_MIPI_API
@@ -72,6 +146,11 @@ void dsi_mdelay(UINT32 ms)
                         OUTREG32(&REG, AS_UINT32(&r));    \
                     } while (0)
 #endif
+
+#define DSI_OUTREG32_R(type, addr2, addr1) DISP_OUTREG32_R(type, addr2, addr1)
+#define DSI_OUTREG32_V(type, addr2, var) DISP_OUTREG32_V(type, addr2, var)
+#define DSI_OUTREGBIT(TYPE,REG,bit,value) DISP_OUTREGBIT(TYPE,REG,bit,value)
+#define DSI_INREG32(type,addr) DISP_INREG32(type,addr)
 
 static PDSI_REGS const DSI_REG = (PDSI_REGS)(DSI_BASE);
 static PDSI_PHY_REGS const DSI_PHY_REG = (PDSI_PHY_REGS)(MIPI_CONFIG_BASE);
@@ -167,7 +246,7 @@ static long int get_current_time_us(void)
 
 static int custom_pll_clock_remap(unsigned int mipi_clock)
 {
-    int i = 0;
+    unsigned int i = 0;
 
     printf("DSI: custom_pll_clock_remap, mipi clock be %d MHz!!!\n", mipi_clock);
 
@@ -194,11 +273,6 @@ static int custom_pll_clock_remap(unsigned int mipi_clock)
     return i;
 }
 
-static void lcm_mdelay(UINT32 ms)
-{
-    udelay(1000 * ms);
-}
-
 
 #if ENABLE_DSI_INTERRUPT
 static irqreturn_t _DSI_InterruptHandler(int irq, void *dev_id)
@@ -208,8 +282,7 @@ static irqreturn_t _DSI_InterruptHandler(int irq, void *dev_id)
     if (status.RD_RDY)
     {        
         ///write clear RD_RDY interrupt
-        //DSI_REG->DSI_INTSTA.RD_RDY = 1;
-        OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,RD_RDY,1);
+        DSI_OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,RD_RDY,1);
         /// write clear RD_RDY interrupt must be before DSI_RACK
         /// because CMD_DONE will raise after DSI_RACK, 
         /// so write clear RD_RDY after that will clear CMD_DONE too
@@ -217,8 +290,7 @@ static irqreturn_t _DSI_InterruptHandler(int irq, void *dev_id)
 		do
         {
             ///send read ACK
-            //DSI_REG->DSI_RACK.DSI_RACK = 1;
-            OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
+            DSI_OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
         } while(DSI_REG->DSI_STA.BUSY);
 
 		wake_up_interruptible(&_dsi_dcs_read_wait_queue);
@@ -228,8 +300,7 @@ static irqreturn_t _DSI_InterruptHandler(int irq, void *dev_id)
 
     if (status.CMD_DONE)
     {
-        //DSI_REG->DSI_INTSTA.CMD_DONE = 1;
-        OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,CMD_DONE,1);
+        DSI_OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,CMD_DONE,1);
     	// Go back to LP mode.
     	DSI_clk_HS_mode(0);
         wake_up_interruptible(&_dsi_wait_queue);
@@ -337,7 +408,7 @@ static void DSI_WaitForEngineNotBusy(void)
             break;
         }
     }
-    OUTREG32(&DSI_REG->DSI_INTSTA, 0x0);
+    DSI_OUTREG32_V(PDSI_INT_STATUS_REG,&DSI_REG->DSI_INTSTA, 0x0);
 #endif    
 }
 
@@ -348,32 +419,31 @@ static void _BackupDSIRegisters(void)
 	
     //memcpy((void*)&(_dsiContext.regBackup), (void*)DSI_BASE, sizeof(DSI_REGS));
 
-    OUTREG32(&regs->DSI_INTEN, AS_UINT32(&DSI_REG->DSI_INTEN));
-    OUTREG32(&regs->DSI_MODE_CTRL, AS_UINT32(&DSI_REG->DSI_MODE_CTRL));
-    OUTREG32(&regs->DSI_TXRX_CTRL, AS_UINT32(&DSI_REG->DSI_TXRX_CTRL));
-    OUTREG32(&regs->DSI_PSCTRL, AS_UINT32(&DSI_REG->DSI_PSCTRL));
+    DSI_OUTREG32_R(PDSI_INT_ENABLE_REG,&regs->DSI_INTEN, &DSI_REG->DSI_INTEN);
+    DSI_OUTREG32_R(PDSI_MODE_CTRL_REG,&regs->DSI_MODE_CTRL, &DSI_REG->DSI_MODE_CTRL);
+    DSI_OUTREG32_R(PDSI_TXRX_CTRL_REG,&regs->DSI_TXRX_CTRL, &DSI_REG->DSI_TXRX_CTRL);
+    DSI_OUTREG32_R(PDSI_PSCTRL_REG,&regs->DSI_PSCTRL, &DSI_REG->DSI_PSCTRL);
 
-    OUTREG32(&regs->DSI_VSA_NL, AS_UINT32(&DSI_REG->DSI_VSA_NL));		
-    OUTREG32(&regs->DSI_VBP_NL, AS_UINT32(&DSI_REG->DSI_VBP_NL));		
-    OUTREG32(&regs->DSI_VFP_NL, AS_UINT32(&DSI_REG->DSI_VFP_NL));		
-    OUTREG32(&regs->DSI_VACT_NL, AS_UINT32(&DSI_REG->DSI_VACT_NL));		
+    DSI_OUTREG32_R(PDSI_VSA_NL_REG,&regs->DSI_VSA_NL, &DSI_REG->DSI_VSA_NL);
+    DSI_OUTREG32_R(PDSI_VBP_NL_REG,&regs->DSI_VBP_NL, &DSI_REG->DSI_VBP_NL);
+    DSI_OUTREG32_R(PDSI_VFP_NL_REG,&regs->DSI_VFP_NL, &DSI_REG->DSI_VFP_NL);
+    DSI_OUTREG32_R(PDSI_VACT_NL_REG,&regs->DSI_VACT_NL, &DSI_REG->DSI_VACT_NL);
 
-    OUTREG32(&regs->DSI_HSA_WC, AS_UINT32(&DSI_REG->DSI_HSA_WC));		
-    OUTREG32(&regs->DSI_HBP_WC, AS_UINT32(&DSI_REG->DSI_HBP_WC));		
-    OUTREG32(&regs->DSI_HFP_WC, AS_UINT32(&DSI_REG->DSI_HFP_WC));		
-    OUTREG32(&regs->DSI_BLLP_WC, AS_UINT32(&DSI_REG->DSI_BLLP_WC));		
+    DSI_OUTREG32_R(PDSI_HSA_WC_REG,&regs->DSI_HSA_WC, &DSI_REG->DSI_HSA_WC);
+    DSI_OUTREG32_R(PDSI_HBP_WC_REG,&regs->DSI_HBP_WC, &DSI_REG->DSI_HBP_WC);
+    DSI_OUTREG32_R(PDSI_HFP_WC_REG,&regs->DSI_HFP_WC, &DSI_REG->DSI_HFP_WC);
+    DSI_OUTREG32_R(PDSI_BLLP_WC_REG,&regs->DSI_BLLP_WC, &DSI_REG->DSI_BLLP_WC);
 	
-    OUTREG32(&regs->DSI_HSTX_CKL_WC, AS_UINT32(&DSI_REG->DSI_HSTX_CKL_WC));		
+    DSI_OUTREG32_R(PDSI_HSTX_CKLP_WC_REG,&regs->DSI_HSTX_CKLP_WC, &DSI_REG->DSI_HSTX_CKLP_WC);		
     
-	OUTREG32(&regs->DSI_MEM_CONTI, AS_UINT32(&DSI_REG->DSI_MEM_CONTI));
+    DSI_OUTREG32_R(PDSI_MEM_CONTI_REG,&regs->DSI_MEM_CONTI, &DSI_REG->DSI_MEM_CONTI);
 
     OUTREG32(&regs->DSI_PHY_TIMECON0, AS_UINT32(&DSI_REG->DSI_PHY_TIMECON0));
     OUTREG32(&regs->DSI_PHY_TIMECON1, AS_UINT32(&DSI_REG->DSI_PHY_TIMECON1));
     OUTREG32(&regs->DSI_PHY_TIMECON2, AS_UINT32(&DSI_REG->DSI_PHY_TIMECON2));
     OUTREG32(&regs->DSI_PHY_TIMECON3, AS_UINT32(&DSI_REG->DSI_PHY_TIMECON3));
 
-    OUTREG32(&regs->DSI_VM_CMD_CON, AS_UINT32(&DSI_REG->DSI_VM_CMD_CON));
-	
+    DSI_OUTREG32_R(PDSI_VM_CMD_CON_REG,&regs->DSI_VM_CMD_CON, &DSI_REG->DSI_VM_CMD_CON);
 }
 
 
@@ -381,32 +451,31 @@ static void _RestoreDSIRegisters(void)
 {
     DSI_REGS *regs = &(_dsiContext.regBackup);
 
-    OUTREG32(&DSI_REG->DSI_INTEN, AS_UINT32(&regs->DSI_INTEN));	
-    OUTREG32(&DSI_REG->DSI_MODE_CTRL, AS_UINT32(&regs->DSI_MODE_CTRL));	
-    OUTREG32(&DSI_REG->DSI_TXRX_CTRL, AS_UINT32(&regs->DSI_TXRX_CTRL));	
-    OUTREG32(&DSI_REG->DSI_PSCTRL, AS_UINT32(&regs->DSI_PSCTRL));	
+    DSI_OUTREG32_R(PDSI_INT_ENABLE_REG,&DSI_REG->DSI_INTEN, &regs->DSI_INTEN);
+    DSI_OUTREG32_R(PDSI_MODE_CTRL_REG,&DSI_REG->DSI_MODE_CTRL, &regs->DSI_MODE_CTRL);
+    DSI_OUTREG32_R(PDSI_TXRX_CTRL_REG,&DSI_REG->DSI_TXRX_CTRL, &regs->DSI_TXRX_CTRL);
+    DSI_OUTREG32_R(PDSI_PSCTRL_REG,&DSI_REG->DSI_PSCTRL, &regs->DSI_PSCTRL);
 
-    OUTREG32(&DSI_REG->DSI_VSA_NL, AS_UINT32(&regs->DSI_VSA_NL));		
-    OUTREG32(&DSI_REG->DSI_VBP_NL, AS_UINT32(&regs->DSI_VBP_NL));		
-    OUTREG32(&DSI_REG->DSI_VFP_NL, AS_UINT32(&regs->DSI_VFP_NL));		
-    OUTREG32(&DSI_REG->DSI_VACT_NL, AS_UINT32(&regs->DSI_VACT_NL));		
+    DSI_OUTREG32_R(PDSI_VSA_NL_REG,&DSI_REG->DSI_VSA_NL, &regs->DSI_VSA_NL);
+    DSI_OUTREG32_R(PDSI_VBP_NL_REG,&DSI_REG->DSI_VBP_NL, &regs->DSI_VBP_NL);
+    DSI_OUTREG32_R(PDSI_VFP_NL_REG,&DSI_REG->DSI_VFP_NL, &regs->DSI_VFP_NL);
+    DSI_OUTREG32_R(PDSI_VACT_NL_REG,&DSI_REG->DSI_VACT_NL, &regs->DSI_VACT_NL);
 
-    OUTREG32(&DSI_REG->DSI_HSA_WC, AS_UINT32(&regs->DSI_HSA_WC));		
-    OUTREG32(&DSI_REG->DSI_HBP_WC, AS_UINT32(&regs->DSI_HBP_WC));		
-    OUTREG32(&DSI_REG->DSI_HFP_WC, AS_UINT32(&regs->DSI_HFP_WC));	
-    OUTREG32(&DSI_REG->DSI_BLLP_WC, AS_UINT32(&regs->DSI_BLLP_WC));		
+    DSI_OUTREG32_R(PDSI_HSA_WC_REG,&DSI_REG->DSI_HSA_WC, &regs->DSI_HSA_WC);
+    DSI_OUTREG32_R(PDSI_HBP_WC_REG,&DSI_REG->DSI_HBP_WC, &regs->DSI_HBP_WC);
+    DSI_OUTREG32_R(PDSI_HFP_WC_REG,&DSI_REG->DSI_HFP_WC, &regs->DSI_HFP_WC);
+    DSI_OUTREG32_R(PDSI_BLLP_WC_REG,&DSI_REG->DSI_BLLP_WC, &regs->DSI_BLLP_WC);
 
-    OUTREG32(&DSI_REG->DSI_HSTX_CKL_WC, AS_UINT32(&regs->DSI_HSTX_CKL_WC));		
+    DSI_OUTREG32_R(PDSI_HSTX_CKLP_WC_REG,&DSI_REG->DSI_HSTX_CKLP_WC, &regs->DSI_HSTX_CKLP_WC);		
 
-    OUTREG32(&DSI_REG->DSI_MEM_CONTI, AS_UINT32(&regs->DSI_MEM_CONTI));		
+    DSI_OUTREG32_R(PDSI_MEM_CONTI_REG,&DSI_REG->DSI_MEM_CONTI, &regs->DSI_MEM_CONTI);
 
     OUTREG32(&DSI_REG->DSI_PHY_TIMECON0, AS_UINT32(&regs->DSI_PHY_TIMECON0));		
     OUTREG32(&DSI_REG->DSI_PHY_TIMECON1, AS_UINT32(&regs->DSI_PHY_TIMECON1));
     OUTREG32(&DSI_REG->DSI_PHY_TIMECON2, AS_UINT32(&regs->DSI_PHY_TIMECON2));		
     OUTREG32(&DSI_REG->DSI_PHY_TIMECON3, AS_UINT32(&regs->DSI_PHY_TIMECON3));		
 
-    OUTREG32(&DSI_REG->DSI_VM_CMD_CON, AS_UINT32(&regs->DSI_VM_CMD_CON));		
-
+    DSI_OUTREG32_R(PDSI_VM_CMD_CON_REG,&DSI_REG->DSI_VM_CMD_CON, &regs->DSI_VM_CMD_CON);
 }
 
 static void _ResetBackupedDSIRegisterValues(void)
@@ -414,6 +483,7 @@ static void _ResetBackupedDSIRegisterValues(void)
     DSI_REGS *regs = &_dsiContext.regBackup;
     memset((void*)regs, 0, sizeof(DSI_REGS));
 }
+
 static DSI_STATUS DSI_TE_Setting(void)
 {
     //return DSI_STATUS_OK;
@@ -425,21 +495,20 @@ static DSI_STATUS DSI_TE_Setting(void)
     if(lcm_params->dsi.mode == CMD_MODE && lcm_params->dsi.lcm_ext_te_enable == TRUE)
     {
         //Enable EXT TE
-		dsiTeEnable = false;
-		dsiTeExtEnable = true;
+        dsiTeEnable = false;
+        dsiTeExtEnable = true;
     }
     else
     {
         //Enable BTA TE
-		dsiTeEnable = true;
-		dsiTeExtEnable = false;
+        dsiTeEnable = true;
+        dsiTeExtEnable = false;
     }
 
     isTeSetting = true;
 
     return DSI_STATUS_OK;
 }
-
 
 
 DSI_STATUS DSI_Init(BOOL isDsiPoweredOn)
@@ -456,10 +525,10 @@ DSI_STATUS DSI_Init(BOOL isDsiPoweredOn)
     ret = DSI_PowerOn();
     ASSERT(ret == DSI_STATUS_OK);
 
-	DSI_TE_Setting();
-    OUTREG32(&DSI_REG->DSI_MEM_CONTI, DSI_WMEM_CONTI);	
-    OUTREGBIT(DSI_COM_CTRL_REG, DSI_REG->DSI_COM_CTRL, DSI_EN, 1);
-	OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,EXT_TE,1);
+    DSI_TE_Setting();
+    DSI_OUTREG32_V(PDSI_MEM_CONTI_REG,&DSI_REG->DSI_MEM_CONTI, DSI_WMEM_CONTI);
+    DSI_OUTREGBIT(DSI_COM_CTRL_REG, DSI_REG->DSI_COM_CTRL, DSI_EN, 1);
+    DSI_OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,EXT_TE,1);
 
 #if ENABLE_DSI_INTERRUPT
     init_waitqueue_head(&_dsi_wait_queue);
@@ -470,11 +539,9 @@ DSI_STATUS DSI_Init(BOOL isDsiPoweredOn)
         DISP_LOG_PRINT(ANDROID_LOG_ERROR, "DSI", "fail to request DSI irq\n"); 
         return DSI_STATUS_ERROR;
     }
-    //mt65xx_irq_unmask(MT6577_DSI_IRQ_ID);
-    //DSI_REG->DSI_INTEN.CMD_DONE=1;
-    //DSI_REG->DSI_INTEN.RD_RDY=1;
-    OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,CMD_DONE,1);
-    OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,RD_RDY,1);
+    //mt65xx_irq_unmask(MT65XX_DSI_IRQ_ID);
+    DSI_OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,CMD_DONE,1);
+    DSI_OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,RD_RDY,1);
 #endif
     
     return DSI_STATUS_OK;
@@ -572,11 +639,9 @@ DSI_STATUS DSI_WaitForNotBusy(void)
 DSI_STATUS DSI_EnableClk(void)
 {
     DSI_WaitForEngineNotBusy();
-    
-    //DSI_REG->DSI_START.DSI_START=0;
-    //DSI_REG->DSI_START.DSI_START=1;
-    OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,0);
-    OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,1);
+
+    DSI_OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,0);
+    DSI_OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,1);
 
     return DSI_STATUS_OK;
 }
@@ -587,7 +652,7 @@ static void DSI_BackUpCmdQ(void)
     unsigned int i;
     DSI_CMDQ_REGS *regs = &(_dsiContext.cmdqBackup);
     
-    _dsiContext.cmdq_size = AS_UINT32(&DSI_REG->DSI_CMDQ_SIZE);
+    _dsiContext.cmdq_size = DSI_INREG32(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE);
     
     for (i=0; i<_dsiContext.cmdq_size; i++)
         OUTREG32(&regs->data[i], AS_UINT32(&DSI_CMDQ_REG->data[i]));
@@ -599,7 +664,7 @@ static void DSI_RestoreCmdQ(void)
     unsigned int i;
     DSI_CMDQ_REGS *regs = &(_dsiContext.cmdqBackup);
     
-    OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, AS_UINT32(&_dsiContext.cmdq_size));
+    DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, _dsiContext.cmdq_size);
     
     for (i=0; i<_dsiContext.cmdq_size; i++)
         OUTREG32(&DSI_CMDQ_REG->data[i], AS_UINT32(&regs->data[i]));
@@ -629,11 +694,10 @@ void DSI_WaitBtaTE(void)
     t0.Data_ID = 0;
     t0.Data1 = 0;
     
-    OUTREG32(&DSI_CMDQ_REG->data[0], AS_UINT32(&t0));
-    OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, 1);
-    
-    DSI_REG->DSI_START.DSI_START=0;
-    DSI_REG->DSI_START.DSI_START=1;
+    DSI_OUTREG32_R(PDSI_CMDQ,&DSI_CMDQ_REG->data[0], &t0);
+    DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, 1);
+    DSI_OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,0);
+    DSI_OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,1);
     
 #if ENABLE_DSI_INTERRUPT
     
@@ -645,7 +709,7 @@ void DSI_WaitBtaTE(void)
         DISP_LOG_PRINT(ANDROID_LOG_WARN, "DSI", "Wait for _dsi_wait_bta_te(DSI_INTSTA.TE_RDY) ready timeout!!!\n");
         
         // Set DSI_RACK to let DSI idle
-        DSI_REG->DSI_RACK.DSI_RACK = 1;
+        DSI_OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
         
         DSI_DumpRegisters();	
         ///do necessary reset here
@@ -668,7 +732,7 @@ void DSI_WaitBtaTE(void)
             DISP_LOG_PRINT(ANDROID_LOG_WARN, "DSI", "Wait for TE_RDY timeout!!!\n");
             
             // Set DSI_RACK to let DSI idle
-            DSI_REG->DSI_RACK.DSI_RACK = 1;
+            DSI_OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
             
             DSI_DumpRegisters();
             
@@ -680,10 +744,10 @@ void DSI_WaitBtaTE(void)
     }
     dsi_wait_time = 0;
     // Write clear RD_RDY
-    DSI_REG->DSI_INTSTA.TE_RDY = 0;
+    DSI_OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,TE_RDY,0);
     
     // Set DSI_RACK to let DSI idle
-    DSI_REG->DSI_RACK.DSI_RACK = 1;
+    DSI_OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
 
     if(!dsiTeEnable){
         DSI_RestoreCmdQ();
@@ -700,7 +764,7 @@ void DSI_WaitBtaTE(void)
             DISP_LOG_PRINT(ANDROID_LOG_WARN, "DSI", "Wait for CMD_DONE timeout!!!\n");
             
             // Set DSI_RACK to let DSI idle
-            DSI_REG->DSI_RACK.DSI_RACK = 1;
+            DSI_OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
             
             DSI_DumpRegisters();
             
@@ -712,7 +776,7 @@ void DSI_WaitBtaTE(void)
     }
     
     // Write clear CMD_DONE
-    DSI_REG->DSI_INTSTA.CMD_DONE = 0;
+    DSI_OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,CMD_DONE,0);
     
     #endif
     // restore command queue setting.
@@ -722,7 +786,6 @@ void DSI_WaitBtaTE(void)
 
 void DSI_WaitExternalTE(void)
 {
-    DSI_T0_INS t0;
 #if ENABLE_DSI_INTERRUPT
     long ret;
     static const long WAIT_TIMEOUT = 2 * HZ;	// 2 sec
@@ -736,8 +799,8 @@ void DSI_WaitExternalTE(void)
     //No need to wait dsi not busy
     //DSI_WaitForEngineNotBusy();
 
-    OUTREGBIT(DSI_TXRX_CTRL_REG,DSI_REG->DSI_TXRX_CTRL,EXT_TE_EN,1);
-	OUTREGBIT(DSI_TXRX_CTRL_REG,DSI_REG->DSI_TXRX_CTRL,EXT_TE_EDGE,0);
+    DSI_OUTREGBIT(DSI_TXRX_CTRL_REG,DSI_REG->DSI_TXRX_CTRL,EXT_TE_EN,1);
+    DSI_OUTREGBIT(DSI_TXRX_CTRL_REG,DSI_REG->DSI_TXRX_CTRL,EXT_TE_EDGE,0);
 
 #if ENABLE_DSI_INTERRUPT
 
@@ -763,7 +826,7 @@ void DSI_WaitExternalTE(void)
     }
 
 	// Write clear EXT_TE
-	OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,EXT_TE,0);
+	DSI_OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,EXT_TE,0);
 
     if(!dsiTeExtEnable){
         DSI_LP_Reset();
@@ -822,6 +885,11 @@ DSI_STATUS DSI_RegUpdate(void)
 
 DSI_STATUS DSI_StartTransfer(BOOL needStartDSI)
 {
+    if (lcm_params->dsi.mode == CMD_MODE)
+    {
+        DSI_WaitForEngineNotBusy();
+    }
+
     disp_path_get_mutex();
 
     LCD_ConfigOVL();
@@ -853,9 +921,8 @@ DSI_STATUS DSI_StartTransfer(BOOL needStartDSI)
 
 DSI_STATUS DSI_Detect_CLK_Glitch(void)
 {
-    int data_array[2];
     DSI_T0_INS t0;
-    char i, j;
+    char i;
     int read_timeout_cnt=10000;
     int read_timeout_ret = 0;
     unsigned int try_times = 50;
@@ -873,11 +940,11 @@ DSI_STATUS DSI_Detect_CLK_Glitch(void)
     
     DSI_SetMode(CMD_MODE);
     OUTREG32(&DSI_CMDQ_REG->data[0], 0x00340500);//turn off TE
-    OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, 1);
-    OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,0);
-    OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,1);
+    DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, 1);
+    DSI_OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,0);
+    DSI_OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,1);
     while(DSI_REG->DSI_INTSTA.CMD_DONE == 0);
-    OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,CMD_DONE,0);
+    DSI_OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,CMD_DONE,0);
 
     for(i=0;i<try_times;i++)
     {
@@ -886,32 +953,32 @@ DSI_STATUS DSI_Detect_CLK_Glitch(void)
 
         DSI_clk_HS_mode(0);
         
-        while((INREG32(&DSI_REG->DSI_STATE_DBG0)&0x1) == 0);	 // polling bit0
+        while((DSI_INREG32(PDSI_STATE_DBG0_REG,&DSI_REG->DSI_STATE_DBG0)&0x1) == 0);	 // polling bit0
         
-        OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,0);
-        OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,1);//reset
-        OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,0);
+        DSI_OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,0);
+        DSI_OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,1);//reset
+        DSI_OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,0);
         
         if(i>0)
         {
-            OUTREGBIT(MIPITX_DSI0_CLOCK_LANE_REG,DSI_PHY_REG->MIPITX_DSI0_CLOCK_LANE,RG_DSI0_LNTC_PHI_SEL,0);
+            DSI_OUTREGBIT(MIPITX_DSI0_CLOCK_LANE_REG,DSI_PHY_REG->MIPITX_DSI0_CLOCK_LANE,RG_DSI0_LNTC_PHI_SEL,0);
         }
         DSI_clk_HS_mode(1);
-        while((INREG32(&DSI_REG->DSI_STATE_DBG0)&0x40000) == 0)	 // polling bit18 start
+        while((DSI_INREG32(PDSI_STATE_DBG0_REG,&DSI_REG->DSI_STATE_DBG0)&0x40000) == 0)	 // polling bit18 start
         {
             if(glitch_log_on)
                 printk("Test log 2: wait for DSI_STATE_DBG0 bit18==1 \n");
         }
         if(i>0)
         {
-            OUTREGBIT(MIPITX_DSI0_CLOCK_LANE_REG,DSI_PHY_REG->MIPITX_DSI0_CLOCK_LANE,RG_DSI0_LNTC_PHI_SEL,1);
+            DSI_OUTREGBIT(MIPITX_DSI0_CLOCK_LANE_REG,DSI_PHY_REG->MIPITX_DSI0_CLOCK_LANE,RG_DSI0_LNTC_PHI_SEL,1);
         }
         //			OUTREG32(&DSI_CMDQ_REG->data[0], 0x00290508);
         
         OUTREG32(&DSI_CMDQ_REG->data[0], 0x00351508);
-        OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, 1);
-        OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,0);
-        OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,1);
+        DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, 1);
+        DSI_OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,0);
+        DSI_OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,1);
 
         read_timeout_cnt=10000;
         while(DSI_REG->DSI_INTSTA.BUSY) {
@@ -923,17 +990,17 @@ DSI_STATUS DSI_Detect_CLK_Glitch(void)
                 break;
             }
         }
-        OUTREG32(&DSI_REG->DSI_INTSTA, 0x0);
+        DSI_OUTREG32_V(PDSI_INT_STATUS_REG,&DSI_REG->DSI_INTSTA, 0x0);
         
         t0.CONFG = 0x04;
         t0.Data0 = 0;
         t0.Data_ID = 0;
         t0.Data1 = 0;
         
-        OUTREG32(&DSI_CMDQ_REG->data[0], AS_UINT32(&t0));
-        OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, 1);
-        OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,0);
-        OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,1);
+        DSI_OUTREG32_R(PDSI_CMDQ,&DSI_CMDQ_REG->data[0], &t0);
+        DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, 1);
+        DSI_OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,0);
+        DSI_OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,1);
         
         read_timeout_cnt=1000;
         while(DSI_REG->DSI_INTSTA.RD_RDY == 0)  ///read clear
@@ -951,7 +1018,7 @@ DSI_STATUS DSI_Detect_CLK_Glitch(void)
                 //		                   printk("Test log 4:Polling DSI read ready timeout,%d us\n", (unsigned int)sched_clock() - (unsigned int)start_time);
                 
                 DSI_DumpRegisters();
-                OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
+                DSI_OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
                 DSI_Reset();
                 read_timeout_ret = 1;
                 break;
@@ -962,8 +1029,8 @@ DSI_STATUS DSI_Detect_CLK_Glitch(void)
             read_timeout_ret = 0;
             continue;
         }
-        OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
-        OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,RD_RDY,0);
+        DSI_OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
+        DSI_OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,RD_RDY,0);
         
         if(((DSI_REG->DSI_TRIG_STA.TRIG2) )==1)
         {
@@ -995,33 +1062,33 @@ DSI_STATUS DSI_Detect_CLK_Glitch(void)
     }
     DSI_RestoreCmdQ();
     
-    OUTREGBIT(MIPITX_DSI0_CLOCK_LANE_REG,DSI_PHY_REG->MIPITX_DSI0_CLOCK_LANE,RG_DSI0_LNTC_PHI_SEL,0);
+    DSI_OUTREGBIT(MIPITX_DSI0_CLOCK_LANE_REG,DSI_PHY_REG->MIPITX_DSI0_CLOCK_LANE,RG_DSI0_LNTC_PHI_SEL,0);
 
     switch(lcm_params->dsi.LANE_NUM)
     {
         case LCM_FOUR_LANE:
-            OUTREG32(&DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0, 0x3CF3C7B1); 
+            DSI_OUTREG32_V(PMIPITX_DSI_SW_CTRL_CON0_REG,&DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0, 0x3CF3C7B1); 
             break;
         case LCM_THREE_LANE:
-            OUTREG32(&DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0, 0x00F3C7B1); 
+            DSI_OUTREG32_V(PMIPITX_DSI_SW_CTRL_CON0_REG,&DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0, 0x00F3C7B1); 
             break;
         default:
-            OUTREG32(&DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0, 0x0003C7B1); 
+            DSI_OUTREG32_V(PMIPITX_DSI_SW_CTRL_CON0_REG,&DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0, 0x0003C7B1); 
     }	
     
-    OUTREG32(&DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON1, 0x0); 
-    OUTREG32(&DSI_PHY_REG->MIPITX_DSI_SW_CTRL, 0x1); 
+    DSI_OUTREG32_V(PMIPITX_DSI_SW_CTRL_CON1_REG,&DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON1, 0x0); 
+    DSI_OUTREG32_V(PMIPITX_DSI_SW_CTRL_REG,&DSI_PHY_REG->MIPITX_DSI_SW_CTRL, 0x1); 
     
-    OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,0);
-    OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,1);
-    OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,0);
+    DSI_OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,0);
+    DSI_OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,1);
+    DSI_OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,0);
     
     DSI_clk_HS_mode(1);
     
     if(glitch_log_on)
         printk("Test log 5:start Polling bit18\n");
     
-    while((INREG32(&DSI_REG->DSI_STATE_DBG0)&0x40000) == 0)	 // polling bit18
+    while((DSI_INREG32(PDSI_STATE_DBG0_REG,&DSI_REG->DSI_STATE_DBG0)&0x40000) == 0)	 // polling bit18
     {
         udelay(1);
     }
@@ -1029,7 +1096,7 @@ DSI_STATUS DSI_Detect_CLK_Glitch(void)
     if(glitch_log_on)
         printk("Test log 6:start Polling bit18\n");
 
-    OUTREGBIT(MIPITX_DSI_SW_CTRL_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL,SW_CTRL_EN,0x0);
+    DSI_OUTREGBIT(MIPITX_DSI_SW_CTRL_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL,SW_CTRL_EN,0x0);
 
     read_timeout_cnt=1000000;
     while(DSI_REG->DSI_INTSTA.BUSY) {
@@ -1043,7 +1110,7 @@ DSI_STATUS DSI_Detect_CLK_Glitch(void)
             break;
         }
     }
-    OUTREG32(&DSI_REG->DSI_INTSTA, 0x0);
+    DSI_OUTREG32_V(PDSI_INT_STATUS_REG,&DSI_REG->DSI_INTSTA, 0x0);
     DSI_SetMode(lcm_params->dsi.mode);
 
     //	if(glitch_log_on)
@@ -1056,8 +1123,7 @@ DSI_STATUS DSI_Detect_CLK_Glitch(void)
 
 DSI_STATUS DSI_DisableClk(void)
 {
-    //DSI_REG->DSI_START.DSI_START=0;
-    OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,0);
+    DSI_OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,0);
 
     return DSI_STATUS_OK;
 }
@@ -1065,11 +1131,9 @@ DSI_STATUS DSI_DisableClk(void)
 
 DSI_STATUS DSI_Reset(void)
 {
-    //DSI_REG->DSI_COM_CTRL.DSI_RESET = 1;
-    OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,1);
-    lcm_mdelay(5);
-    //DSI_REG->DSI_COM_CTRL.DSI_RESET = 0;
-    OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,0);
+    DSI_OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,1);
+    mdelay(5);
+    DSI_OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,0);
     
     return DSI_STATUS_OK;
 }
@@ -1078,8 +1142,8 @@ DSI_STATUS DSI_Reset(void)
 DSI_STATUS DSI_LP_Reset(void)
 {
     DSI_WaitForEngineNotBusy();
-    OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,1);
-    OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,0);
+    DSI_OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,1);
+    DSI_OUTREGBIT(DSI_COM_CTRL_REG,DSI_REG->DSI_COM_CTRL,DSI_RESET,0);
 
     return DSI_STATUS_OK;
 }
@@ -1087,8 +1151,7 @@ DSI_STATUS DSI_LP_Reset(void)
 
 DSI_STATUS DSI_SetMode(unsigned int mode)
 {
-    //DSI_REG->DSI_MODE_CTRL.MODE = mode;
-    OUTREGBIT(DSI_MODE_CTRL_REG,DSI_REG->DSI_MODE_CTRL,MODE,mode);
+    DSI_OUTREGBIT(DSI_MODE_CTRL_REG,DSI_REG->DSI_MODE_CTRL,MODE,mode);
 
     return DSI_STATUS_OK;
 }
@@ -1100,12 +1163,10 @@ DSI_STATUS DSI_EnableInterrupt(DISP_INTERRUPT_EVENTS eventID)
     switch(eventID)
     {
         case DISP_DSI_READ_RDY_INT:
-            //DSI_REG->DSI_INTEN.RD_RDY = 1;
-            OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,RD_RDY,1);
+            DSI_OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,RD_RDY,1);
             break;
         case DISP_DSI_CMD_DONE_INT:
-            //DSI_REG->DSI_INTEN.CMD_DONE = 1;
-            OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,CMD_DONE,1);
+            DSI_OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,CMD_DONE,1);
             break;
         default:
             return DSI_STATUS_ERROR;
@@ -1134,7 +1195,7 @@ DSI_STATUS DSI_handle_TE(void)
     //data_array=0x00351504;
     //DSI_set_cmdq(&data_array, 1, 1);
     
-    //lcm_mdelay(10);
+    //mdelay(10);
     
     // RACT	
     //data_array=1;
@@ -1150,39 +1211,36 @@ DSI_STATUS DSI_handle_TE(void)
     //DSI_CMDQ_REG->data.byte2=0;
     //DSI_CMDQ_REG->data.byte3=0;
     
-    //DSI_REG->DSI_CMDQ_SIZE.CMDQ_SIZE=1;
-    OUTREGBIT(DSI_CMDQ_CTRL_REG,DSI_REG->DSI_CMDQ_SIZE,CMDQ_SIZE,1);
+    DSI_OUTREGBIT(DSI_CMDQ_CTRL_REG,DSI_REG->DSI_CMDQ_SIZE,CMDQ_SIZE,1);
     
-    //DSI_REG->DSI_START.DSI_START=0;
-    //DSI_REG->DSI_START.DSI_START=1;
-    OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,0);
-    OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,1);
+    DSI_OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,0);
+    DSI_OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,DSI_START,1);
     
     // wait TE Trigger status
     //	do
     //	{
-    lcm_mdelay(10);
+    mdelay(10);
     
-    data_array=INREG32(&DSI_REG->DSI_INTSTA);
+    data_array=DSI_INREG32(PDSI_INT_STATUS_REG,&DSI_REG->DSI_INTSTA);
     DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[DISP] DSI INT state : %x !! \n", data_array);
     
-    data_array=INREG32(&DSI_REG->DSI_TRIG_STA);
+    data_array=DSI_INREG32(PDSI_TRIG_STA_REG,&DSI_REG->DSI_TRIG_STA);
     DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[DISP] DSI TRIG TE status check : %x !! \n", data_array);
     //	} while(!(data_array&0x4));
     
     // RACT	
     DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[DISP] DSI Set RACT !! \n");
-    data_array=1;
-    OUTREG32(&DSI_REG->DSI_RACK, data_array);
+    DSI_OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
     
     return DSI_STATUS_OK;
 }
 
 void DSI_Set_VM_CMD(LCM_PARAMS *lcm_params)
 {
-	OUTREGBIT(DSI_VM_CMD_CON_REG,DSI_REG->DSI_VM_CMD_CON,TS_VFP_EN,1);
-	OUTREGBIT(DSI_VM_CMD_CON_REG,DSI_REG->DSI_VM_CMD_CON,VM_CMD_EN,1);
-	return;
+    DSI_OUTREGBIT(DSI_VM_CMD_CON_REG,DSI_REG->DSI_VM_CMD_CON,TS_VFP_EN,1);
+    DSI_OUTREGBIT(DSI_VM_CMD_CON_REG,DSI_REG->DSI_VM_CMD_CON,VM_CMD_EN,1);
+
+    return;
 }
 
 void DSI_Config_VDO_Timing(LCM_PARAMS *lcm_params)
@@ -1192,7 +1250,6 @@ void DSI_Config_VDO_Timing(LCM_PARAMS *lcm_params)
     unsigned int horizontal_backporch_byte;
     unsigned int horizontal_frontporch_byte;
     unsigned int horizontal_blanking_byte;
-    unsigned int rgb_byte;
     unsigned int dsiTmpBufBpp;
 
     #define LINE_PERIOD_US				(8 * line_byte * _dsiContext.bit_time_ns / 1000)
@@ -1203,10 +1260,10 @@ void DSI_Config_VDO_Timing(LCM_PARAMS *lcm_params)
     else
         dsiTmpBufBpp = 3;
     
-    OUTREGBIT(DSI_VSA_NL_REG,DSI_REG->DSI_VSA_NL,VSA_NL,lcm_params->dsi.vertical_sync_active);
-    OUTREGBIT(DSI_VBP_NL_REG,DSI_REG->DSI_VBP_NL,VBP_NL,lcm_params->dsi.vertical_backporch);
-    OUTREGBIT(DSI_VFP_NL_REG,DSI_REG->DSI_VFP_NL,VFP_NL,lcm_params->dsi.vertical_frontporch);
-    OUTREGBIT(DSI_VACT_NL_REG,DSI_REG->DSI_VACT_NL,VACT_NL,lcm_params->dsi.vertical_active_line);
+    DSI_OUTREGBIT(DSI_VSA_NL_REG,DSI_REG->DSI_VSA_NL,VSA_NL,lcm_params->dsi.vertical_sync_active);
+    DSI_OUTREGBIT(DSI_VBP_NL_REG,DSI_REG->DSI_VBP_NL,VBP_NL,lcm_params->dsi.vertical_backporch);
+    DSI_OUTREGBIT(DSI_VFP_NL_REG,DSI_REG->DSI_VFP_NL,VFP_NL,lcm_params->dsi.vertical_frontporch);
+    DSI_OUTREGBIT(DSI_VACT_NL_REG,DSI_REG->DSI_VACT_NL,VACT_NL,lcm_params->dsi.vertical_active_line);
     
     line_byte							=	(lcm_params->dsi.horizontal_sync_active \
                                 + lcm_params->dsi.horizontal_backporch \
@@ -1221,7 +1278,6 @@ void DSI_Config_VDO_Timing(LCM_PARAMS *lcm_params)
         horizontal_backporch_byte		=	(lcm_params->dsi.horizontal_backporch * dsiTmpBufBpp - 4);
     
     horizontal_frontporch_byte			=	(lcm_params->dsi.horizontal_frontporch * dsiTmpBufBpp - 6);
-    rgb_byte							=	(lcm_params->dsi.horizontal_active_pixel * dsiTmpBufBpp + 6);					
     horizontal_blanking_byte 		=	(lcm_params->dsi.horizontal_blanking_pixel * dsiTmpBufBpp - 4);
 
     /*	
@@ -1232,10 +1288,10 @@ void DSI_Config_VDO_Timing(LCM_PARAMS *lcm_params)
     OUTREG32(&DSI_REG->DSI_RGB_NB, rgb_byte);
     */
 
-    OUTREGBIT(DSI_HSA_WC_REG,DSI_REG->DSI_HSA_WC,HSA_WC,(horizontal_sync_active_byte-6));
-    OUTREGBIT(DSI_HBP_WC_REG,DSI_REG->DSI_HBP_WC,HBP_WC,(horizontal_backporch_byte-6));
-    OUTREGBIT(DSI_HFP_WC_REG,DSI_REG->DSI_HFP_WC,HFP_WC,(horizontal_frontporch_byte-6));
-    OUTREGBIT(DSI_BLLP_WC_REG,DSI_REG->DSI_BLLP_WC,BLLP_WC,(horizontal_blanking_byte-6));
+    DSI_OUTREGBIT(DSI_HSA_WC_REG,DSI_REG->DSI_HSA_WC,HSA_WC,(horizontal_sync_active_byte-6));
+    DSI_OUTREGBIT(DSI_HBP_WC_REG,DSI_REG->DSI_HBP_WC,HBP_WC,(horizontal_backporch_byte-6));
+    DSI_OUTREGBIT(DSI_HFP_WC_REG,DSI_REG->DSI_HFP_WC,HFP_WC,(horizontal_frontporch_byte-6));
+    DSI_OUTREGBIT(DSI_BLLP_WC_REG,DSI_REG->DSI_BLLP_WC,BLLP_WC,(horizontal_blanking_byte-6));
     
     _dsiContext.vfp_period_us 		= LINE_PERIOD_US * lcm_params->dsi.vertical_frontporch / 1000;
     _dsiContext.vsa_vs_period_us	= LINE_PERIOD_US * 1 / 1000;
@@ -1265,7 +1321,7 @@ void DSI_PHY_clk_setting(LCM_PARAMS *lcm_params)
     unsigned int dsi_bg_r2_trim;
     unsigned int dsi_bg_r1_trim;
 
-    unsigned int data_rate;
+    unsigned int data_rate = 0;
     unsigned int txdiv = 0;
     unsigned int delta = 4;//Delta is SSC range, default is 0%~-4%
     unsigned int pll_sdm_fra_en = 0;
@@ -1280,6 +1336,10 @@ void DSI_PHY_clk_setting(LCM_PARAMS *lcm_params)
     else if (lcm_params->type == LCM_TYPE_DSI)
     {
         data_rate = lcm_params->dsi.PLL_CLOCK*2;
+    }
+    else
+    {
+        ASSERT(0);
     }
 
     if(0!=data_rate)
@@ -1397,45 +1457,45 @@ void DSI_PHY_clk_setting(LCM_PARAMS *lcm_params)
         dsi_bg_r2_trim = tmp_reg1.RG_DSI_BG_R2_TRIM;
         dsi_bg_r2_trim += (get_devinfo_with_index(18)&0x000000F0)>>4;
         dsi_bg_r2_trim = dsi_bg_r2_trim & 0xF;
-        OUTREGBIT(MIPITX_DSI_BG_CON_REG,DSI_PHY_REG->MIPITX_DSI_BG_CON,RG_DSI_BG_R2_TRIM,dsi_bg_r2_trim);
+        DSI_OUTREGBIT(MIPITX_DSI_BG_CON_REG,DSI_PHY_REG->MIPITX_DSI_BG_CON,RG_DSI_BG_R2_TRIM,dsi_bg_r2_trim);
     }
     if(0!=(get_devinfo_with_index(18)&0x0000000F))
     {       
         dsi_bg_r1_trim = tmp_reg1.RG_DSI_BG_R1_TRIM;
         dsi_bg_r1_trim += get_devinfo_with_index(18)&0x0000000F;
         dsi_bg_r1_trim = dsi_bg_r1_trim & 0xF;
-        OUTREGBIT(MIPITX_DSI_BG_CON_REG,DSI_PHY_REG->MIPITX_DSI_BG_CON,RG_DSI_BG_R1_TRIM,dsi_bg_r1_trim);
+        DSI_OUTREGBIT(MIPITX_DSI_BG_CON_REG,DSI_PHY_REG->MIPITX_DSI_BG_CON,RG_DSI_BG_R1_TRIM,dsi_bg_r1_trim);
     }
 
-    OUTREGBIT(MIPITX_DSI_TOP_CON_REG,DSI_PHY_REG->MIPITX_DSI_TOP_CON,RG_DSI_LNT_HS_BIAS_EN,1);
+    DSI_OUTREGBIT(MIPITX_DSI_TOP_CON_REG,DSI_PHY_REG->MIPITX_DSI_TOP_CON,RG_DSI_LNT_HS_BIAS_EN,1);
 
-    OUTREGBIT(MIPITX_DSI_BG_CON_REG,DSI_PHY_REG->MIPITX_DSI_BG_CON,RG_DSI_BG_CKEN,1);
-    OUTREGBIT(MIPITX_DSI_BG_CON_REG,DSI_PHY_REG->MIPITX_DSI_BG_CON,RG_DSI_BG_CORE_EN,1);
+    DSI_OUTREGBIT(MIPITX_DSI_BG_CON_REG,DSI_PHY_REG->MIPITX_DSI_BG_CON,RG_DSI_BG_CKEN,1);
+    DSI_OUTREGBIT(MIPITX_DSI_BG_CON_REG,DSI_PHY_REG->MIPITX_DSI_BG_CON,RG_DSI_BG_CORE_EN,1);
     //	msleep(10);
     mdelay(1);
 
-    OUTREGBIT(MIPITX_DSI0_CON_REG,DSI_PHY_REG->MIPITX_DSI0_CON,RG_DSI0_CKG_LDOOUT_EN,1);
-    OUTREGBIT(MIPITX_DSI0_CON_REG,DSI_PHY_REG->MIPITX_DSI0_CON,RG_DSI0_LDOCORE_EN,1);
+    DSI_OUTREGBIT(MIPITX_DSI0_CON_REG,DSI_PHY_REG->MIPITX_DSI0_CON,RG_DSI0_CKG_LDOOUT_EN,1);
+    DSI_OUTREGBIT(MIPITX_DSI0_CON_REG,DSI_PHY_REG->MIPITX_DSI0_CON,RG_DSI0_LDOCORE_EN,1);
 
-    OUTREGBIT(MIPITX_DSI_PLL_PWR_REG,DSI_PHY_REG->MIPITX_DSI_PLL_PWR,DA_DSI0_MPPLL_SDM_PWR_ON,1);
+    DSI_OUTREGBIT(MIPITX_DSI_PLL_PWR_REG,DSI_PHY_REG->MIPITX_DSI_PLL_PWR,DA_DSI0_MPPLL_SDM_PWR_ON,1);
     //	msleep(1);
     mdelay(1);
 
-    OUTREGBIT(MIPITX_DSI_PLL_PWR_REG,DSI_PHY_REG->MIPITX_DSI_PLL_PWR,DA_DSI0_MPPLL_SDM_ISO_EN,0);
+    DSI_OUTREGBIT(MIPITX_DSI_PLL_PWR_REG,DSI_PHY_REG->MIPITX_DSI_PLL_PWR,DA_DSI0_MPPLL_SDM_ISO_EN,0);
 
-    OUTREGBIT(MIPITX_DSI_PLL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON0,RG_DSI0_MPPLL_PREDIV,0);
-    OUTREGBIT(MIPITX_DSI_PLL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON0,RG_DSI0_MPPLL_POSDIV,0);
-    OUTREGBIT(MIPITX_DSI_PLL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON0,RG_DSI0_MPPLL_TXDIV1,pll_config_value.TXDIV1);
-    OUTREGBIT(MIPITX_DSI_PLL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON0,RG_DSI0_MPPLL_TXDIV0,pll_config_value.TXDIV0);
+    DSI_OUTREGBIT(MIPITX_DSI_PLL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON0,RG_DSI0_MPPLL_PREDIV,0);
+    DSI_OUTREGBIT(MIPITX_DSI_PLL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON0,RG_DSI0_MPPLL_POSDIV,0);
+    DSI_OUTREGBIT(MIPITX_DSI_PLL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON0,RG_DSI0_MPPLL_TXDIV1,pll_config_value.TXDIV1);
+    DSI_OUTREGBIT(MIPITX_DSI_PLL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON0,RG_DSI0_MPPLL_TXDIV0,pll_config_value.TXDIV0);
 
-    OUTREGBIT(MIPITX_DSI_PLL_CON1_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON1,RG_DSI0_MPPLL_SDM_FRA_EN,pll_sdm_fra_en);
+    DSI_OUTREGBIT(MIPITX_DSI_PLL_CON1_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON1,RG_DSI0_MPPLL_SDM_FRA_EN,pll_sdm_fra_en);
     if (0 != pll_config_value.SSC_PRD)
     {
-        OUTREGBIT(MIPITX_DSI_PLL_CON1_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON1,RG_DSI0_MPPLL_SDM_SSC_PRD,pll_config_value.SSC_PRD);
+        DSI_OUTREGBIT(MIPITX_DSI_PLL_CON1_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON1,RG_DSI0_MPPLL_SDM_SSC_PRD,pll_config_value.SSC_PRD);
     }
     if (0 != pll_config_value.SSC_PH_INIT)
     {
-        OUTREGBIT(MIPITX_DSI_PLL_CON1_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON1,RG_DSI0_MPPLL_SDM_SSC_PH_INIT,pll_config_value.SSC_PH_INIT);
+        DSI_OUTREGBIT(MIPITX_DSI_PLL_CON1_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON1,RG_DSI0_MPPLL_SDM_SSC_PH_INIT,pll_config_value.SSC_PH_INIT);
     }
 
     /*
@@ -1444,43 +1504,43 @@ void DSI_PHY_clk_setting(LCM_PARAMS *lcm_params)
         PCW bit 8~15 = (pcw*256 - floor(pcw)*256)*256
         PCW bit 8~15 = (pcw*256*256 - floor(pcw)*256*256)*256
     */
-    OUTREGBIT(MIPITX_DSI_PLL_CON2_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON2,RG_DSI0_MPPLL_SDM_PCW_H,pll_config_value.SDM_PCW & 0x7F);
-    OUTREGBIT(MIPITX_DSI_PLL_CON2_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON2,RG_DSI0_MPPLL_SDM_PCW_16_23,(256*(data_rate*txdiv%13)/13) & 0xFF);
-    OUTREGBIT(MIPITX_DSI_PLL_CON2_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON2,RG_DSI0_MPPLL_SDM_PCW_8_15,(256*(256*(data_rate*txdiv%13)%13)/13) & 0xFF);
-    OUTREGBIT(MIPITX_DSI_PLL_CON2_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON2,RG_DSI0_MPPLL_SDM_PCW_0_7,(256*(256*(256*(data_rate*txdiv%13)%13)%13)/13) & 0xFF);
+    DSI_OUTREGBIT(MIPITX_DSI_PLL_CON2_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON2,RG_DSI0_MPPLL_SDM_PCW_H,pll_config_value.SDM_PCW & 0x7F);
+    DSI_OUTREGBIT(MIPITX_DSI_PLL_CON2_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON2,RG_DSI0_MPPLL_SDM_PCW_16_23,(256*(data_rate*txdiv%13)/13) & 0xFF);
+    DSI_OUTREGBIT(MIPITX_DSI_PLL_CON2_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON2,RG_DSI0_MPPLL_SDM_PCW_8_15,(256*(256*(data_rate*txdiv%13)%13)/13) & 0xFF);
+    DSI_OUTREGBIT(MIPITX_DSI_PLL_CON2_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON2,RG_DSI0_MPPLL_SDM_PCW_0_7,(256*(256*(256*(data_rate*txdiv%13)%13)%13)/13) & 0xFF);
 
     if (0 != pll_config_value.SSC_DELTA)
     {
-        OUTREGBIT(MIPITX_DSI_PLL_CON3_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON3,RG_DSI0_MPPLL_SDM_SSC_DELTA,pll_config_value.SSC_DELTA);
-        OUTREGBIT(MIPITX_DSI_PLL_CON3_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON3,RG_DSI0_MPPLL_SDM_SSC_DELTA1,pll_config_value.SSC_DELTA);
+        DSI_OUTREGBIT(MIPITX_DSI_PLL_CON3_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON3,RG_DSI0_MPPLL_SDM_SSC_DELTA,pll_config_value.SSC_DELTA);
+        DSI_OUTREGBIT(MIPITX_DSI_PLL_CON3_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON3,RG_DSI0_MPPLL_SDM_SSC_DELTA1,pll_config_value.SSC_DELTA);
     }
 
     if (lcm_params->type == LCM_TYPE_DSI)
     {
-        OUTREGBIT(MIPITX_DSI0_CLOCK_LANE_REG,DSI_PHY_REG->MIPITX_DSI0_CLOCK_LANE,RG_DSI0_LNTC_LDOOUT_EN,1);
+        DSI_OUTREGBIT(MIPITX_DSI0_CLOCK_LANE_REG,DSI_PHY_REG->MIPITX_DSI0_CLOCK_LANE,RG_DSI0_LNTC_LDOOUT_EN,1);
     
         if(lcm_params->dsi.LANE_NUM > 0)
         {
-            OUTREGBIT(MIPITX_DSI0_DATA_LANE0_REG,DSI_PHY_REG->MIPITX_DSI0_DATA_LANE0,RG_DSI0_LNT0_LDOOUT_EN,1);
+            DSI_OUTREGBIT(MIPITX_DSI0_DATA_LANE0_REG,DSI_PHY_REG->MIPITX_DSI0_DATA_LANE0,RG_DSI0_LNT0_LDOOUT_EN,1);
         }
         if(lcm_params->dsi.LANE_NUM > 1)
         {
-            OUTREGBIT(MIPITX_DSI0_DATA_LANE1_REG,DSI_PHY_REG->MIPITX_DSI0_DATA_LANE1,RG_DSI0_LNT1_LDOOUT_EN,1);
+            DSI_OUTREGBIT(MIPITX_DSI0_DATA_LANE1_REG,DSI_PHY_REG->MIPITX_DSI0_DATA_LANE1,RG_DSI0_LNT1_LDOOUT_EN,1);
         }
         if(lcm_params->dsi.LANE_NUM > 2)
         {
-            OUTREGBIT(MIPITX_DSI0_DATA_LANE2_REG,DSI_PHY_REG->MIPITX_DSI0_DATA_LANE2,RG_DSI0_LNT2_LDOOUT_EN,1);
+            DSI_OUTREGBIT(MIPITX_DSI0_DATA_LANE2_REG,DSI_PHY_REG->MIPITX_DSI0_DATA_LANE2,RG_DSI0_LNT2_LDOOUT_EN,1);
         }
     }
 
-    OUTREGBIT(MIPITX_DSI_PLL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON0,RG_DSI0_MPPLL_PLL_EN,1);
+    DSI_OUTREGBIT(MIPITX_DSI_PLL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON0,RG_DSI0_MPPLL_PLL_EN,1);
     //	msleep(20);
     mdelay(1);
 
-    OUTREGBIT(MIPITX_DSI_PLL_CON1_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON1,RG_DSI0_MPPLL_SDM_SSC_EN,pll_sdm_ssc_en);
+    DSI_OUTREGBIT(MIPITX_DSI_PLL_CON1_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON1,RG_DSI0_MPPLL_SDM_SSC_EN,pll_sdm_ssc_en);
 
     // default POSDIV by 4
-    OUTREGBIT(MIPITX_DSI_PLL_TOP_REG,DSI_PHY_REG->MIPITX_DSI_PLL_TOP,RG_MPPLL_PRESERVE_L,3);
+    DSI_OUTREGBIT(MIPITX_DSI_PLL_TOP_REG,DSI_PHY_REG->MIPITX_DSI_PLL_TOP,RG_MPPLL_PRESERVE_L,3);
 }
 
 
@@ -1490,61 +1550,61 @@ void DSI_PHY_clk_switch(BOOL on, LCM_PARAMS *lcm_params)
         if (lcm_params->type == LCM_TYPE_DSI)
         {
             //pad_tie_low_en = 0
-            OUTREGBIT(MIPITX_DSI_TOP_CON_REG,DSI_PHY_REG->MIPITX_DSI_TOP_CON,RG_DSI_PAD_TIE_LOW_EN,0);
+            DSI_OUTREGBIT(MIPITX_DSI_TOP_CON_REG,DSI_PHY_REG->MIPITX_DSI_TOP_CON,RG_DSI_PAD_TIE_LOW_EN,0);
             
             // switch to mipi tx dsi mode
-            OUTREGBIT(MIPITX_DSI_SW_CTRL_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL,SW_CTRL_EN,0);
+            DSI_OUTREGBIT(MIPITX_DSI_SW_CTRL_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL,SW_CTRL_EN,0);
         }
     }
     else
     {
         // pre_oe/oe = 1
-        OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNTC_LPTX_PRE_OE,1);
-        OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNTC_LPTX_OE,1);
-        OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNT0_LPTX_PRE_OE,1);
-        OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNT0_LPTX_OE,1);
-        OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNT1_LPTX_PRE_OE,1);
-        OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNT1_LPTX_OE,1);
-        OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNT2_LPTX_PRE_OE,1);
-        OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNT2_LPTX_OE,1);
+        DSI_OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNTC_LPTX_PRE_OE,1);
+        DSI_OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNTC_LPTX_OE,1);
+        DSI_OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNT0_LPTX_PRE_OE,1);
+        DSI_OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNT0_LPTX_OE,1);
+        DSI_OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNT1_LPTX_PRE_OE,1);
+        DSI_OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNT1_LPTX_OE,1);
+        DSI_OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNT2_LPTX_PRE_OE,1);
+        DSI_OUTREGBIT(MIPITX_DSI_SW_CTRL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL_CON0,SW_LNT2_LPTX_OE,1);
     
         if (lcm_params->type == LCM_TYPE_DSI)
         {
             // switch to mipi tx sw mode
-            OUTREGBIT(MIPITX_DSI_SW_CTRL_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL,SW_CTRL_EN,1);
+            DSI_OUTREGBIT(MIPITX_DSI_SW_CTRL_REG,DSI_PHY_REG->MIPITX_DSI_SW_CTRL,SW_CTRL_EN,1);
         }
 
         // disable mipi clock
-        OUTREGBIT(MIPITX_DSI_PLL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON0,RG_DSI0_MPPLL_PLL_EN,0);
+        DSI_OUTREGBIT(MIPITX_DSI_PLL_CON0_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON0,RG_DSI0_MPPLL_PLL_EN,0);
         mdelay(1);
         
         if (lcm_params->type == LCM_TYPE_DSI)
         {
-            OUTREGBIT(MIPITX_DSI_TOP_CON_REG,DSI_PHY_REG->MIPITX_DSI_TOP_CON,RG_DSI_PAD_TIE_LOW_EN,1);
+            DSI_OUTREGBIT(MIPITX_DSI_TOP_CON_REG,DSI_PHY_REG->MIPITX_DSI_TOP_CON,RG_DSI_PAD_TIE_LOW_EN,1);
         }
 
-        OUTREGBIT(MIPITX_DSI_TOP_CON_REG,DSI_PHY_REG->MIPITX_DSI_TOP_CON,RG_DSI_LNT_HS_BIAS_EN,0);
+        DSI_OUTREGBIT(MIPITX_DSI_TOP_CON_REG,DSI_PHY_REG->MIPITX_DSI_TOP_CON,RG_DSI_LNT_HS_BIAS_EN,0);
         if (lcm_params->type == LCM_TYPE_DSI)
         {
-            OUTREGBIT(MIPITX_DSI0_CLOCK_LANE_REG,DSI_PHY_REG->MIPITX_DSI0_CLOCK_LANE,RG_DSI0_LNTC_LDOOUT_EN,0);
-            OUTREGBIT(MIPITX_DSI0_DATA_LANE0_REG,DSI_PHY_REG->MIPITX_DSI0_DATA_LANE0,RG_DSI0_LNT0_LDOOUT_EN,0);
-            OUTREGBIT(MIPITX_DSI0_DATA_LANE1_REG,DSI_PHY_REG->MIPITX_DSI0_DATA_LANE1,RG_DSI0_LNT1_LDOOUT_EN,0);
-            OUTREGBIT(MIPITX_DSI0_DATA_LANE2_REG,DSI_PHY_REG->MIPITX_DSI0_DATA_LANE2,RG_DSI0_LNT2_LDOOUT_EN,0);
+            DSI_OUTREGBIT(MIPITX_DSI0_CLOCK_LANE_REG,DSI_PHY_REG->MIPITX_DSI0_CLOCK_LANE,RG_DSI0_LNTC_LDOOUT_EN,0);
+            DSI_OUTREGBIT(MIPITX_DSI0_DATA_LANE0_REG,DSI_PHY_REG->MIPITX_DSI0_DATA_LANE0,RG_DSI0_LNT0_LDOOUT_EN,0);
+            DSI_OUTREGBIT(MIPITX_DSI0_DATA_LANE1_REG,DSI_PHY_REG->MIPITX_DSI0_DATA_LANE1,RG_DSI0_LNT1_LDOOUT_EN,0);
+            DSI_OUTREGBIT(MIPITX_DSI0_DATA_LANE2_REG,DSI_PHY_REG->MIPITX_DSI0_DATA_LANE2,RG_DSI0_LNT2_LDOOUT_EN,0);
         }
         mdelay(1);
 
-        OUTREGBIT(MIPITX_DSI0_CON_REG,DSI_PHY_REG->MIPITX_DSI0_CON,RG_DSI0_CKG_LDOOUT_EN,0);
-        OUTREGBIT(MIPITX_DSI0_CON_REG,DSI_PHY_REG->MIPITX_DSI0_CON,RG_DSI0_LDOCORE_EN,0);
+        DSI_OUTREGBIT(MIPITX_DSI0_CON_REG,DSI_PHY_REG->MIPITX_DSI0_CON,RG_DSI0_CKG_LDOOUT_EN,0);
+        DSI_OUTREGBIT(MIPITX_DSI0_CON_REG,DSI_PHY_REG->MIPITX_DSI0_CON,RG_DSI0_LDOCORE_EN,0);
 
-        OUTREGBIT(MIPITX_DSI_PLL_TOP_REG,DSI_PHY_REG->MIPITX_DSI_PLL_TOP,RG_MPPLL_PRESERVE_L,0);
+        DSI_OUTREGBIT(MIPITX_DSI_PLL_TOP_REG,DSI_PHY_REG->MIPITX_DSI_PLL_TOP,RG_MPPLL_PRESERVE_L,0);
         
-        OUTREGBIT(MIPITX_DSI_PLL_CON1_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON1,RG_DSI0_MPPLL_SDM_FRA_EN,0);
-        OUTREGBIT(MIPITX_DSI_PLL_PWR_REG,DSI_PHY_REG->MIPITX_DSI_PLL_PWR,DA_DSI0_MPPLL_SDM_ISO_EN,1);
-        OUTREGBIT(MIPITX_DSI_PLL_PWR_REG,DSI_PHY_REG->MIPITX_DSI_PLL_PWR,DA_DSI0_MPPLL_SDM_PWR_ON,0);        
+        DSI_OUTREGBIT(MIPITX_DSI_PLL_CON1_REG,DSI_PHY_REG->MIPITX_DSI_PLL_CON1,RG_DSI0_MPPLL_SDM_FRA_EN,0);
+        DSI_OUTREGBIT(MIPITX_DSI_PLL_PWR_REG,DSI_PHY_REG->MIPITX_DSI_PLL_PWR,DA_DSI0_MPPLL_SDM_ISO_EN,1);
+        DSI_OUTREGBIT(MIPITX_DSI_PLL_PWR_REG,DSI_PHY_REG->MIPITX_DSI_PLL_PWR,DA_DSI0_MPPLL_SDM_PWR_ON,0);        
         mdelay(1);
 
-        OUTREGBIT(MIPITX_DSI_BG_CON_REG,DSI_PHY_REG->MIPITX_DSI_BG_CON,RG_DSI_BG_CKEN,0);
-        OUTREGBIT(MIPITX_DSI_BG_CON_REG,DSI_PHY_REG->MIPITX_DSI_BG_CON,RG_DSI_BG_CORE_EN,0);
+        DSI_OUTREGBIT(MIPITX_DSI_BG_CON_REG,DSI_PHY_REG->MIPITX_DSI_BG_CON,RG_DSI_BG_CKEN,0);
+        DSI_OUTREGBIT(MIPITX_DSI_BG_CON_REG,DSI_PHY_REG->MIPITX_DSI_BG_CON,RG_DSI_BG_CORE_EN,0);
         mdelay(1);
     }
 }
@@ -1565,11 +1625,9 @@ void DSI_PHY_TIMCONFIG(LCM_PARAMS *lcm_params)
     unsigned int cycle_time;
     unsigned int ui;
     unsigned int hs_trail_m, hs_trail_n;
-    int pll_index = 0;
 
     unsigned int data_rate;
     unsigned int txdiv = 0;
-    DSI_PLL_CONFIG pll_config_value = {0, 0, 0, 0, 0, 0, 0, 0};
 
 
     data_rate = lcm_params->dsi.PLL_CLOCK*2;
@@ -1684,72 +1742,72 @@ void DSI_PHY_TIMCONFIG(LCM_PARAMS *lcm_params)
     printk("[DISP] - kernel - DSI_PHY_TIMCONFIG, Cycle Time = %d(ns), Unit Interval = %d(ns). div1 = %d, div2 = %d, fbk_div = %d, lane# = %d \n", cycle_time, ui, div1, div2, fbk_div, lane_no);
 
 
-   #define NS_TO_CYCLE(n, c)	((n) / (c))
-   
-   hs_trail_m=1;
-   hs_trail_n= (lcm_params->dsi.HS_TRAIL == 0) ? NS_TO_CYCLE(((hs_trail_m * 0x4) + 0x60), cycle_time) : lcm_params->dsi.HS_TRAIL;
-   // +3 is recommended from designer becauase of HW latency
-   timcon0.HS_TRAIL	= ((hs_trail_m > hs_trail_n) ? hs_trail_m : hs_trail_n) + 0x0a;
-   
-   timcon0.HS_PRPR 	= (lcm_params->dsi.HS_PRPR == 0) ? NS_TO_CYCLE((0x40 + 0x5 * ui), cycle_time) : lcm_params->dsi.HS_PRPR;
-   // HS_PRPR can't be 1.
-   if (timcon0.HS_PRPR == 0)
-      timcon0.HS_PRPR = 1;
-   
-   timcon0.HS_ZERO 	= (lcm_params->dsi.HS_ZERO == 0) ? NS_TO_CYCLE((0xC8 + 0x0a * ui), cycle_time) : lcm_params->dsi.HS_ZERO;
-   if (timcon0.HS_ZERO > timcon0.HS_PRPR)
-      timcon0.HS_ZERO -= timcon0.HS_PRPR;
-   
-   timcon0.LPX 		= (lcm_params->dsi.LPX == 0) ? NS_TO_CYCLE(0x50, cycle_time) : lcm_params->dsi.LPX;
-   if(timcon0.LPX == 0) 
-      timcon0.LPX = 1;
-
-   //	timcon1.TA_SACK 	= (lcm_params->dsi.TA_SACK == 0) ? 1 : lcm_params->dsi.TA_SACK;
-   timcon1.TA_GET 		= (lcm_params->dsi.TA_GET == 0) ? (0x5 * timcon0.LPX) : lcm_params->dsi.TA_GET;
-   timcon1.TA_SURE 	= (lcm_params->dsi.TA_SURE == 0) ? (0x3 * timcon0.LPX / 0x2) : lcm_params->dsi.TA_SURE;
-   timcon1.TA_GO 		= (lcm_params->dsi.TA_GO == 0) ? (0x4 * timcon0.LPX) : lcm_params->dsi.TA_GO;
-   // --------------------------------------------------------------
-   //  NT35510 need fine tune timing
-   //  Data_hs_exit = 60 ns + 128UI 
-   //  Clk_post = 60 ns + 128 UI. 
-   // --------------------------------------------------------------
-   timcon1.DA_HS_EXIT  = (lcm_params->dsi.DA_HS_EXIT == 0) ? NS_TO_CYCLE((0x3c + 0x80 * ui), cycle_time) : lcm_params->dsi.DA_HS_EXIT;
-   
-   timcon2.CLK_TRAIL 	= ((lcm_params->dsi.CLK_TRAIL == 0) ? NS_TO_CYCLE(0x64, cycle_time) : lcm_params->dsi.CLK_TRAIL) + 0x0a;
-   // CLK_TRAIL can't be 1.
-   if (timcon2.CLK_TRAIL < 2)
-      timcon2.CLK_TRAIL = 2;
-   
-   //	timcon2.LPX_WAIT 	= (lcm_params->dsi.LPX_WAIT == 0) ? 1 : lcm_params->dsi.LPX_WAIT;
-   timcon2.CONT_DET 	= lcm_params->dsi.CONT_DET;
-   timcon2.CLK_ZERO	= (lcm_params->dsi.CLK_ZERO == 0) ? NS_TO_CYCLE(0x190, cycle_time) : lcm_params->dsi.CLK_ZERO;
-   
-   timcon3.CLK_HS_PRPR	= (lcm_params->dsi.CLK_HS_PRPR == 0) ? NS_TO_CYCLE(0x40, cycle_time) : lcm_params->dsi.CLK_HS_PRPR;
-   if(timcon3.CLK_HS_PRPR == 0) 
-      timcon3.CLK_HS_PRPR = 1;
-   timcon3.CLK_HS_EXIT= (lcm_params->dsi.CLK_HS_EXIT == 0) ? (2 * timcon0.LPX) : lcm_params->dsi.CLK_HS_EXIT;
-   timcon3.CLK_HS_POST= (lcm_params->dsi.CLK_HS_POST == 0) ? NS_TO_CYCLE((0x3c + 0x80 * ui), cycle_time) : lcm_params->dsi.CLK_HS_POST;
-   
-   printk("[DISP] - kernel - DSI_PHY_TIMCONFIG, HS_TRAIL = %d, HS_ZERO = %d, HS_PRPR = %d, LPX = %d, TA_GET = %d, TA_SURE = %d, TA_GO = %d, CLK_TRAIL = %d, CLK_ZERO = %d, CLK_HS_PRPR = %d \n", \
-   timcon0.HS_TRAIL, timcon0.HS_ZERO, timcon0.HS_PRPR, timcon0.LPX, timcon1.TA_GET, timcon1.TA_SURE, timcon1.TA_GO, timcon2.CLK_TRAIL, timcon2.CLK_ZERO, timcon3.CLK_HS_PRPR);		
-   
-   OUTREGBIT(DSI_PHY_TIMCON0_REG,DSI_REG->DSI_PHY_TIMECON0,LPX,timcon0.LPX);
-   OUTREGBIT(DSI_PHY_TIMCON0_REG,DSI_REG->DSI_PHY_TIMECON0,HS_PRPR,timcon0.HS_PRPR);
-   OUTREGBIT(DSI_PHY_TIMCON0_REG,DSI_REG->DSI_PHY_TIMECON0,HS_ZERO,timcon0.HS_ZERO);
-   OUTREGBIT(DSI_PHY_TIMCON0_REG,DSI_REG->DSI_PHY_TIMECON0,HS_TRAIL,timcon0.HS_TRAIL);
-
-   OUTREGBIT(DSI_PHY_TIMCON1_REG,DSI_REG->DSI_PHY_TIMECON1,TA_GO,timcon1.TA_GO);
-   OUTREGBIT(DSI_PHY_TIMCON1_REG,DSI_REG->DSI_PHY_TIMECON1,TA_SURE,timcon1.TA_SURE);
-   OUTREGBIT(DSI_PHY_TIMCON1_REG,DSI_REG->DSI_PHY_TIMECON1,TA_GET,timcon1.TA_GET);
-   OUTREGBIT(DSI_PHY_TIMCON1_REG,DSI_REG->DSI_PHY_TIMECON1,DA_HS_EXIT,timcon1.DA_HS_EXIT);
-
-   OUTREGBIT(DSI_PHY_TIMCON2_REG,DSI_REG->DSI_PHY_TIMECON2,CONT_DET,timcon2.CONT_DET);
-   OUTREGBIT(DSI_PHY_TIMCON2_REG,DSI_REG->DSI_PHY_TIMECON2,CLK_ZERO,timcon2.CLK_ZERO);
-   OUTREGBIT(DSI_PHY_TIMCON2_REG,DSI_REG->DSI_PHY_TIMECON2,CLK_TRAIL,timcon2.CLK_TRAIL);
-
-   OUTREGBIT(DSI_PHY_TIMCON3_REG,DSI_REG->DSI_PHY_TIMECON3,CLK_HS_PRPR,timcon3.CLK_HS_PRPR);
-   OUTREGBIT(DSI_PHY_TIMCON3_REG,DSI_REG->DSI_PHY_TIMECON3,CLK_HS_POST,timcon3.CLK_HS_POST);
-   OUTREGBIT(DSI_PHY_TIMCON3_REG,DSI_REG->DSI_PHY_TIMECON3,CLK_HS_EXIT,timcon3.CLK_HS_EXIT);
+    #define NS_TO_CYCLE(n, c)	((n) / (c))
+    
+    hs_trail_m=1;
+    hs_trail_n= (lcm_params->dsi.HS_TRAIL == 0) ? NS_TO_CYCLE(((hs_trail_m * 0x4) + 60), cycle_time) : lcm_params->dsi.HS_TRAIL;
+    // +3 is recommended from designer becauase of HW latency
+    timcon0.HS_TRAIL	= ((hs_trail_m > hs_trail_n) ? hs_trail_m : hs_trail_n) + 0x0a;
+    
+    timcon0.HS_PRPR 	= (lcm_params->dsi.HS_PRPR == 0) ? NS_TO_CYCLE((0x40 + 0x5 * ui), cycle_time) : lcm_params->dsi.HS_PRPR;
+    // HS_PRPR can't be 1.
+    if (timcon0.HS_PRPR == 0)
+       timcon0.HS_PRPR = 1;
+    
+    timcon0.HS_ZERO 	= (lcm_params->dsi.HS_ZERO == 0) ? NS_TO_CYCLE((0xC8 + 0x0a * ui), cycle_time) : lcm_params->dsi.HS_ZERO;
+    if (timcon0.HS_ZERO > timcon0.HS_PRPR)
+       timcon0.HS_ZERO -= timcon0.HS_PRPR;
+    
+    timcon0.LPX 		= (lcm_params->dsi.LPX == 0) ? NS_TO_CYCLE(0x50, cycle_time) : lcm_params->dsi.LPX;
+    if(timcon0.LPX == 0) 
+       timcon0.LPX = 1;
+ 
+    //	timcon1.TA_SACK 	= (lcm_params->dsi.TA_SACK == 0) ? 1 : lcm_params->dsi.TA_SACK;
+    timcon1.TA_GET 		= (lcm_params->dsi.TA_GET == 0) ? (0x5 * timcon0.LPX) : lcm_params->dsi.TA_GET;
+    timcon1.TA_SURE 	= (lcm_params->dsi.TA_SURE == 0) ? (0x3 * timcon0.LPX / 0x2) : lcm_params->dsi.TA_SURE;
+    timcon1.TA_GO 		= (lcm_params->dsi.TA_GO == 0) ? (0x4 * timcon0.LPX) : lcm_params->dsi.TA_GO;
+    // --------------------------------------------------------------
+    //  NT35510 need fine tune timing
+    //  Data_hs_exit = 60 ns + 128UI 
+    //  Clk_post = 60 ns + 128 UI. 
+    // --------------------------------------------------------------
+    timcon1.DA_HS_EXIT  = (lcm_params->dsi.DA_HS_EXIT == 0) ? NS_TO_CYCLE((0x3c + 0x80 * ui), cycle_time) : lcm_params->dsi.DA_HS_EXIT;
+    
+    timcon2.CLK_TRAIL 	= ((lcm_params->dsi.CLK_TRAIL == 0) ? NS_TO_CYCLE(0x64, cycle_time) : lcm_params->dsi.CLK_TRAIL) + 0x0a;
+    // CLK_TRAIL can't be 1.
+    if (timcon2.CLK_TRAIL < 2)
+       timcon2.CLK_TRAIL = 2;
+    
+    //	timcon2.LPX_WAIT 	= (lcm_params->dsi.LPX_WAIT == 0) ? 1 : lcm_params->dsi.LPX_WAIT;
+    timcon2.CONT_DET 	= lcm_params->dsi.CONT_DET;
+    timcon2.CLK_ZERO	= (lcm_params->dsi.CLK_ZERO == 0) ? NS_TO_CYCLE(0x190, cycle_time) : lcm_params->dsi.CLK_ZERO;
+    
+    timcon3.CLK_HS_PRPR	= (lcm_params->dsi.CLK_HS_PRPR == 0) ? NS_TO_CYCLE(0x40, cycle_time) : lcm_params->dsi.CLK_HS_PRPR;
+    if(timcon3.CLK_HS_PRPR == 0) 
+       timcon3.CLK_HS_PRPR = 1;
+    timcon3.CLK_HS_EXIT= (lcm_params->dsi.CLK_HS_EXIT == 0) ? (2 * timcon0.LPX) : lcm_params->dsi.CLK_HS_EXIT;
+    timcon3.CLK_HS_POST= (lcm_params->dsi.CLK_HS_POST == 0) ? NS_TO_CYCLE((0x3c + 0x80 * ui), cycle_time) : lcm_params->dsi.CLK_HS_POST;
+    
+    printk("[DISP] - kernel - DSI_PHY_TIMCONFIG, HS_TRAIL = %d, HS_ZERO = %d, HS_PRPR = %d, LPX = %d, TA_GET = %d, TA_SURE = %d, TA_GO = %d, CLK_TRAIL = %d, CLK_ZERO = %d, CLK_HS_PRPR = %d \n", \
+    timcon0.HS_TRAIL, timcon0.HS_ZERO, timcon0.HS_PRPR, timcon0.LPX, timcon1.TA_GET, timcon1.TA_SURE, timcon1.TA_GO, timcon2.CLK_TRAIL, timcon2.CLK_ZERO, timcon3.CLK_HS_PRPR);		
+    
+    DSI_OUTREGBIT(DSI_PHY_TIMCON0_REG,DSI_REG->DSI_PHY_TIMECON0,LPX,timcon0.LPX);
+    DSI_OUTREGBIT(DSI_PHY_TIMCON0_REG,DSI_REG->DSI_PHY_TIMECON0,HS_PRPR,timcon0.HS_PRPR);
+    DSI_OUTREGBIT(DSI_PHY_TIMCON0_REG,DSI_REG->DSI_PHY_TIMECON0,HS_ZERO,timcon0.HS_ZERO);
+    DSI_OUTREGBIT(DSI_PHY_TIMCON0_REG,DSI_REG->DSI_PHY_TIMECON0,HS_TRAIL,timcon0.HS_TRAIL);
+ 
+    DSI_OUTREGBIT(DSI_PHY_TIMCON1_REG,DSI_REG->DSI_PHY_TIMECON1,TA_GO,timcon1.TA_GO);
+    DSI_OUTREGBIT(DSI_PHY_TIMCON1_REG,DSI_REG->DSI_PHY_TIMECON1,TA_SURE,timcon1.TA_SURE);
+    DSI_OUTREGBIT(DSI_PHY_TIMCON1_REG,DSI_REG->DSI_PHY_TIMECON1,TA_GET,timcon1.TA_GET);
+    DSI_OUTREGBIT(DSI_PHY_TIMCON1_REG,DSI_REG->DSI_PHY_TIMECON1,DA_HS_EXIT,timcon1.DA_HS_EXIT);
+ 
+    DSI_OUTREGBIT(DSI_PHY_TIMCON2_REG,DSI_REG->DSI_PHY_TIMECON2,CONT_DET,timcon2.CONT_DET);
+    DSI_OUTREGBIT(DSI_PHY_TIMCON2_REG,DSI_REG->DSI_PHY_TIMECON2,CLK_ZERO,timcon2.CLK_ZERO);
+    DSI_OUTREGBIT(DSI_PHY_TIMCON2_REG,DSI_REG->DSI_PHY_TIMECON2,CLK_TRAIL,timcon2.CLK_TRAIL);
+ 
+    DSI_OUTREGBIT(DSI_PHY_TIMCON3_REG,DSI_REG->DSI_PHY_TIMECON3,CLK_HS_PRPR,timcon3.CLK_HS_PRPR);
+    DSI_OUTREGBIT(DSI_PHY_TIMCON3_REG,DSI_REG->DSI_PHY_TIMECON3,CLK_HS_POST,timcon3.CLK_HS_POST);
+    DSI_OUTREGBIT(DSI_PHY_TIMCON3_REG,DSI_REG->DSI_PHY_TIMECON3,CLK_HS_EXIT,timcon3.CLK_HS_EXIT);
 }
 
 
@@ -1763,27 +1821,27 @@ void DSI_clk_ULP_mode(BOOL enter)
     
     if(enter) {
         tmp_reg1.LC_HS_TX_EN=0;
-        OUTREG32(&DSI_REG->DSI_PHY_LCCON, AS_UINT32(&tmp_reg1));
-        lcm_mdelay(1);
+        DSI_OUTREG32_R(PDSI_PHY_LCCON_REG,&DSI_REG->DSI_PHY_LCCON, &tmp_reg1);
+        mdelay(1);
         tmp_reg1.LC_ULPM_EN=1;
-        OUTREG32(&DSI_REG->DSI_PHY_LCCON, AS_UINT32(&tmp_reg1));
-        lcm_mdelay(1);
+        DSI_OUTREG32_R(PDSI_PHY_LCCON_REG,&DSI_REG->DSI_PHY_LCCON, &tmp_reg1);
+        mdelay(1);
         //tmp_reg2.PLL_EN=0;
         //OUTREG32(&DSI_PHY_REG->ANACON0, AS_UINT32(&tmp_reg2));
     }
     else {
         //tmp_reg2.PLL_EN=1;
         //OUTREG32(&DSI_PHY_REG->ANACON0, AS_UINT32(&tmp_reg2));
-        lcm_mdelay(1);
+        mdelay(1);
         tmp_reg1.LC_ULPM_EN=0;
-        OUTREG32(&DSI_REG->DSI_PHY_LCCON, AS_UINT32(&tmp_reg1));
-        lcm_mdelay(1);
+        DSI_OUTREG32_R(PDSI_PHY_LCCON_REG,&DSI_REG->DSI_PHY_LCCON, &tmp_reg1);
+        mdelay(1);
         tmp_reg1.LC_WAKEUP_EN=1;
-        OUTREG32(&DSI_REG->DSI_PHY_LCCON, AS_UINT32(&tmp_reg1));
-        lcm_mdelay(1);
+        DSI_OUTREG32_R(PDSI_PHY_LCCON_REG,&DSI_REG->DSI_PHY_LCCON, &tmp_reg1);
+        mdelay(1);
         tmp_reg1.LC_WAKEUP_EN=0;
-        OUTREG32(&DSI_REG->DSI_PHY_LCCON, AS_UINT32(&tmp_reg1));
-        lcm_mdelay(1);
+        DSI_OUTREG32_R(PDSI_PHY_LCCON_REG,&DSI_REG->DSI_PHY_LCCON, &tmp_reg1);
+        mdelay(1);
     }
 }
 
@@ -1794,13 +1852,13 @@ void DSI_clk_HS_mode(BOOL enter)
     
     if(enter && !DSI_clk_HS_state()) {
         tmp_reg1.LC_HS_TX_EN=1;
-        OUTREG32(&DSI_REG->DSI_PHY_LCCON, AS_UINT32(&tmp_reg1));
-        //lcm_mdelay(1);
+        DSI_OUTREG32_R(PDSI_PHY_LCCON_REG,&DSI_REG->DSI_PHY_LCCON, &tmp_reg1);
+        //mdelay(1);
     }
     else if (!enter && DSI_clk_HS_state()) {
         tmp_reg1.LC_HS_TX_EN=0;
-        OUTREG32(&DSI_REG->DSI_PHY_LCCON, AS_UINT32(&tmp_reg1));
-        //lcm_mdelay(1);
+        DSI_OUTREG32_R(PDSI_PHY_LCCON_REG,&DSI_REG->DSI_PHY_LCCON, &tmp_reg1);
+        //mdelay(1);
     }
 }	
 
@@ -1820,23 +1878,23 @@ void DSI_lane0_ULP_mode(BOOL enter)
     if(enter) {
         // suspend
         tmp_reg1.L0_HS_TX_EN=0;
-        OUTREG32(&DSI_REG->DSI_PHY_LD0CON, AS_UINT32(&tmp_reg1));
-        lcm_mdelay(1);
+        DSI_OUTREG32_R(PDSI_PHY_LD0CON_REG,&DSI_REG->DSI_PHY_LD0CON, &tmp_reg1);
+        mdelay(1);
         tmp_reg1.L0_ULPM_EN=1;
-        OUTREG32(&DSI_REG->DSI_PHY_LD0CON, AS_UINT32(&tmp_reg1));
-        lcm_mdelay(1);
+        DSI_OUTREG32_R(PDSI_PHY_LD0CON_REG,&DSI_REG->DSI_PHY_LD0CON, &tmp_reg1);
+        mdelay(1);
     }
     else {
         // resume
         tmp_reg1.L0_ULPM_EN=0;
-        OUTREG32(&DSI_REG->DSI_PHY_LD0CON, AS_UINT32(&tmp_reg1));
-        lcm_mdelay(1);
+        DSI_OUTREG32_R(PDSI_PHY_LD0CON_REG,&DSI_REG->DSI_PHY_LD0CON, &tmp_reg1);
+        mdelay(1);
         tmp_reg1.L0_WAKEUP_EN=1;
-        OUTREG32(&DSI_REG->DSI_PHY_LD0CON, AS_UINT32(&tmp_reg1));
-        lcm_mdelay(1);
+        DSI_OUTREG32_R(PDSI_PHY_LD0CON_REG,&DSI_REG->DSI_PHY_LD0CON, &tmp_reg1);
+        mdelay(1);
         tmp_reg1.L0_WAKEUP_EN=0;
-        OUTREG32(&DSI_REG->DSI_PHY_LD0CON, AS_UINT32(&tmp_reg1));
-        lcm_mdelay(1);
+        DSI_OUTREG32_R(PDSI_PHY_LD0CON_REG,&DSI_REG->DSI_PHY_LD0CON, &tmp_reg1);
+        mdelay(1);
     }
 }
 
@@ -2176,381 +2234,380 @@ void DSI_handle_noncont_clk(void)
 
 DSI_STATUS DSI_EnableVM_CMD(void)
 {
-	unsigned int read_timeout_ms = 100;
-	OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,VM_CMD_START,0);
-	OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,VM_CMD_START,1);
+    DSI_OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,VM_CMD_START,0);
+    DSI_OUTREGBIT(DSI_START_REG,DSI_REG->DSI_START,VM_CMD_START,1);
+
     return DSI_STATUS_OK;
 }
 
 void DSI_set_cmdq_V2(unsigned cmd, unsigned char count, unsigned char *para_list, unsigned char force_update)
 {
-	UINT32 i, layer, layer_state, lane_num;
-	UINT32 goto_addr, mask_para, set_para;
-	UINT32 fbPhysAddr, fbVirAddr;
-	DSI_T0_INS t0;	
-	DSI_T1_INS t1;	
-	DSI_T2_INS t2;	
-	if (0 != DSI_REG->DSI_MODE_CTRL.MODE){//not in cmd mode
-		DSI_VM_CMD_CON_REG vm_cmdq;
-		OUTREG32(&vm_cmdq, AS_UINT32(&DSI_REG->DSI_VM_CMD_CON));
-		printf("set cmdq in VDO mode in set_cmdq_V2\n");
-		if (cmd < 0xB0)
-		{
-			if (count > 1)
-			{
-				vm_cmdq.LONG_PKT = 1;
-				vm_cmdq.CM_DATA_ID = DSI_DCS_LONG_PACKET_ID;
-				vm_cmdq.CM_DATA_0 = count+1;
-				OUTREG32(&DSI_REG->DSI_VM_CMD_CON, AS_UINT32(&vm_cmdq));
-		
-				goto_addr = (UINT32)(&DSI_VM_CMD_REG->data[0].byte0);
-				mask_para = (0xFF<<((goto_addr&0x3)*8));
-				set_para = (cmd<<((goto_addr&0x3)*8));
-				MASKREG32(goto_addr&(~0x3), mask_para, set_para);
-			
-				for(i=0; i<count; i++)
-				{
-					goto_addr = (UINT32)(&DSI_VM_CMD_REG->data[0].byte1) + i;
-					mask_para = (0xFF<<((goto_addr&0x3)*8));
-					set_para = (para_list[i]<<((goto_addr&0x3)*8));
-					MASKREG32(goto_addr&(~0x3), mask_para, set_para);			
-				}
-			}
-			else
-			{
-				vm_cmdq.LONG_PKT = 0;
-				vm_cmdq.CM_DATA_0 = cmd;
-				if (count)
-				{
-					vm_cmdq.CM_DATA_ID = DSI_DCS_SHORT_PACKET_ID_1;
-					vm_cmdq.CM_DATA_1 = para_list[0];
-				}
-				else
-				{
-					vm_cmdq.CM_DATA_ID = DSI_DCS_SHORT_PACKET_ID_0;
-					vm_cmdq.CM_DATA_1 = 0;
-				}
-				OUTREG32(&DSI_REG->DSI_VM_CMD_CON, AS_UINT32(&vm_cmdq));
-			}
-		}
-		else{
-			if (count > 1)
-			{
-				vm_cmdq.LONG_PKT = 1;
-				vm_cmdq.CM_DATA_ID = DSI_GERNERIC_LONG_PACKET_ID;
-				vm_cmdq.CM_DATA_0 = count+1;
-				OUTREG32(&DSI_REG->DSI_VM_CMD_CON, AS_UINT32(&vm_cmdq));
-		
-				goto_addr = (UINT32)(&DSI_VM_CMD_REG->data[0].byte0);
-				mask_para = (0xFF<<((goto_addr&0x3)*8));
-				set_para = (cmd<<((goto_addr&0x3)*8));
-				MASKREG32(goto_addr&(~0x3), mask_para, set_para);
-			
-				for(i=0; i<count; i++)
-				{
-					goto_addr = (UINT32)(&DSI_VM_CMD_REG->data[0].byte1) + i;
-					mask_para = (0xFF<<((goto_addr&0x3)*8));
-					set_para = (para_list[i]<<((goto_addr&0x3)*8));
-					MASKREG32(goto_addr&(~0x3), mask_para, set_para);			
-				}
-			}
-			else
-			{
-				vm_cmdq.LONG_PKT = 0;
-				vm_cmdq.CM_DATA_0 = cmd;
-				if (count)
-				{
-					vm_cmdq.CM_DATA_ID = DSI_GERNERIC_SHORT_PACKET_ID_2;
-					vm_cmdq.CM_DATA_1 = para_list[0];
-				}
-				else
-				{
-					vm_cmdq.CM_DATA_ID = DSI_GERNERIC_SHORT_PACKET_ID_1;
-					vm_cmdq.CM_DATA_1 = 0;
-				}
-				OUTREG32(&DSI_REG->DSI_VM_CMD_CON, AS_UINT32(&vm_cmdq));
-			}
-		}
-		//start DSI VM CMDQ
-		if(force_update){
-			DSI_EnableVM_CMD();
-		}
-	}
-	else{
-    DSI_WaitForEngineNotBusy();
-	if (cmd < 0xB0)
-	{
-		if (count > 1)
-		{
-			t2.CONFG = 2;
-			t2.Data_ID = DSI_DCS_LONG_PACKET_ID;
-			t2.WC16 = count+1;
+    UINT32 i;
+    UINT32 goto_addr, mask_para, set_para;
+    DSI_T0_INS t0;	
+    DSI_T2_INS t2;	
 
-			OUTREG32(&DSI_CMDQ_REG->data[0], AS_UINT32(&t2));
+    if (0 != DSI_REG->DSI_MODE_CTRL.MODE){//not in cmd mode
+        DSI_VM_CMD_CON_REG vm_cmdq;
+        DSI_OUTREG32_R(PDSI_VM_CMD_CON_REG, &vm_cmdq, &DSI_REG->DSI_VM_CMD_CON);
+        printf("set cmdq in VDO mode in set_cmdq_V2\n");
 
-			goto_addr = (UINT32)(&DSI_CMDQ_REG->data[1].byte0);
-			mask_para = (0xFF<<((goto_addr&0x3)*8));
-			set_para = (cmd<<((goto_addr&0x3)*8));
-			MASKREG32(goto_addr&(~0x3), mask_para, set_para);
-			
-			for(i=0; i<count; i++)
-			{
-				goto_addr = (UINT32)(&DSI_CMDQ_REG->data[1].byte1) + i;
-				mask_para = (0xFF<<((goto_addr&0x3)*8));
-				set_para = (para_list[i]<<((goto_addr&0x3)*8));
-				MASKREG32(goto_addr&(~0x3), mask_para, set_para);			
-			}
-
-			OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, 2+(count)/4); 		
-		}
-		else
-		{
-			t0.CONFG = 0;
-			t0.Data0 = cmd;
-			if (count)
-			{
-				t0.Data_ID = DSI_DCS_SHORT_PACKET_ID_1;
-				t0.Data1 = para_list[0];
-			}
-			else
-			{
-				t0.Data_ID = DSI_DCS_SHORT_PACKET_ID_0;
-				t0.Data1 = 0;
-			}
-			OUTREG32(&DSI_CMDQ_REG->data[0], AS_UINT32(&t0));
-			OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, 1);
-		}
-	}
-	else
-	{
-		if (count > 1)
-		{
-			t2.CONFG = 2;
-			t2.Data_ID = DSI_GERNERIC_LONG_PACKET_ID;
-			t2.WC16 = count+1;
-
-			OUTREG32(&DSI_CMDQ_REG->data[0], AS_UINT32(&t2));
-
-			goto_addr = (UINT32)(&DSI_CMDQ_REG->data[1].byte0);
-			mask_para = (0xFF<<((goto_addr&0x3)*8));
-			set_para = (cmd<<((goto_addr&0x3)*8));
-			MASKREG32(goto_addr&(~0x3), mask_para, set_para);
-			
-			for(i=0; i<count; i++)
-			{
-				goto_addr = (UINT32)(&DSI_CMDQ_REG->data[1].byte1) + i;
-				mask_para = (0xFF<<((goto_addr&0x3)*8));
-				set_para = (para_list[i]<<((goto_addr&0x3)*8));
-				MASKREG32(goto_addr&(~0x3), mask_para, set_para);			
-			}
-
-			OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, 2+(count)/4);
-
-		}
-		else
-		{
-			t0.CONFG = 0;
-			t0.Data0 = cmd;
-			if (count)
-			{
-				t0.Data_ID = DSI_GERNERIC_SHORT_PACKET_ID_2;
-				t0.Data1 = para_list[0];
-			}
-			else
-			{
-				t0.Data_ID = DSI_GERNERIC_SHORT_PACKET_ID_1;
-				t0.Data1 = 0;
-			}
-			OUTREG32(&DSI_CMDQ_REG->data[0], AS_UINT32(&t0));
-			OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, 1);
-		}
-	}
-
-	//for (i = 0; i < AS_UINT32(&DSI_REG->DSI_CMDQ_SIZE); i++)
-    //    DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "DSI_set_cmdq_V2. DSI_CMDQ+%04x : 0x%08x\n", i*4, INREG32(DSI_BASE + 0x180 + i*4));
-
-		if(force_update)
-			DSI_EnableClk();
-	}
-
+        if (cmd < 0xB0)
+        {
+            if (count > 1)
+            {
+                vm_cmdq.LONG_PKT = 1;
+                vm_cmdq.CM_DATA_ID = DSI_DCS_LONG_PACKET_ID;
+                vm_cmdq.CM_DATA_0 = count+1;
+                DSI_OUTREG32_R(PDSI_VM_CMD_CON_REG, &DSI_REG->DSI_VM_CMD_CON, &vm_cmdq);
+                
+                goto_addr = (UINT32)(&DSI_VM_CMD_REG->data[0].byte0);
+                mask_para = (0xFF<<((goto_addr&0x3)*8));
+                set_para = (cmd<<((goto_addr&0x3)*8));
+                MASKREG32(goto_addr&(~0x3), mask_para, set_para);
+                
+                for(i=0; i<count; i++)
+                {
+                    goto_addr = (UINT32)(&DSI_VM_CMD_REG->data[0].byte1) + i;
+                    mask_para = (0xFF<<((goto_addr&0x3)*8));
+                    set_para = (para_list[i]<<((goto_addr&0x3)*8));
+                    MASKREG32(goto_addr&(~0x3), mask_para, set_para);			
+                }
+            }
+            else
+            {
+                vm_cmdq.LONG_PKT = 0;
+                vm_cmdq.CM_DATA_0 = cmd;
+                if (count)
+                {
+                    vm_cmdq.CM_DATA_ID = DSI_DCS_SHORT_PACKET_ID_1;
+                    vm_cmdq.CM_DATA_1 = para_list[0];
+                }
+                else
+                {
+                    vm_cmdq.CM_DATA_ID = DSI_DCS_SHORT_PACKET_ID_0;
+                    vm_cmdq.CM_DATA_1 = 0;
+                }
+                DSI_OUTREG32_R(PDSI_VM_CMD_CON_REG, &DSI_REG->DSI_VM_CMD_CON, &vm_cmdq);
+            }
+        }
+        else{
+            if (count > 1)
+            {
+                vm_cmdq.LONG_PKT = 1;
+                vm_cmdq.CM_DATA_ID = DSI_GERNERIC_LONG_PACKET_ID;
+                vm_cmdq.CM_DATA_0 = count+1;
+                DSI_OUTREG32_R(PDSI_VM_CMD_CON_REG, &DSI_REG->DSI_VM_CMD_CON, &vm_cmdq);
+                
+                goto_addr = (UINT32)(&DSI_VM_CMD_REG->data[0].byte0);
+                mask_para = (0xFF<<((goto_addr&0x3)*8));
+                set_para = (cmd<<((goto_addr&0x3)*8));
+                MASKREG32(goto_addr&(~0x3), mask_para, set_para);
+                
+                for(i=0; i<count; i++)
+                {
+                    goto_addr = (UINT32)(&DSI_VM_CMD_REG->data[0].byte1) + i;
+                    mask_para = (0xFF<<((goto_addr&0x3)*8));
+                    set_para = (para_list[i]<<((goto_addr&0x3)*8));
+                    MASKREG32(goto_addr&(~0x3), mask_para, set_para);			
+                }
+            }
+            else
+            {
+                vm_cmdq.LONG_PKT = 0;
+                vm_cmdq.CM_DATA_0 = cmd;
+                if (count)
+                {
+                    vm_cmdq.CM_DATA_ID = DSI_GERNERIC_SHORT_PACKET_ID_2;
+                    vm_cmdq.CM_DATA_1 = para_list[0];
+                }
+                else
+                {
+                    vm_cmdq.CM_DATA_ID = DSI_GERNERIC_SHORT_PACKET_ID_1;
+                    vm_cmdq.CM_DATA_1 = 0;
+                }
+                DSI_OUTREG32_R(PDSI_VM_CMD_CON_REG, &DSI_REG->DSI_VM_CMD_CON, &vm_cmdq);
+            }
+        }
+        //start DSI VM CMDQ
+        if(force_update){
+            DSI_EnableVM_CMD();
+        }
+    }
+    else{
+        DSI_WaitForEngineNotBusy();
+        if (cmd < 0xB0)
+        {
+            if (count > 1)
+            {
+                t2.CONFG = 2;
+                t2.Data_ID = DSI_DCS_LONG_PACKET_ID;
+                t2.WC16 = count+1;
+                
+                DSI_OUTREG32_R(PDSI_CMDQ,&DSI_CMDQ_REG->data[0], &t2);
+                
+                goto_addr = (UINT32)(&DSI_CMDQ_REG->data[1].byte0);
+                mask_para = (0xFF<<((goto_addr&0x3)*8));
+                set_para = (cmd<<((goto_addr&0x3)*8));
+                MASKREG32(goto_addr&(~0x3), mask_para, set_para);
+                
+                for(i=0; i<count; i++)
+                {
+                    goto_addr = (UINT32)(&DSI_CMDQ_REG->data[1].byte1) + i;
+                    mask_para = (0xFF<<((goto_addr&0x3)*8));
+                    set_para = (para_list[i]<<((goto_addr&0x3)*8));
+                    MASKREG32(goto_addr&(~0x3), mask_para, set_para);			
+                }
+                
+                DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, 2+(count)/4);
+            }
+            else
+            {
+                t0.CONFG = 0;
+                t0.Data0 = cmd;
+                if (count)
+                {
+                    t0.Data_ID = DSI_DCS_SHORT_PACKET_ID_1;
+                    t0.Data1 = para_list[0];
+                }
+                else
+                {
+                    t0.Data_ID = DSI_DCS_SHORT_PACKET_ID_0;
+                    t0.Data1 = 0;
+                }
+                DSI_OUTREG32_R(PDSI_CMDQ,&DSI_CMDQ_REG->data[0], &t0);
+                DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, 1);
+            }
+        }
+        else
+        {
+            if (count > 1)
+            {
+                t2.CONFG = 2;
+                t2.Data_ID = DSI_GERNERIC_LONG_PACKET_ID;
+                t2.WC16 = count+1;
+                
+                DSI_OUTREG32_R(PDSI_CMDQ,&DSI_CMDQ_REG->data[0], &t2);
+                
+                goto_addr = (UINT32)(&DSI_CMDQ_REG->data[1].byte0);
+                mask_para = (0xFF<<((goto_addr&0x3)*8));
+                set_para = (cmd<<((goto_addr&0x3)*8));
+                MASKREG32(goto_addr&(~0x3), mask_para, set_para);
+                
+                for(i=0; i<count; i++)
+                {
+                    goto_addr = (UINT32)(&DSI_CMDQ_REG->data[1].byte1) + i;
+                    mask_para = (0xFF<<((goto_addr&0x3)*8));
+                    set_para = (para_list[i]<<((goto_addr&0x3)*8));
+                    MASKREG32(goto_addr&(~0x3), mask_para, set_para);			
+                }
+                
+                DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, 2+(count)/4);
+            
+            }
+            else
+            {
+                t0.CONFG = 0;
+                t0.Data0 = cmd;
+                if (count)
+                {
+                    t0.Data_ID = DSI_GERNERIC_SHORT_PACKET_ID_2;
+                    t0.Data1 = para_list[0];
+                }
+                else
+                {
+                    t0.Data_ID = DSI_GERNERIC_SHORT_PACKET_ID_1;
+                    t0.Data1 = 0;
+                }
+                DSI_OUTREG32_R(PDSI_CMDQ,&DSI_CMDQ_REG->data[0], &t0);
+                DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, 1);
+            }
+        }
+        
+        //for (i = 0; i < AS_UINT32(&DSI_REG->DSI_CMDQ_SIZE); i++)
+        //    DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "DSI_set_cmdq_V2. DSI_CMDQ+%04x : 0x%08x\n", i*4, INREG32(DSI_BASE + 0x180 + i*4));
+        
+        if(force_update)
+            DSI_EnableClk();
+    }
+    
 }
 
 void DSI_set_cmdq_V3(LCM_setting_table_V3 *para_tbl, unsigned int size, unsigned char force_update)
 {
-	UINT32 i, layer, layer_state, lane_num;
-	UINT32 goto_addr, mask_para, set_para;
-	UINT32 fbPhysAddr, fbVirAddr;
-	DSI_T0_INS t0;	
-	DSI_T1_INS t1;	
-	DSI_T2_INS t2;	
-
-	UINT32 index = 0;
-
-	unsigned char data_id, cmd, count;
-	unsigned char *para_list;
-
-	do {
-		data_id = para_tbl[index].id;
-		cmd = para_tbl[index].cmd;
-		count = para_tbl[index].count;
-		para_list = para_tbl[index].para_list;
-
-		if (data_id == REGFLAG_ESCAPE_ID && cmd == REGFLAG_DELAY_MS_V3)
-		{
-			udelay(1000*count);
-			DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "DSI_set_cmdq_V3[%d]. Delay %d (ms) \n", index, count);
-
-			continue;
-		}
-		if (0 != DSI_REG->DSI_MODE_CTRL.MODE){//not in cmd mode
-			DSI_VM_CMD_CON_REG vm_cmdq;
-			OUTREG32(&vm_cmdq, AS_UINT32(&DSI_REG->DSI_VM_CMD_CON));
-			printk("set cmdq in VDO mode\n");
-			if (count > 1)
-			{
-				vm_cmdq.LONG_PKT = 1;
-				vm_cmdq.CM_DATA_ID = data_id;
-				vm_cmdq.CM_DATA_0 = count+1;
-				OUTREG32(&DSI_REG->DSI_VM_CMD_CON, AS_UINT32(&vm_cmdq));
-		
-				goto_addr = (UINT32)(&DSI_VM_CMD_REG->data[0].byte0);
-				mask_para = (0xFF<<((goto_addr&0x3)*8));
-				set_para = (cmd<<((goto_addr&0x3)*8));
-				MASKREG32(goto_addr&(~0x3), mask_para, set_para);
-			
-				for(i=0; i<count; i++)
-				{
-					goto_addr = (UINT32)(&DSI_VM_CMD_REG->data[0].byte1) + i;
-					mask_para = (0xFF<<((goto_addr&0x3)*8));
-					set_para = (para_list[i]<<((goto_addr&0x3)*8));
-					MASKREG32(goto_addr&(~0x3), mask_para, set_para);			
-				}
-			}
-			else
-			{
-				vm_cmdq.LONG_PKT = 0;
-				vm_cmdq.CM_DATA_0 = cmd;
-				if (count)
-				{
-					vm_cmdq.CM_DATA_ID = data_id;
-					vm_cmdq.CM_DATA_1 = para_list[0];
-				}
-				else
-				{
-					vm_cmdq.CM_DATA_ID = data_id;
-					vm_cmdq.CM_DATA_1 = 0;
-				}
-				OUTREG32(&DSI_REG->DSI_VM_CMD_CON, AS_UINT32(&vm_cmdq));
-			}
-		//start DSI VM CMDQ
-			if(force_update){
-				DSI_EnableVM_CMD();
-			}
-		}
-		else{
-		DSI_WaitForEngineNotBusy();
-		{
-			//for(i = 0; i < sizeof(DSI_CMDQ_REG->data0) / sizeof(DSI_CMDQ); i++)
-			//	OUTREG32(&DSI_CMDQ_REG->data0[i], 0);
-			//memset(&DSI_CMDQ_REG->data[0], 0, sizeof(DSI_CMDQ_REG->data[0]));
-			OUTREG32(&DSI_CMDQ_REG->data[0], 0);
-		
-			if (count > 1)
-			{
-				t2.CONFG = 2;
-				t2.Data_ID = data_id;
-				t2.WC16 = count+1;
-
-				OUTREG32(&DSI_CMDQ_REG->data[0].byte0, AS_UINT32(&t2));
-
-				goto_addr = (UINT32)(&DSI_CMDQ_REG->data[1].byte0);
-				mask_para = (0xFF<<((goto_addr&0x3)*8));
-				set_para = (cmd<<((goto_addr&0x3)*8));
-				MASKREG32(goto_addr&(~0x3), mask_para, set_para);
-				
-				for(i=0; i<count; i++)
-				{
-					goto_addr = (UINT32)(&DSI_CMDQ_REG->data[1].byte1) + i;
-					mask_para = (0xFF<<((goto_addr&0x3)*8));
-					set_para = (para_list[i]<<((goto_addr&0x3)*8));
-					MASKREG32(goto_addr&(~0x3), mask_para, set_para);			
-				}
-
-				OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, 2+(count)/4); 		
-			}
-			else
-			{
-				t0.CONFG = 0;
-				t0.Data0 = cmd;
-				if (count)
-				{
-					t0.Data_ID = data_id;
-					t0.Data1 = para_list[0];
-				}
-				else
-				{
-					t0.Data_ID = data_id;
-					t0.Data1 = 0;
-				}
-				OUTREG32(&DSI_CMDQ_REG->data[0], AS_UINT32(&t0));
-				OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, 1);
-			}
-
-			//for (i = 0; i < AS_UINT32(&DSI_REG->DSI_CMDQ_SIZE); i++)
-			//	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "DSI_set_cmdq_V3[%d]. DSI_CMDQ+%04x : 0x%08x\n", index, i*4, INREG32(DSI_BASE + 0x180 + i*4));
-
-			if(force_update)
-				DSI_EnableClk();
-		}
-		}
-
-	} while (++index < size);
-
+    UINT32 i;
+    UINT32 goto_addr, mask_para, set_para;
+    DSI_T0_INS t0;	
+    DSI_T2_INS t2;	
+    
+    UINT32 index = 0;
+    
+    unsigned char data_id, cmd, count;
+    unsigned char *para_list;
+    
+    do {
+        data_id = para_tbl[index].id;
+        cmd = para_tbl[index].cmd;
+        count = para_tbl[index].count;
+        para_list = para_tbl[index].para_list;
+        
+        if (data_id == REGFLAG_ESCAPE_ID && cmd == REGFLAG_DELAY_MS_V3)
+        {
+            mdelay(count);
+            DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "DSI_set_cmdq_V3[%d]. Delay %d (ms) \n", index, count);
+            
+            continue;
+        }
+        if (0 != DSI_REG->DSI_MODE_CTRL.MODE){//not in cmd mode
+            DSI_VM_CMD_CON_REG vm_cmdq;
+            DSI_OUTREG32_R(PDSI_VM_CMD_CON_REG, &vm_cmdq, &DSI_REG->DSI_VM_CMD_CON);
+            printk("set cmdq in VDO mode\n");
+            if (count > 1)
+            {
+                vm_cmdq.LONG_PKT = 1;
+                vm_cmdq.CM_DATA_ID = data_id;
+                vm_cmdq.CM_DATA_0 = count+1;
+                DSI_OUTREG32_R(PDSI_VM_CMD_CON_REG, &DSI_REG->DSI_VM_CMD_CON, &vm_cmdq);
+                
+                goto_addr = (UINT32)(&DSI_VM_CMD_REG->data[0].byte0);
+                mask_para = (0xFF<<((goto_addr&0x3)*8));
+                set_para = (cmd<<((goto_addr&0x3)*8));
+                MASKREG32(goto_addr&(~0x3), mask_para, set_para);
+                
+                for(i=0; i<count; i++)
+                {
+                    goto_addr = (UINT32)(&DSI_VM_CMD_REG->data[0].byte1) + i;
+                    mask_para = (0xFF<<((goto_addr&0x3)*8));
+                    set_para = (para_list[i]<<((goto_addr&0x3)*8));
+                    MASKREG32(goto_addr&(~0x3), mask_para, set_para);			
+                }
+            }
+            else
+            {
+                vm_cmdq.LONG_PKT = 0;
+                vm_cmdq.CM_DATA_0 = cmd;
+                if (count)
+                {
+                    vm_cmdq.CM_DATA_ID = data_id;
+                    vm_cmdq.CM_DATA_1 = para_list[0];
+                }
+                else
+                {
+                    vm_cmdq.CM_DATA_ID = data_id;
+                    vm_cmdq.CM_DATA_1 = 0;
+                }
+                DSI_OUTREG32_R(PDSI_VM_CMD_CON_REG, &DSI_REG->DSI_VM_CMD_CON, &vm_cmdq);
+            }
+            //start DSI VM CMDQ
+            if(force_update){
+                DSI_EnableVM_CMD();
+            }
+        }
+        else{
+            DSI_WaitForEngineNotBusy();
+            {
+                //for(i = 0; i < sizeof(DSI_CMDQ_REG->data0) / sizeof(DSI_CMDQ); i++)
+                //	OUTREG32(&DSI_CMDQ_REG->data0[i], 0);
+                //memset(&DSI_CMDQ_REG->data[0], 0, sizeof(DSI_CMDQ_REG->data[0]));
+                OUTREG32(&DSI_CMDQ_REG->data[0], 0);
+                
+                if (count > 1)
+                {
+                    t2.CONFG = 2;
+                    t2.Data_ID = data_id;
+                    t2.WC16 = count+1;
+                    
+                    DSI_OUTREG32_R(PDSI_CMDQ,&DSI_CMDQ_REG->data[0], &t2);
+                    
+                    goto_addr = (UINT32)(&DSI_CMDQ_REG->data[1].byte0);
+                    mask_para = (0xFF<<((goto_addr&0x3)*8));
+                    set_para = (cmd<<((goto_addr&0x3)*8));
+                    MASKREG32(goto_addr&(~0x3), mask_para, set_para);
+                    
+                    for(i=0; i<count; i++)
+                    {
+                        goto_addr = (UINT32)(&DSI_CMDQ_REG->data[1].byte1) + i;
+                        mask_para = (0xFF<<((goto_addr&0x3)*8));
+                        set_para = (para_list[i]<<((goto_addr&0x3)*8));
+                        MASKREG32(goto_addr&(~0x3), mask_para, set_para);			
+                    }
+                    
+                    DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, 2+(count)/4);
+                }
+                else
+                {
+                    t0.CONFG = 0;
+                    t0.Data0 = cmd;
+                    if (count)
+                    {
+                        t0.Data_ID = data_id;
+                        t0.Data1 = para_list[0];
+                    }
+                    else
+                    {
+                        t0.Data_ID = data_id;
+                        t0.Data1 = 0;
+                    }
+                    DSI_OUTREG32_R(PDSI_CMDQ,&DSI_CMDQ_REG->data[0], &t0);
+                    DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, 1);
+                }
+                
+                //for (i = 0; i < AS_UINT32(&DSI_REG->DSI_CMDQ_SIZE); i++)
+                //	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "DSI_set_cmdq_V3[%d]. DSI_CMDQ+%04x : 0x%08x\n", index, i*4, INREG32(DSI_BASE + 0x180 + i*4));
+                
+                if(force_update)
+                    DSI_EnableClk();
+            }
+        }
+    } while (++index < size);
 }
 
 void DSI_set_cmdq(unsigned int *pdata, unsigned int queue_size, unsigned char force_update)
 {
-	UINT32 i;
-
-	if (0 != DSI_REG->DSI_MODE_CTRL.MODE){//not in cmd mode
-		DSI_VM_CMD_CON_REG vm_cmdq;
-		OUTREG32(&vm_cmdq, AS_UINT32(&DSI_REG->DSI_VM_CMD_CON));
-		printk("set cmdq in VDO mode\n");
-		if(queue_size > 1){//long packet
-			unsigned int i = 0;
-			vm_cmdq.LONG_PKT = 1;
-			vm_cmdq.CM_DATA_ID = ((pdata[0] >> 8) & 0xFF);
-			vm_cmdq.CM_DATA_0 = ((pdata[0] >> 16) & 0xFF);
-			OUTREG32(&DSI_REG->DSI_VM_CMD_CON, AS_UINT32(&vm_cmdq));
-			for(i=0;i<queue_size-1;i++)
-				OUTREG32(&DSI_VM_CMD_REG->data[i], AS_UINT32((pdata+i+1)));
-		}
-		else{
-			vm_cmdq.LONG_PKT = 0;
-			vm_cmdq.CM_DATA_ID = ((pdata[0] >> 8) & 0xFF);
-			vm_cmdq.CM_DATA_0 = ((pdata[0] >> 16) & 0xFF);
-			vm_cmdq.CM_DATA_1 = ((pdata[0] >> 24) & 0xFF);
-			OUTREG32(&DSI_REG->DSI_VM_CMD_CON, AS_UINT32(&vm_cmdq));
-		}
-		//start DSI VM CMDQ
-		if(force_update){
-			DSI_EnableVM_CMD();
-		}
-	}
-	else{
-	ASSERT(queue_size<=32);
-    DSI_WaitForEngineNotBusy();
-
-    for(i=0; i<queue_size; i++)
-        OUTREG32(&DSI_CMDQ_REG->data[i], AS_UINT32((pdata+i)));
+    UINT32 i;
     
-    OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, queue_size);
+    if (0 != DSI_REG->DSI_MODE_CTRL.MODE){//not in cmd mode
+        DSI_VM_CMD_CON_REG vm_cmdq;
 
-    //for (i = 0; i < queue_size; i++)
-     //   printf("[DISP] - kernel - DSI_set_cmdq. DSI_CMDQ+%04x : 0x%08x\n", i*4, INREG32(DSI_BASE + 0x180 + i*4));
+        DSI_OUTREG32_R(PDSI_VM_CMD_CON_REG, &vm_cmdq, &DSI_REG->DSI_VM_CMD_CON);
+        printk("set cmdq in VDO mode\n");
 
-    if(force_update)
-        DSI_EnableClk();
+        if(queue_size > 1){//long packet
+            unsigned int i = 0;
+
+            vm_cmdq.LONG_PKT = 1;
+            vm_cmdq.CM_DATA_ID = ((pdata[0] >> 8) & 0xFF);
+            vm_cmdq.CM_DATA_0 = ((pdata[0] >> 16) & 0xFF);
+            DSI_OUTREG32_R(PDSI_VM_CMD_CON_REG, &DSI_REG->DSI_VM_CMD_CON, &vm_cmdq);
+            for(i=0;i<queue_size-1;i++)
+                OUTREG32(&DSI_VM_CMD_REG->data[i], AS_UINT32((pdata+i+1)));
+        }
+        else{
+            vm_cmdq.LONG_PKT = 0;
+            vm_cmdq.CM_DATA_ID = ((pdata[0] >> 8) & 0xFF);
+            vm_cmdq.CM_DATA_0 = ((pdata[0] >> 16) & 0xFF);
+            vm_cmdq.CM_DATA_1 = ((pdata[0] >> 24) & 0xFF);
+            DSI_OUTREG32_R(PDSI_VM_CMD_CON_REG, &DSI_REG->DSI_VM_CMD_CON, &vm_cmdq);
+        }
+        //start DSI VM CMDQ
+        if(force_update){
+            DSI_EnableVM_CMD();
+        }
+    }
+    else{
+        ASSERT(queue_size<=32);
+        DSI_WaitForEngineNotBusy();
+        
+        for(i=0; i<queue_size; i++)
+            OUTREG32(&DSI_CMDQ_REG->data[i], AS_UINT32((pdata+i)));
+        
+        DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, queue_size);
+        
+        //for (i = 0; i < queue_size; i++)
+        //   printf("[DISP] - kernel - DSI_set_cmdq. DSI_CMDQ+%04x : 0x%08x\n", i*4, INREG32(DSI_BASE + 0x180 + i*4));
+        
+        if(force_update)
+            DSI_EnableClk();
     }
 }
 
@@ -2559,11 +2616,11 @@ DSI_STATUS DSI_Write_T0_INS(DSI_T0_INS *t0)
 {
     OUTREG32(&DSI_CMDQ_REG->data[0], AS_UINT32(t0));	
 
-	OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, 1);
-	OUTREG32(&DSI_REG->DSI_START, 0);
-	OUTREG32(&DSI_REG->DSI_START, 1);
-
-	return DSI_STATUS_OK;	
+    DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, 1);
+    DSI_OUTREG32_V(PDSI_START_REG,&DSI_REG->DSI_START, 0);
+    DSI_OUTREG32_V(PDSI_START_REG,&DSI_REG->DSI_START, 1);
+    
+    return DSI_STATUS_OK;	
 }
 
 
@@ -2571,40 +2628,40 @@ DSI_STATUS DSI_Write_T1_INS(DSI_T1_INS *t1)
 {
     OUTREG32(&DSI_CMDQ_REG->data[0], AS_UINT32(t1));	
 
-	OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, 1);
-	OUTREG32(&DSI_REG->DSI_START, 0);
-	OUTREG32(&DSI_REG->DSI_START, 1);
-
-	return DSI_STATUS_OK;
+    DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, 1);
+    DSI_OUTREG32_V(PDSI_START_REG,&DSI_REG->DSI_START, 0);
+    DSI_OUTREG32_V(PDSI_START_REG,&DSI_REG->DSI_START, 1);
+    
+    return DSI_STATUS_OK;
 }
 
 
 DSI_STATUS DSI_Write_T2_INS(DSI_T2_INS *t2)
 {
-	unsigned int i;
-	
-	OUTREG32(&DSI_CMDQ_REG->data[0], AS_UINT32(t2));
-
-	for(i=0;i<((t2->WC16-1)>>2)+1;i++)
-	    OUTREG32(&DSI_CMDQ_REG->data[1+i], AS_UINT32((t2->pdata+i)));
-
-	OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, (((t2->WC16-1)>>2)+2));
-	OUTREG32(&DSI_REG->DSI_START, 0);
-	OUTREG32(&DSI_REG->DSI_START, 1);
-
-	return DSI_STATUS_OK;
+    unsigned int i;
+    
+    OUTREG32(&DSI_CMDQ_REG->data[0], AS_UINT32(t2));
+    
+    for(i=0;i<(((unsigned int)t2->WC16-1)>>2)+1;i++)
+        OUTREG32(&DSI_CMDQ_REG->data[1+i], AS_UINT32((t2->pdata+i)));
+    
+    DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, (((t2->WC16-1)>>2)+2));
+    DSI_OUTREG32_V(PDSI_START_REG,&DSI_REG->DSI_START, 0);
+    DSI_OUTREG32_V(PDSI_START_REG,&DSI_REG->DSI_START, 1);
+    
+    return DSI_STATUS_OK;
 }
 
 
 DSI_STATUS DSI_Write_T3_INS(DSI_T3_INS *t3)
 {
     OUTREG32(&DSI_CMDQ_REG->data[0], AS_UINT32(t3));	
-
-	OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, 1);
-	OUTREG32(&DSI_REG->DSI_START, 0);
-	OUTREG32(&DSI_REG->DSI_START, 1);
-
-	return DSI_STATUS_OK;
+    
+    DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, 1);
+    DSI_OUTREG32_V(PDSI_START_REG,&DSI_REG->DSI_START, 0);
+    DSI_OUTREG32_V(PDSI_START_REG,&DSI_REG->DSI_START, 1);
+    
+    return DSI_STATUS_OK;
 }
 
 DSI_STATUS DSI_TXRX_Control(BOOL cksm_en, 
@@ -2636,7 +2693,7 @@ DSI_STATUS DSI_TXRX_Control(BOOL cksm_en,
     tmp_reg.NULL_EN = null_packet_en;
     tmp_reg.MAX_RTN_SIZE = max_return_size;
     tmp_reg.HSTX_CKLP_EN = 0;//need customization???
-    OUTREG32(&DSI_REG->DSI_TXRX_CTRL, AS_UINT32(&tmp_reg));
+    DSI_OUTREG32_R(PDSI_TXRX_CTRL_REG,&DSI_REG->DSI_TXRX_CTRL, &tmp_reg);
 
     return DSI_STATUS_OK;
 }
@@ -2645,7 +2702,6 @@ DSI_STATUS DSI_TXRX_Control(BOOL cksm_en,
 DSI_STATUS DSI_PS_Control(unsigned int ps_type, unsigned int vact_line, unsigned int ps_wc)
 {
     DSI_PSCTRL_REG tmp_reg;
-    UINT32 tmp_hstx_cklp_wc;
     tmp_reg=DSI_REG->DSI_PSCTRL;
     
     ///TODO: parameter checking
@@ -2656,11 +2712,10 @@ DSI_STATUS DSI_PS_Control(unsigned int ps_type, unsigned int vact_line, unsigned
         tmp_reg.DSI_PS_SEL=ps_type;
 
     tmp_reg.DSI_PS_WC=ps_wc;
-    tmp_hstx_cklp_wc = ps_wc;
 
-    OUTREG32(&DSI_REG->DSI_VACT_NL, AS_UINT32(&vact_line));
-    OUTREG32(&DSI_REG->DSI_PSCTRL, AS_UINT32(&tmp_reg));   
-    OUTREG32(&DSI_REG->DSI_HSTX_CKL_WC, tmp_hstx_cklp_wc);
+    DSI_OUTREG32_V(PDSI_VACT_NL_REG,&DSI_REG->DSI_VACT_NL, AS_UINT32(&vact_line));
+    DSI_OUTREG32_R(PDSI_PSCTRL_REG,&DSI_REG->DSI_PSCTRL, &tmp_reg);
+    DSI_OUTREGBIT(DSI_HSTX_CKLP_WC_REG, DSI_REG->DSI_HSTX_CKLP_WC, HSTX_CKLP_WC_AUTO, 1);
 
     return DSI_STATUS_OK;
 }
@@ -2668,55 +2723,55 @@ DSI_STATUS DSI_PS_Control(unsigned int ps_type, unsigned int vact_line, unsigned
 
 void DSI_write_lcm_cmd(unsigned int cmd)
 {
-	DSI_T0_INS *t0_tmp=0;
-	DSI_CMDQ_CONFG CONFG_tmp;
-
-	CONFG_tmp.type=SHORT_PACKET_RW;
-	CONFG_tmp.BTA=DISABLE_BTA;
-	CONFG_tmp.HS=LOW_POWER;
-	CONFG_tmp.CL=CL_8BITS;
-	CONFG_tmp.TE=DISABLE_TE;
-	CONFG_tmp.RPT=DISABLE_RPT;
-
-	t0_tmp->CONFG = *((unsigned char *)(&CONFG_tmp));
-	t0_tmp->Data_ID= (cmd&0xFF);
-	t0_tmp->Data0 = 0x0;
-	t0_tmp->Data1 = 0x0;	
-
-	DSI_Write_T0_INS(t0_tmp);
+    DSI_T0_INS *t0_tmp=0;
+    DSI_CMDQ_CONFG CONFG_tmp;
+    
+    CONFG_tmp.type=SHORT_PACKET_RW;
+    CONFG_tmp.BTA=DISABLE_BTA;
+    CONFG_tmp.HS=LOW_POWER;
+    CONFG_tmp.CL=CL_8BITS;
+    CONFG_tmp.TE=DISABLE_TE;
+    CONFG_tmp.RPT=DISABLE_RPT;
+    
+    t0_tmp->CONFG = *((unsigned char *)(&CONFG_tmp));
+    t0_tmp->Data_ID= (cmd&0xFF);
+    t0_tmp->Data0 = 0x0;
+    t0_tmp->Data1 = 0x0;	
+    
+    DSI_Write_T0_INS(t0_tmp);
 }
 
 
 void DSI_write_lcm_regs(unsigned int addr, unsigned int *para, unsigned int nums)
 {
-	DSI_T2_INS *t2_tmp=0;
-	DSI_CMDQ_CONFG CONFG_tmp;
-
-	CONFG_tmp.type=LONG_PACKET_W;
-	CONFG_tmp.BTA=DISABLE_BTA;
-	CONFG_tmp.HS=LOW_POWER;
-	CONFG_tmp.CL=CL_8BITS;
-	CONFG_tmp.TE=DISABLE_TE;
-	CONFG_tmp.RPT=DISABLE_RPT;
-
-	t2_tmp->CONFG = *((unsigned char *)(&CONFG_tmp));
-	t2_tmp->Data_ID = (addr&0xFF);
-	t2_tmp->WC16 = nums;	
-	t2_tmp->pdata = para;	
-
-	DSI_Write_T2_INS(t2_tmp);
-
+    DSI_T2_INS *t2_tmp=0;
+    DSI_CMDQ_CONFG CONFG_tmp;
+    
+    CONFG_tmp.type=LONG_PACKET_W;
+    CONFG_tmp.BTA=DISABLE_BTA;
+    CONFG_tmp.HS=LOW_POWER;
+    CONFG_tmp.CL=CL_8BITS;
+    CONFG_tmp.TE=DISABLE_TE;
+    CONFG_tmp.RPT=DISABLE_RPT;
+    
+    t2_tmp->CONFG = *((unsigned char *)(&CONFG_tmp));
+    t2_tmp->Data_ID = (addr&0xFF);
+    t2_tmp->WC16 = nums;	
+    t2_tmp->pdata = para;	
+    
+    DSI_Write_T2_INS(t2_tmp);
 }
 
 UINT32 DSI_dcs_read_lcm_reg(UINT8 cmd)
 {
+    UINT32 recv_data  = 0;
+#if 0
     UINT32 max_try_count = 5;
-    UINT32 recv_data;
     UINT32 recv_data_cnt;
     unsigned int read_timeout_ms;
     unsigned char packet_type;
-#if 0
     DSI_T0_INS t0;  
+
 #if ENABLE_DSI_INTERRUPT
     static const long WAIT_TIMEOUT = 2 * HZ;    // 2 sec
     long ret;
@@ -2733,7 +2788,7 @@ UINT32 DSI_dcs_read_lcm_reg(UINT8 cmd)
        max_try_count--;
        recv_data = 0;
        recv_data_cnt = 0;
-       read_timeout_ms = 100;
+       read_timeout_ms = 20;
         
        DSI_WaitForEngineNotBusy();
 
@@ -2902,7 +2957,7 @@ do
        max_try_count--;
 
        recv_data_cnt = 0;
-       read_timeout_ms = 200;  //modified by zhuqiang for PR533582 on 2013.10.10
+       read_timeout_ms = 20;
         
        DSI_WaitForEngineNotBusy();
 
@@ -2914,23 +2969,18 @@ do
            t0.Data_ID = DSI_GERNERIC_READ_LONG_PACKET_ID;
        t0.Data1 = 0;
 
-       OUTREG32(&DSI_CMDQ_REG->data[0], AS_UINT32(&t0));
-       OUTREG32(&DSI_REG->DSI_CMDQ_SIZE, 1);
+       DSI_OUTREG32_R(PDSI_CMDQ,&DSI_CMDQ_REG->data[0], &t0);
+       DSI_OUTREG32_V(PDSI_CMDQ_CTRL_REG,&DSI_REG->DSI_CMDQ_SIZE, 1);
 
        ///clear read ACK 
-       //DSI_REG->DSI_RACK.DSI_RACK = 1;
-       //DSI_REG->DSI_INTSTA.RD_RDY = 1;
-       //DSI_REG->DSI_INTSTA.CMD_DONE = 1;
-       //DSI_REG->DSI_INTEN.RD_RDY =  1;
-       //DSI_REG->DSI_INTEN.CMD_DONE=  1;
-       OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
-       OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,RD_RDY,1);
-       OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,CMD_DONE,1);
-       OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,RD_RDY,1);
-       OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,CMD_DONE,1);
+       DSI_OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
+       DSI_OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,RD_RDY,1);
+       DSI_OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,CMD_DONE,1);
+       DSI_OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,RD_RDY,1);
+       DSI_OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,CMD_DONE,1);
 
-       OUTREG32(&DSI_REG->DSI_START, 0);
-       OUTREG32(&DSI_REG->DSI_START, 1);
+	   DSI_OUTREG32_V(PDSI_START_REG,&DSI_REG->DSI_START, 0);
+	   DSI_OUTREG32_V(PDSI_START_REG,&DSI_REG->DSI_START, 1);
 
        /// the following code is to
        /// 1: wait read ready
@@ -2948,8 +2998,7 @@ do
             DSI_DumpRegisters();
             
             ///do necessary reset here
-            //DSI_REG->DSI_RACK.DSI_RACK = 1;
-            OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
+            DSI_OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
             DSI_Reset();
 
             return 0;
@@ -2970,8 +3019,7 @@ do
                 DSI_DumpRegisters();
 
                 ///do necessary reset here
-                //DSI_REG->DSI_RACK.DSI_RACK = 1;
-                OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
+                DSI_OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
                 DSI_Reset();
                 return 0;
             }
@@ -2980,19 +3028,16 @@ do
         DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", " End polling DSI read ready!!!\n");
     #endif
 
-        //DSI_REG->DSI_RACK.DSI_RACK = 1;
-        OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
+        DSI_OUTREGBIT(DSI_RACK_REG,DSI_REG->DSI_RACK,DSI_RACK,1);
 
        ///clear interrupt status
-       //DSI_REG->DSI_INTSTA.RD_RDY = 1;
-       OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,RD_RDY,1);
+       DSI_OUTREGBIT(DSI_INT_STATUS_REG,DSI_REG->DSI_INTSTA,RD_RDY,1);
        ///STOP DSI
-       OUTREG32(&DSI_REG->DSI_START, 0);
+       DSI_OUTREG32_V(PDSI_START_REG,&DSI_REG->DSI_START, 0);
 
 #endif
-   
-       //DSI_REG->DSI_INTEN.RD_RDY =  0;
-       OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,RD_RDY,1);
+
+       DSI_OUTREGBIT(DSI_INT_ENABLE_REG,DSI_REG->DSI_INTEN,RD_RDY,1);
 
        OUTREG32(&read_data0, AS_UINT32(&DSI_REG->DSI_RX_DATA0));
        OUTREG32(&read_data1, AS_UINT32(&DSI_REG->DSI_RX_DATA1));
@@ -3133,99 +3178,19 @@ DSI_STATUS DSI_enable_MIPI_txio(BOOL en)
 
 BOOL Need_Wait_ULPS(void)
 {
-#ifndef MT65XX_NEW_DISP
-	if(((INREG32(DSI_BASE + 0x14C)>> 24) & 0xFF) != 0x04) {
-
-#ifdef DDI_DRV_DEBUG_LOG_ENABLE
-	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[%s]:true \n", __func__);
-#endif
-		return TRUE;
-
-	} else {
-
-#ifdef DDI_DRV_DEBUG_LOG_ENABLE
-	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[%s]:false \n", __func__);
-#endif
-		return FALSE;
-
-	}
-#endif
+    return FALSE;
 }
 
 
 DSI_STATUS Wait_ULPS_Mode(void)
 {
-#ifndef MT65XX_NEW_DISP
-	DSI_PHY_LCCON_REG lccon_reg=DSI_REG->DSI_PHY_LCCON;
-	DSI_PHY_LD0CON_REG ld0con=DSI_REG->DSI_PHY_LD0CON;
-
-	lccon_reg.LC_ULPM_EN =1;
-	ld0con.L0_ULPM_EN=1;
-	OUTREG32(&DSI_REG->DSI_PHY_LCCON, AS_UINT32(&lccon_reg));
-	OUTREG32(&DSI_REG->DSI_PHY_LD0CON, AS_UINT32(&ld0con));
-
-#ifdef DDI_DRV_DEBUG_LOG_ENABLE
-	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[%s]:enter \n", __func__);
-#endif
-
-	while(((INREG32(DSI_BASE + 0x14C)>> 24) & 0xFF) != 0x04)
-	{
-		lcm_mdelay(5);
-#ifdef DDI_DRV_DEBUG_LOG_ENABLE
-		DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "DSI+%04x : 0x%08x \n", DSI_BASE, INREG32(DSI_BASE + 0x14C));
-#endif
-	}
-
-#ifdef DDI_DRV_DEBUG_LOG_ENABLE
-	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[%s]:exit \n", __func__);
-#endif
-#endif
-	return DSI_STATUS_OK;
-
+    return DSI_STATUS_OK;
 }
 
 
 DSI_STATUS Wait_WakeUp(void)
 {
-#ifndef MT65XX_NEW_DISP
-	DSI_PHY_LCCON_REG lccon_reg=DSI_REG->DSI_PHY_LCCON;
-	DSI_PHY_LD0CON_REG ld0con=DSI_REG->DSI_PHY_LD0CON;
-
-#ifdef DDI_DRV_DEBUG_LOG_ENABLE
-		DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[%s]:enter \n", __func__);
-#endif
-
-	lccon_reg.LC_ULPM_EN =0;
-	ld0con.L0_ULPM_EN=0;
-	OUTREG32(&DSI_REG->DSI_PHY_LCCON, AS_UINT32(&lccon_reg));
-	OUTREG32(&DSI_REG->DSI_PHY_LD0CON, AS_UINT32(&ld0con));
-
-	lcm_mdelay(1);//Wait 1ms for LCM Spec
-
-	lccon_reg.LC_WAKEUP_EN =1;
-	ld0con.L0_WAKEUP_EN=1;
-	OUTREG32(&DSI_REG->DSI_PHY_LCCON, AS_UINT32(&lccon_reg));
-	OUTREG32(&DSI_REG->DSI_PHY_LD0CON, AS_UINT32(&ld0con));
-
-	while(((INREG32(DSI_BASE + 0x148)>> 8) & 0xFF) != 0x01)
-	{
-		lcm_mdelay(5);
-#ifdef DDI_DRV_DEBUG_LOG_ENABLE
-		DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[soso]DSI+%04x : 0x%08x \n", DSI_BASE, INREG32(DSI_BASE + 0x148));
-#endif
-	}
-
-#ifdef DDI_DRV_DEBUG_LOG_ENABLE
-	DISP_LOG_PRINT(ANDROID_LOG_INFO, "DSI", "[%s]:exit \n", __func__);
-#endif
-
-	lccon_reg.LC_WAKEUP_EN =0;
-	ld0con.L0_WAKEUP_EN=0;
-	OUTREG32(&DSI_REG->DSI_PHY_LCCON, AS_UINT32(&lccon_reg));
-	OUTREG32(&DSI_REG->DSI_PHY_LD0CON, AS_UINT32(&ld0con));
-#endif
 	return DSI_STATUS_OK;
-
 }
 
 // -------------------- Retrieve Information --------------------

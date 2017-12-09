@@ -52,21 +52,38 @@
 #define slp_xerror(fmt, args...)    \
     xlog_printk(ANDROID_LOG_ERROR, "Power/Sleep", fmt, ##args)
 
-static DEFINE_SPINLOCK(slp_lock);
+//static DEFINE_SPINLOCK(slp_lock);
 
 static wake_reason_t slp_wake_reason;
 
 extern SPM_PCM_CONFIG pcm_config_suspend;
 
-static bool slp_ck26m_on = false;
+//static bool slp_ck26m_on = false;
 
 static bool slp_dump_gpio = 0;
 static bool slp_dump_regs = 1;
 
-/* Sleep Mode Test*/
-static int slp_test_mode = 0; /*0: Legacy Mode, 1: Shui down mode*/
-static int slp_min_time = 0;
-static int slp_max_time = 0;
+extern kal_int32 get_dynamic_period(int first_use, int first_wakeup_time, int battery_capacity_level);
+
+static u32 spm_get_wake_period(wake_reason_t last_wr)
+{
+    int period;
+ 
+    /* battery decreases 1% */
+    period = get_dynamic_period(!!(last_wr != WR_PCM_TIMER), 600, 1);
+    if (period <= 1) 
+    {
+        spm_error("!!! CANNOT GET PERIOD FROM FUEL GAUGE !!!\n");
+        period = 600;
+    }
+    else if (period > 36 * 3600)
+    {    /* max period is 36.4 hours */
+        period = 36 * 3600;
+    }
+
+    return period;
+}
+
 
 static int slp_suspend_ops_valid(suspend_state_t state)
 {
@@ -109,7 +126,7 @@ extern void gpiodbg_emi_dbg_out(void);
 static int slp_suspend_ops_enter(suspend_state_t state)
 {
    const char *result;
-    int gpt_err,timer_val_ms=0;
+    int gpt_err;
 
     /* check MM & MFG MTCMOS status */
     if (   PWR_ON == subsys_is_on(SYS_DIS)
@@ -118,7 +135,7 @@ static int slp_suspend_ops_enter(suspend_state_t state)
     {
         slp_xerror("WARNING: MMSYS_CG_CON0 = 0x%08X, MMSYS_CG_CON1 = 0x%08X, MFG_CG_CON = 0x%08X\n", spm_read(MMSYS_CG_CON0), spm_read(MMSYS_CG_CON1), spm_read(MFG_CG_CON));
     }
-
+   
     /* legacy log */
     aee_sram_printk("_Chip_pm_enter\n");
     slp_xinfo("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
@@ -134,10 +151,10 @@ static int slp_suspend_ops_enter(suspend_state_t state)
     if (pcm_config_suspend.cpu_pdn && !spm_cpusys_can_power_down()) {
         slp_xerror("!!! CANNOT POWER DOWN CPU0/CPUSYS DUE TO CPUx ON !!!\n");
     }
-
-    /*Output emi clock to check if PLL is off when suspend(output to LP09)*/
+    
+    /*Output emi clock to check if PLL is off when suspend(output to LP09)*/ 
     //gpiodbg_emi_dbg_out();
-
+    
 #if defined( LDVT_SPM_SUSPEND_STRESS_TEST)
 
     for(slp_test_cnt=0;;slp_test_cnt++)
@@ -145,7 +162,7 @@ static int slp_suspend_ops_enter(suspend_state_t state)
         timer_val_ms+=15;
         if(timer_val_ms >= 3000)
           timer_val_ms=15;
-
+ 
         #ifdef LDVT_SPM_SUSPEND_GPT_TEST
             slp_xinfo("slp_test_cnt:%d,GPT timer:%d",slp_test_cnt,timer_val_ms);
             spm_wakesrc_set(SPM_PCM_KERNEL_SUSPEND,WAKE_ID_GPT);
@@ -154,7 +171,7 @@ static int slp_suspend_ops_enter(suspend_state_t state)
             gpt_err=request_gpt(GPT4, GPT_ONE_SHOT, GPT_CLK_SRC_RTC, GPT_CLK_DIV_1, (timer_val_ms * 32768)/1024, NULL, GPT_NOAUTOEN);
             if(gpt_err){
                  slp_xinfo("GPT 4 Request Error!!");
-                 return;
+                 return;        
             }
             start_gpt(GPT4);
             slp_wake_reason = spm_go_to_sleep();
@@ -166,16 +183,16 @@ static int slp_suspend_ops_enter(suspend_state_t state)
             #else
                 pcm_config_suspend.timer_val_ms=timer_val_ms;
             #endif
-
+            
             slp_xinfo("slp_test_cnt:%d,PCM timer:%d",slp_test_cnt,pcm_config_suspend.timer_val_ms);
-
+                            
             slp_wake_reason = spm_go_to_sleep();
         #endif
-
+       
 
         slp_wakeup_status= spm_get_last_wakeup_status();
         result = spm_get_wake_up_result(SPM_PCM_KERNEL_SUSPEND);
-
+        
          if(slp_wake_reason != WR_WAKE_SRC && slp_wake_reason != WR_PCM_TIMER){
             slp_xinfo("Wakeup Abnormal");
             slp_xinfo("%s",result);
@@ -183,7 +200,7 @@ static int slp_suspend_ops_enter(suspend_state_t state)
          }
          else{
             slp_xinfo("Wakeup Succefully");
-            slp_xinfo("%s",result);
+            slp_xinfo("%s",result);  
             slp_normal_cnt++;
           }
           slp_xinfo("slp_abort_cnt:%d,PCM slp_normal_cnt:%d",slp_abort_cnt,slp_normal_cnt);
@@ -197,21 +214,24 @@ static int slp_suspend_ops_enter(suspend_state_t state)
     pcm_config_suspend.timer_val_ms+=1;
     if(pcm_config_suspend.timer_val_ms >= 100)
       pcm_config_suspend.timer_val_ms=1;
-
+      
     slp_xinfo("slp_test_cnt:%d,PCM timer:%d",slp_test_cnt,pcm_config_suspend.timer_val_ms);
-    slp_xinfo("slp_abort_cnt:%d,PCM slp_normal_cnt:%d",slp_abort_cnt,slp_normal_cnt);
+    slp_xinfo("slp_abort_cnt:%d,PCM slp_normal_cnt:%d",slp_abort_cnt,slp_normal_cnt);     
 #endif
 
    spm_wakesrc_set(SPM_PCM_KERNEL_SUSPEND,WAKE_ID_GPT);
-  // spm_timer_disable(SPM_PCM_KERNEL_SUSPEND);
-  //pcm_config_suspend.timer_val_ms = 10000;
+  
+  /* If Fuel Guage is enabled */
+  if(pcm_config_suspend.reserved & SPM_SUSPEND_GET_FGUAGE)
+      pcm_config_suspend.timer_val_ms = spm_get_wake_period(WR_NONE)*1000;
+  
   if(pcm_config_suspend.timer_val_ms)
   {
     free_gpt(GPT4);//temp solution
     gpt_err=request_gpt(GPT4, GPT_ONE_SHOT, GPT_CLK_SRC_RTC, GPT_CLK_DIV_1, (pcm_config_suspend.timer_val_ms * 32768)/1024, NULL, GPT_NOAUTOEN);
     if(gpt_err){
                  slp_xinfo("GPT 4 Request Error!!");
-                 return;
+                 return 0;        
             }
     start_gpt(GPT4);
   }
@@ -225,7 +245,7 @@ static int slp_suspend_ops_enter(suspend_state_t state)
         spm_wdt_restart();
     }
 #endif
-
+    
     slp_wake_reason = spm_go_to_sleep();
     slp_wakeup_status= spm_get_last_wakeup_status();
     result = spm_get_wake_up_result(SPM_PCM_KERNEL_SUSPEND);
@@ -237,9 +257,9 @@ static int slp_suspend_ops_enter(suspend_state_t state)
     else{
        slp_normal_cnt++;
      }
-
+     
      slp_xinfo("slp_abort_cnt:%d,slp_normal_cnt:%d",slp_abort_cnt,slp_normal_cnt);
-
+     slp_xinfo("slp_wake_reason: %d",slp_wake_reason);
     return 0;
 }
 
@@ -250,7 +270,7 @@ static void slp_suspend_ops_finish(void)
     slp_xinfo("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
     slp_xinfo("_Chip_pm_finish @@@@@@@@@@@@@@@@@@@@@\n");
     slp_xinfo(" @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-
+    
     /* debug help */
     //slp_xinfo("Battery_Voltage = %lu\n", BAT_Get_Battery_Voltage(0));
 }

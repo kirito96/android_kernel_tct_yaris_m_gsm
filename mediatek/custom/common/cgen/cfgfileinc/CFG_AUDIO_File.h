@@ -1,5 +1,64 @@
-
-
+/*******************************************************************************
+ *
+ * Filename:
+ * ---------
+ * cfg_audio_file.h
+ *
+ * Project:
+ * --------
+ *   DUMA
+ *
+ * Description:
+ * ------------
+ * This file is the header of audio customization related function or definition.
+ *
+ * Author:
+ * -------
+ * Ning.F
+ *
+ *============================================================================
+ *             HISTORY
+ * Below this line, this part is controlled by CC/CQ. DO NOT MODIFY!!
+ *------------------------------------------------------------------------------
+ * $Revision:$
+ * $Modtime:$
+ * $Log:$
+ *
+ * 12 29 2012 donglei.ji
+ * [ALPS00425279] [Need Patch] [Volunteer Patch] voice ui and password unlock feature check in
+ * voice ui - NVRAM .
+ *
+ * 08 26 2012 weiguo.li
+ * [ALPS00347285] [Need Patch] [Volunteer Patch]LGE AudioGainTable modification
+ * .
+ *
+ * 07 29 2012 weiguo.li
+ * [ALPS00319405] ALPS.JB.BSP.PRA check in CR for Jades
+ * .
+ *
+ * Jun 22 2009 mtk01352
+ * [DUMA00007771] Moving modem side customization to AP
+ *
+ *
+ * Apr 29 2009 mtk80306
+ * [DUMA00116080] revise the customization of nvram
+ * revise nvram customization
+ *
+ * Mar 21 2009 mtk80306
+ * [DUMA00112158] fix the code convention.
+ * modify code convention
+ *
+ * Mar 9 2009 mtk80306
+ * [DUMA00111088] nvram customization
+ * nvram customization
+ *
+ *
+ *
+ *
+ *------------------------------------------------------------------------------
+ * Upper this line, this part is controlled by CC/CQ. DO NOT MODIFY!!
+ *============================================================================
+ ****************************************************************************/
 #ifndef _CFG_AUDIO_FILE_H
 #define _CFG_AUDIO_FILE_H
 
@@ -17,7 +76,14 @@
 #define WB_FIR_INDEX_NUM   (6)
 
 #define HD_REC_MODE_INDEX_NUM   (30)
+
+#if defined(MTK_AUDIO_BLOUD_CUSTOMPARAMETER_V3) //for old version
+#define HD_REC_FIR_INDEX_NUM    (8)
+#else
 #define HD_REC_FIR_INDEX_NUM    (16)	//extend 8-->16
+#endif
+
+#define VOIP_INDEX_NUM   (4)
 
 // for voice ui feature
 #define VOICE_FOLDER_NAME_LEN_MAX 32
@@ -126,14 +192,34 @@ enum VOLUME_EXTAMP_TYPE {
 #define     NUM_ABF_PARAM 44
 #define     NUM_ABFWB_PARAM 76
 
+//DMNR calibration data
 typedef struct _AUDIO_CUSTOM_EXTRA_PARAM_STRUCT
 {
-    /* ABF parameters */
-    unsigned short ABF_para[NUM_ABF_PARAM + NUM_ABFWB_PARAM];    //with WB
+	/* ABF parameters */
+	unsigned short ABF_para[NUM_ABF_PARAM + NUM_ABFWB_PARAM];	 //in-call DMNR normal mode with WB
+	unsigned short ABF_para_LoudSPK[NUM_ABF_PARAM + NUM_ABFWB_PARAM];	 //in-call DMNR loud speaker mode with WB
+	unsigned short ABF_para_VR[NUM_ABFWB_PARAM];	//VR DMNR, only WB
+	unsigned short ABF_para_VOIP[NUM_ABFWB_PARAM];	  //VoIP normal mode DMNR, only WB
+	unsigned short ABF_para_VOIP_LoudSPK[NUM_ABFWB_PARAM];	  //VoIP loud speaker mode DMNR, only WB
 } AUDIO_CUSTOM_EXTRA_PARAM_STRUCT;
+
 
 #define CFG_FILE_SPEECH_DUAL_MIC_SIZE    sizeof(AUDIO_CUSTOM_EXTRA_PARAM_STRUCT)
 #define CFG_FILE_SPEECH_DUAL_MIC_TOTAL   1
+
+#define NUM_ANC_PARAM 60
+
+typedef struct _AUDIO_ANC_CUSTOM_PARAM_STRUCT
+{
+   unsigned short ANC_para[NUM_ANC_PARAM];
+   unsigned short ANC_apply;
+   unsigned short ANC_log;
+   unsigned short ANC_log_downsample;
+   unsigned char ANC_dl_pga;
+} AUDIO_ANC_CUSTOM_PARAM_STRUCT;
+
+#define CFG_FILE_SPEECH_ANC_SIZE    sizeof(AUDIO_ANC_CUSTOM_PARAM_STRUCT)
+#define CFG_FILE_SPEECH_ANC_TOTAL 1
 
 typedef struct _AUDIO_CUSTOM_PARAM_STRUCT
 {
@@ -195,7 +281,51 @@ typedef struct _AUDIO_CUSTOM_WB_PARAM_STRUCT
 #define CFG_FILE_WB_SPEECH_REC_SIZE        sizeof(AUDIO_CUSTOM_WB_PARAM_STRUCT)
 #define CFG_FILE_WB_SPEECH_REC_TOTAL   1
 
-#if 1//defined(MTK_AUDIO_BLOUD_CUSTOMPARAMETER_V4)
+#if defined(MTK_AUDIO_BLOUD_CUSTOMPARAMETER_V5)
+typedef struct _AUDIO_ACF_CUSTOM_PARAM_STRUCT
+{
+    unsigned int bes_loudness_hsf_coeff_L[2][9][5];     // Compensation Filter HSF coeffs	[9][4]->[2][9][5]
+    unsigned int bes_loudness_bpf_coeff_L[8][6][3];  // Compensation Filter BPF coeffs	[4][6][3]->[6][6][3]->[8][6][3]
+    unsigned int bes_loudness_lpf_coeff_L[6][3];
+
+    unsigned int bes_loudness_hsf_coeff_R[2][9][5];     // Compensation Filter HSF coeffs	[9][4]->[2][9][5]
+    unsigned int bes_loudness_bpf_coeff_R[8][6][3];  // Compensation Filter BPF coeffs	[4][6][3]->[6][6][3]->[8][6][3]
+    unsigned int bes_loudness_lpf_coeff_R[6][3];
+
+    unsigned int bes_loudness_WS_Gain_Max;       // Q2.14
+    unsigned int bes_loudness_WS_Gain_Min;       // Q2.14
+    unsigned int bes_loudness_Filter_First;      // 0: DRC First, 1: Filter First
+    unsigned int bes_loudness_Sep_LR_Filter;    // 0: Use same filter for both L / R,  // 1: Separate L / R filter
+
+    unsigned int bes_loudness_Num_Bands;         // range: 1 ~ 8
+    unsigned int bes_loudness_Flt_Bank_Order;    // range: 3, 5, 7
+    unsigned int bes_loudness_Cross_Freq[7];     // unit: Hz
+    int bes_loudness_DRC_Th[8][5];               // Q24.8, unit: dB
+    int bes_loudness_DRC_Gn[8][5];               // Q24.8, unit: dB
+    int bes_loudness_SB_Gn[8];                   // Q24.8, unit: dB
+    unsigned int bes_loudness_SB_Mode[8];        // 0: makeup gain, 1: subband limiter,
+                                                 // 2: bypass, 3: mute
+    unsigned int bes_loudness_DRC_Delay;
+    unsigned int bes_loudness_Att_Time[8][6];    // unit: 0.1 ms / 6dB
+    unsigned int bes_loudness_Rel_Time[8][6];    // unit: 0.1 ms / 6dB
+    int bes_loudness_Hyst_Th[8][6];              // Q24.8, unit: dB
+    int bes_loudness_Lim_Th;
+    int bes_loudness_Lim_Gn;
+    unsigned int bes_loudness_Lim_Const;
+    unsigned int bes_loudness_Lim_Delay;
+    
+    /*
+    unsigned int bes_loudness_WS_Gain_Max;
+    unsigned int bes_loudness_WS_Gain_Min;
+    unsigned int bes_loudness_Filter_First;
+	unsigned int bes_loudness_Att_Time;		// unit: 0.1 ms / 6dB
+	unsigned int bes_loudness_Rel_Time;		// unit: 0.1 ms / 6dB
+    char bes_loudness_Gain_Map_In[5];
+    char bes_loudness_Gain_Map_Out[5];
+    */
+} AUDIO_ACF_CUSTOM_PARAM_STRUCT;
+
+#elif defined(MTK_AUDIO_BLOUD_CUSTOMPARAMETER_V4)
 typedef struct _AUDIO_ACF_CUSTOM_PARAM_STRUCT
 {
     unsigned int bes_loudness_hsf_coeff[2][9][5];     // Compensation Filter HSF coeffs	[9][4]->[2][9][5]
@@ -228,11 +358,17 @@ typedef struct _AUDIO_ACF_CUSTOM_PARAM_STRUCT
 
 } AUDIO_ACF_CUSTOM_PARAM_STRUCT;
 #endif
+/*
+*/
 #define CFG_FILE_AUDIO_COMPFLT_REC_SIZE        sizeof(AUDIO_ACF_CUSTOM_PARAM_STRUCT)
 #define CFG_FILE_AUDIO_COMPFLT_REC_TOTAL   1
 #define CFG_FILE_HEADPHONE_COMPFLT_REC_TOTAL   1
-/*porting for ALPS00712639(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P18)*/
 #define CFG_FILE_VIBSPK_COMPFLT_REC_TOTAL   1
+#define CFG_FILE_AUDIOSUB_COMPFLT_REC_TOTAL   1
+#define CFG_FILE_MUSICDRC_COMPFLT_REC_TOTAL   1
+#define CFG_FILE_RINGTONEDRC_COMPFLT_REC_TOTAL   1
+
+
 
 typedef struct _AUDIO_EFFECT_CUSTOM_PARAM_STRUCT
 {
@@ -320,6 +456,10 @@ typedef struct _AUDIO_VER1_CUSTOM_VOLUME_STRUCT {
 #define CFG_FILE_AUDIO_VER1_VOLUME_CUSTOM_REC_TOTAL   1
 
 
+
+/********************************************************************
+*   Audio Gain Table
+*********************************************************************/
 #define GAIN_TABLE_LEVEL (20)
 
 #define VOICE_GAIN_TABLE_LEVEL (6+1)
@@ -355,6 +495,7 @@ enum AUDIO_GAIN_TYPE {
 	AUDIO_GAIN_MIC              = 11,
 	AUDIO_GAIN_SIDETONE         = 12,
 	AUDIO_GAIN_SPEECH           = 13,
+	AUDIO_GAIN_SPEECHWB         = 14,
     NUM_AUDIO_GAIN_TYPES
 };
 
@@ -376,8 +517,12 @@ enum MICROPHONE_DEVICEGAIN{
     GAIN_VOIP_HEADSET,
     GAIN_VOIP_SPEAKER,
     GAIN_FM_RECORDING,
-    GAIN_TTY_DEVICE,
-    GAIN_VOICE_RECOGNITION,
+    GAIN_VOICE_RECOGNITION_RECEIVER,
+    GAIN_VOICE_RECOGNITION_HEADSET,
+    GAIN_INCALL_WB_RECEIVER,
+    GAIN_INCALL_WB_HEADSET, 
+    GAIN_INCALL_WB_SPEAKER,
+    GAIN_MIC_RESOLVED, //resolved for tty
     NUM_OF_MICGAINS
 };
 
@@ -452,6 +597,7 @@ typedef struct _AUDIO_GAIN_TABLE_STRUCT
     STREAM_MICROPHONE_GAIN_CONTROL_STRUCT microphoneGain;
     STREAM_SIDETONE_GAIN_CONTROL_STRUCT sidetoneGain;
     STREAM_SPEECH_GAIN_CONTROL_STRUCT speechGain;
+    STREAM_SPEECH_GAIN_CONTROL_STRUCT speechGainWB;
 } AUDIO_GAIN_TABLE_STRUCT;
 
 #define CFG_FILE_AUDIO_GAIN_TABLE_CUSTOM_REC_SIZE        sizeof(AUDIO_GAIN_TABLE_STRUCT)
@@ -575,6 +721,32 @@ typedef struct _AUDIO_BUFFER_DC_CALIBRATION_STRUCT
 
 #define CFG_FILE_AUDIO_BUFFER_DC_CALIBRATION_PAR_SIZE   sizeof(AUDIO_BUFFER_DC_CALIBRATION_STRUCT)
 #define CFG_FILE_AUDIO_BUFFER_DC_CALIBRATION_PAR_TOTAL  1
+
+
+enum AUDIO_VOIP_DEVICE_TYPE {
+	AUDIO_VOIP_DEVICE_NORMAL	= 0,	//path receiver
+	AUDIO_VOIP_DEVICE_SPEAKER	= 1,
+	AUDIO_VOIP_DEVICE_HEADSET	= 2,
+	AUDIO_VOIP_DEVICE_BT		= 3,
+    NUM_AUDIO_VOIP_DEVICE		= VOIP_INDEX_NUM
+};
+
+typedef struct _AUDIO_VOIP_PARAM_STRUCT
+{
+    /* speech enhancement param */
+    unsigned short speech_common_para[SPEECH_COMMON_NUM];	//normal/Loud speaker/headser/BT
+    unsigned short speech_mode_para[VOIP_INDEX_NUM][SPEECH_PARA_NUM];   //normal/Loud speaker/headser/BT 
+    
+    /* speech input FIR */
+    short	in_fir[VOIP_INDEX_NUM][WB_FIR_NUM];	//normal/Loud speaker/headser/BT
+    /* speech output FIR */
+    short	out_fir[VOIP_INDEX_NUM][WB_FIR_NUM];	//normal/Loud speaker/headser/BT
+
+} AUDIO_VOIP_PARAM_STRUCT;
+
+
+#define CFG_FILE_AUDIO_VOIP_PAR_SIZE   sizeof(AUDIO_VOIP_PARAM_STRUCT)
+#define CFG_FILE_AUDIO_VOIP_PAR_TOTAL  1
 
 #endif // _CFG_AUDIO_FILE_H
 

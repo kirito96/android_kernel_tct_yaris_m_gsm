@@ -39,7 +39,10 @@ const char *g_btm_op_name[]={
 	    "STP_OPID_BTM_FULL_DUMP",
 	    "STP_OPID_BTM_PAGED_TRACE",
 	    "STP_OPID_BTM_FORCE_FW_ASSERT",
-	    "STP_OPID_BTM_EXIT"
+#if CFG_WMT_LTE_COEX_HANDLING
+	    "STP_OPID_BTM_WMT_LTE_COEX",
+#endif
+		"STP_OPID_BTM_EXIT"
     };
 
 #if 0
@@ -180,23 +183,8 @@ static INT32 _stp_btm_put_dump_to_aee(void)
     return ret;
 }
 
-static INT32 _stp_set_host_dump_state(ENUM_HOST_DUMP_STATE state)
-{
-	UINT8 * p_virtual_addr = NULL;
 
-	p_virtual_addr = wmt_plat_get_emi_ctrl_state_base_add(EXP_APMEM_CTRL_HOST_SYNC_STATE);
-	if(!p_virtual_addr)
-	{
-		STP_BTM_ERR_FUNC("get virtual address fail\n");
-		return -1;
-	}
-
-	CONSYS_REG_WRITE(p_virtual_addr, state);
-
-	return 0;
-}
-
-
+#if 0
 INT32 _stp_trigger_firmware_assert_via_emi(VOID)
 {
 	UINT8 * p_virtual_addr = NULL;
@@ -205,7 +193,7 @@ INT32 _stp_trigger_firmware_assert_via_emi(VOID)
 	
     do {        
         STP_BTM_INFO_FUNC("[Force Assert] stp_trigger_firmware_assert_via_emi -->\n");
-    	p_virtual_addr = wmt_plat_get_emi_ctrl_state_base_add(EXP_APMEM_CTRL_HOST_OUTBAND_ASSERT_W1);
+    	p_virtual_addr = wmt_plat_get_emi_virt_add(EXP_APMEM_CTRL_HOST_OUTBAND_ASSERT_W1);
     	if(!p_virtual_addr)
     	{
     		STP_BTM_ERR_FUNC("get virtual address fail\n");
@@ -216,7 +204,7 @@ INT32 _stp_trigger_firmware_assert_via_emi(VOID)
         STP_BTM_INFO_FUNC("[Force Assert] stp_trigger_firmware_assert_via_emi <--\n");
 #if 1
         //wait for firmware assert 
-        osal_msleep(50); 
+        osal_sleep_ms(50); 
         //if firmware is not assert self, host driver helps it.
         do
         {
@@ -228,7 +216,7 @@ INT32 _stp_trigger_firmware_assert_via_emi(VOID)
             mtk_wcn_stp_wakeup_consys();
             STP_BTM_INFO_FUNC("[Force Assert] wakeup consys (%d)\n", i);
             stp_dbg_poll_cpupcr(5 , 1 , 1);
-            osal_msleep(5);
+            osal_sleep_ms(5);
 
 			i++;
             if(i > 20){
@@ -252,50 +240,34 @@ INT32 _stp_trigger_firmware_assert_via_emi(VOID)
     
     return status;
 }
-
-static INT32 _stp_update_host_sync_num(VOID)
+#else
+INT32 _stp_trigger_firmware_assert_via_emi(VOID)
 {
-	UINT8 * p_virtual_addr = NULL;
-	UINT32 sync_num = 0;
-	
-	p_virtual_addr = wmt_plat_get_emi_ctrl_state_base_add(EXP_APMEM_CTRL_HOST_SYNC_NUM);
-	if(!p_virtual_addr)
-	{
-		STP_BTM_ERR_FUNC("get virtual address fail\n");
-		return -1;
-	}
+    INT32 status = -1;
+	INT32 j = 0;
 
-	sync_num = CONSYS_REG_READ(p_virtual_addr);
-	CONSYS_REG_WRITE(p_virtual_addr, sync_num + 1);
+	wmt_plat_force_trigger_assert(STP_FORCE_TRG_ASSERT_DEBUG_PIN);
 
-	return 0;
+	do {  
+        if(0 != mtk_wcn_stp_coredump_start_get()){
+            status = 0;
+            break;
+        }
+		
+		stp_dbg_poll_cpupcr(5 , 1 , 1);
+		j++;
+		STP_BTM_INFO_FUNC("Wait for assert message (%d)\n", j);
+		osal_sleep_ms(20); 
+        if(j > 24) 
+            break;   
+
+    } while(1);
+    
+    return status;
 }
-static INT32 _stp_get_dump_info(ENUM_EMI_CTRL_STATE_OFFSET offset)
-{
-	UINT8 * p_virtual_addr = NULL;
+#endif
 
-	p_virtual_addr = wmt_plat_get_emi_ctrl_state_base_add(offset);
-	if(!p_virtual_addr)
-	{
-		STP_BTM_ERR_FUNC("get virtual address fail\n");
-		return -1;
-	}
 
-	return CONSYS_REG_READ(p_virtual_addr);
-}
-static INT32 _stp_set_dump_info(ENUM_EMI_CTRL_STATE_OFFSET offset,UINT32 value)
-{
-	UINT8 * p_virtual_addr = NULL;
-
-	p_virtual_addr = wmt_plat_get_emi_ctrl_state_base_add(offset);
-	if(!p_virtual_addr)
-	{
-		STP_BTM_ERR_FUNC("get virtual address fail\n");
-		return -1;
-	}
-	CONSYS_REG_WRITE(p_virtual_addr,value);
-	return 0;
-}
 
 #define COMBO_DUMP2AEE
 #if 1
@@ -407,7 +379,7 @@ static INT32 _stp_btm_handler(MTKSTP_BTM_T *stp_btm, P_STP_BTM_OP pStpOp)
 		g_paged_dump_len = 0;
 		issue_type = STP_FW_ASSERT_ISSUE;
 		
-		_stp_set_host_dump_state(STP_HOST_DUMP_NOT_START);
+		wmt_plat_set_host_dump_state(STP_HOST_DUMP_NOT_START);
 		page_counter = 0;
 		do{
 			UINT32 loop_cnt1 = 0;
@@ -418,13 +390,17 @@ static INT32 _stp_btm_handler(MTKSTP_BTM_T *stp_btm, P_STP_BTM_OP pStpOp)
 			UINT8 *dump_vir_addr = NULL;
 			UINT32 dump_len = 0;
 			UINT32 isEnd = 0;
-			
-			host_state = (ENUM_HOST_DUMP_STATE)_stp_get_dump_info(EXP_APMEM_CTRL_HOST_SYNC_STATE);
+			P_CONSYS_EMI_ADDR_INFO p_emi_ctrl_state_info;
+
+			p_emi_ctrl_state_info = wmt_plat_get_emi_phy_add();
+			osal_assert(p_emi_ctrl_state_info);
+
+			host_state = (ENUM_HOST_DUMP_STATE)wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_host_sync_state);
 			if(STP_HOST_DUMP_NOT_START == host_state)
 			{
 				counter++;
 				STP_BTM_INFO_FUNC("counter(%d)\n",counter);
-				osal_msleep(100);
+				osal_sleep_ms(100);
 			}
 			else
 			{
@@ -432,7 +408,7 @@ static INT32 _stp_btm_handler(MTKSTP_BTM_T *stp_btm, P_STP_BTM_OP pStpOp)
 			}
 			while(1)
 			{
-				chip_state = (ENUM_CHIP_DUMP_STATE)_stp_get_dump_info(EXP_APMEM_CTRL_CHIP_SYNC_STATE);
+				chip_state = (ENUM_CHIP_DUMP_STATE)wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_chip_sync_state);
 				if(STP_CHIP_DUMP_PUT_DONE == chip_state){
                     STP_BTM_INFO_FUNC("chip put done\n");
                     break;
@@ -441,16 +417,16 @@ static INT32 _stp_btm_handler(MTKSTP_BTM_T *stp_btm, P_STP_BTM_OP pStpOp)
 				{
 				    STP_BTM_INFO_FUNC("waiting chip put done\n");
 					loop_cnt1 ++;
-					osal_msleep(5);
+					osal_sleep_ms(5);
 				}
 				if(loop_cnt1 > 10)
 					goto paged_dump_end;
 				
 			}
 
-			_stp_set_host_dump_state(STP_HOST_DUMP_GET);
+			wmt_plat_set_host_dump_state(STP_HOST_DUMP_GET);
 
-			dump_phy_addr = _stp_get_dump_info(EXP_APMEM_CTRL_CHIP_SYNC_ADDR);
+			dump_phy_addr = wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_chip_sync_addr);
 			
 			if(!dump_phy_addr)
 			{
@@ -459,14 +435,14 @@ static INT32 _stp_btm_handler(MTKSTP_BTM_T *stp_btm, P_STP_BTM_OP pStpOp)
 				break;
 			}
 
-			dump_vir_addr = wmt_plat_get_emi_ctrl_state_base_add(dump_phy_addr - CONSYS_EMI_FW_PHY_BASE);
+			dump_vir_addr = wmt_plat_get_emi_virt_add(dump_phy_addr - p_emi_ctrl_state_info->emi_phy_addr);
 			if(!dump_vir_addr)
 			{
 				STP_BTM_ERR_FUNC("get paged dump phy address fail\n");
 				ret = -2;
 				break;
 			}
-			dump_len = _stp_get_dump_info(EXP_APMEM_CTRL_CHIP_SYNC_LEN);
+			dump_len = wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_chip_sync_len);
 			STP_BTM_INFO_FUNC("dump_phy_ddr(%08x),dump_vir_add(0x%p),dump_len(%d)\n",dump_phy_addr,dump_vir_addr,dump_len);
 
 			/*move dump info according to dump_addr & dump_len*/
@@ -476,10 +452,14 @@ static INT32 _stp_btm_handler(MTKSTP_BTM_T *stp_btm, P_STP_BTM_OP pStpOp)
 
 			if(0 == page_counter)//do fw assert infor paser in first paged dump
 			{
+				if(1 == stp_dbg_get_host_trigger_assert())
+				{
+					issue_type = STP_HOST_TRIGGER_FW_ASSERT;
+				}
 				ret = stp_dbg_set_fw_info(&g_paged_dump_buffer[0],512,issue_type);
 				if(ret)
 				{
-					WMT_ERR_FUNC("set fw issue infor fail(%d),maybe fw warm reset...\n",ret);
+					STP_BTM_ERR_FUNC("set fw issue infor fail(%d),maybe fw warm reset...\n",ret);
 					stp_dbg_set_fw_info("Fw Warm reset",osal_strlen("Fw Warm reset"),STP_FW_WARM_RST_ISSUE);
 				}
 			}
@@ -500,23 +480,23 @@ static INT32 _stp_btm_handler(MTKSTP_BTM_T *stp_btm, P_STP_BTM_OP pStpOp)
             g_paged_dump_len += dump_len;
 			STP_BTM_INFO_FUNC("dump len update(%d)\n",g_paged_dump_len);
 #endif
-			_stp_update_host_sync_num();
-			_stp_set_host_dump_state(STP_HOST_DUMP_GET_DONE);
+			wmt_plat_update_host_sync_num();
+			wmt_plat_set_host_dump_state(STP_HOST_DUMP_GET_DONE);
 
 			STP_BTM_INFO_FUNC("host sync num(%d),chip sync num(%d)\n",
-				_stp_get_dump_info(EXP_APMEM_CTRL_HOST_SYNC_NUM),
-				_stp_get_dump_info(EXP_APMEM_CTRL_CHIP_SYNC_NUM));
+				wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_host_sync_num),
+				wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_chip_sync_num));
 
             page_counter++;
             STP_BTM_INFO_FUNC("\n\n++ paged dump counter(%d) ++\n\n\n",page_counter);
             
 			while(1)
 			{
-				chip_state = (ENUM_CHIP_DUMP_STATE)_stp_get_dump_info(EXP_APMEM_CTRL_CHIP_SYNC_STATE);
+				chip_state = (ENUM_CHIP_DUMP_STATE)wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_chip_sync_state);
 				if(STP_CHIP_DUMP_END == chip_state)
 				{
 				    STP_BTM_INFO_FUNC("chip put end\n");
-					_stp_set_host_dump_state(STP_HOST_DUMP_END);
+					wmt_plat_set_host_dump_state(STP_HOST_DUMP_END);
 					break;
 				}
 				else
@@ -524,18 +504,18 @@ static INT32 _stp_btm_handler(MTKSTP_BTM_T *stp_btm, P_STP_BTM_OP pStpOp)
                     STP_BTM_INFO_FUNC("waiting chip put end\n");
                 
 					loop_cnt2++;
-					osal_msleep(10);
+					osal_sleep_ms(10);
 				}
 				if(loop_cnt2 > 10)
 					goto paged_dump_end;
 			}
 			
 paged_dump_end:
-			_stp_set_host_dump_state(STP_HOST_DUMP_NOT_START);
+			wmt_plat_set_host_dump_state(STP_HOST_DUMP_NOT_START);
 			
             if(counter * 100 > STP_PAGED_DUMP_TIME_LIMIT)
             {
-    			isEnd = _stp_get_dump_info(EXP_APMEM_CTRL_CHIP_PAGED_DUMP_END);
+    			isEnd = wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_chip_paded_dump_end);
 
                 if(isEnd)
     			{
@@ -552,7 +532,7 @@ paged_dump_end:
                 else
                 {    			
                     STP_BTM_ERR_FUNC("paged dump fail\n");
-                    _stp_set_host_dump_state(STP_HOST_DUMP_NOT_START);
+                    wmt_plat_set_host_dump_state(STP_HOST_DUMP_NOT_START);
 					stp_dbg_poll_cpupcr(5,5,0);
 					counter = 0;
                     ret = -1;
@@ -566,26 +546,29 @@ paged_dump_end:
 
 		case STP_OPID_BTM_FULL_DUMP:
 
-		_stp_set_host_dump_state(STP_HOST_DUMP_NOT_START);
+		wmt_plat_set_host_dump_state(STP_HOST_DUMP_NOT_START);
 		do{
 			UINT32 loop_cnt1 = 0;
 			UINT32 loop_cnt2 = 0;
-			ENUM_HOST_DUMP_STATE host_state;
 			ENUM_CHIP_DUMP_STATE chip_state;
 			UINT32 dump_phy_addr = 0;
 			UINT8 *dump_vir_addr = NULL;
 			UINT32 dump_len = 0;
 			UINT32 isFail = 0;
+			P_CONSYS_EMI_ADDR_INFO p_emi_ctrl_state_info;
+
+			p_emi_ctrl_state_info = wmt_plat_get_emi_phy_add();
+			osal_assert(p_emi_ctrl_state_info);
 			
 			while(1)
 			{
-				chip_state = (ENUM_CHIP_DUMP_STATE)_stp_get_dump_info(EXP_APMEM_CTRL_CHIP_SYNC_STATE);
+				chip_state = (ENUM_CHIP_DUMP_STATE)wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_chip_sync_state);
 				if(STP_CHIP_DUMP_PUT_DONE == chip_state)
 					break;
 				else
 				{
 					loop_cnt1 ++;
-					osal_msleep(10);
+					osal_sleep_ms(10);
 				}
 				if(loop_cnt1 > 10)
 				{
@@ -594,9 +577,9 @@ paged_dump_end:
 				}
 			}
 
-			_stp_set_host_dump_state(STP_HOST_DUMP_GET);
+			wmt_plat_set_host_dump_state(STP_HOST_DUMP_GET);
 
-			dump_phy_addr = _stp_get_dump_info(EXP_APMEM_CTRL_CHIP_SYNC_ADDR);
+			dump_phy_addr = wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_chip_sync_addr);
 			if(!dump_phy_addr)
 			{
 				STP_BTM_ERR_FUNC("get phy dump address fail\n");
@@ -604,34 +587,34 @@ paged_dump_end:
 				break;
 			}
 			
-			dump_vir_addr = wmt_plat_get_emi_ctrl_state_base_add(dump_phy_addr - CONSYS_EMI_FW_PHY_BASE);
+			dump_vir_addr = wmt_plat_get_emi_virt_add(dump_phy_addr - p_emi_ctrl_state_info->emi_phy_addr);
 			if(!dump_vir_addr)
 			{
 				STP_BTM_ERR_FUNC("get vir dump address fail\n");
 				ret = -2;
 				break;
 			}
-			dump_len = _stp_get_dump_info(EXP_APMEM_CTRL_CHIP_SYNC_LEN);
+			dump_len = wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_chip_sync_len);
 			/*move dump info according to dump_addr & dump_len*/
-			_stp_update_host_sync_num();
-			_stp_set_host_dump_state(STP_HOST_DUMP_GET_DONE);
+			wmt_plat_update_host_sync_num();
+			wmt_plat_set_host_dump_state(STP_HOST_DUMP_GET_DONE);
 
 			STP_BTM_INFO_FUNC("host sync num(%d),chip sync num(%d)\n",
-				_stp_get_dump_info(EXP_APMEM_CTRL_HOST_SYNC_NUM),
-				_stp_get_dump_info(EXP_APMEM_CTRL_CHIP_SYNC_NUM));
+				wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_host_sync_num),
+				wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_chip_sync_num));
 			
 			while(1)
 			{
-				chip_state = (ENUM_CHIP_DUMP_STATE)_stp_get_dump_info(EXP_APMEM_CTRL_CHIP_SYNC_STATE);
+				chip_state = (ENUM_CHIP_DUMP_STATE)wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_chip_sync_state);
 				if(STP_CHIP_DUMP_END == chip_state)
 				{
-					_stp_set_host_dump_state(STP_HOST_DUMP_END);
+					wmt_plat_set_host_dump_state(STP_HOST_DUMP_END);
 					break;
 				}
 				else
 				{
 					loop_cnt2++;
-					osal_msleep(10);
+					osal_sleep_ms(10);
 				}
 				if(loop_cnt2 > 10)
 				{
@@ -639,12 +622,12 @@ paged_dump_end:
 					goto full_dump_end;
 				}
 			}
-			_stp_set_host_dump_state(STP_HOST_DUMP_NOT_START);
+			wmt_plat_set_host_dump_state(STP_HOST_DUMP_NOT_START);
 full_dump_end:
 			if(isFail)
 			{
 				STP_BTM_ERR_FUNC("full dump fail\n");
-				_stp_set_host_dump_state(STP_HOST_DUMP_NOT_START);
+				wmt_plat_set_host_dump_state(STP_HOST_DUMP_NOT_START);
 				ret = -1;
 				break;
 			}
@@ -662,17 +645,20 @@ full_dump_end:
 			UINT32 loop_cnt1 = 0;
 			UINT32 buffer_start = 0;
 			UINT32 buffer_idx = 0;
-			UINT32 buffer_len  = 0;
 			UINT8 *dump_vir_addr = NULL; 
+			P_CONSYS_EMI_ADDR_INFO p_emi_ctrl_state_info;
+
+			p_emi_ctrl_state_info = wmt_plat_get_emi_phy_add();
+			osal_assert(p_emi_ctrl_state_info);
 			
 			while(loop_cnt1 < 10)
 			{
-				ctrl_val = _stp_get_dump_info(EXP_APMEM_CTRL_STATE);
+				ctrl_val = wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_state);
 				if(0x8 == ctrl_val)
 					break;
 				else
 				{
-					osal_msleep(10);
+					osal_sleep_ms(10);
 					loop_cnt1++;
 				}
 			}
@@ -684,12 +670,12 @@ full_dump_end:
 				break;
 			}
 
-			buffer_start = _stp_get_dump_info(EXP_APMEM_CTRL_CHIP_PRINT_BUFF_START);
-			buffer_idx = _stp_get_dump_info(EXP_APMEM_CTRL_CHIP_PRINT_BUFF_IDX);
+			buffer_start = wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_chip_print_buff_start);
+			buffer_idx = wmt_plat_get_dump_info(p_emi_ctrl_state_info->p_emi_ctrl_state_offset->emi_apmem_ctrl_chip_print_buff_idx);
 			//buffer_len = buffer_idx - buffer_start;
 			g_paged_trace_len = buffer_idx;
 			STP_BTM_INFO_FUNC("paged trace buffer addr(%08x),buffer_len(%d)\n",buffer_start,buffer_idx);
-			dump_vir_addr = wmt_plat_get_emi_ctrl_state_base_add(buffer_start - CONSYS_EMI_FW_PHY_BASE);
+			dump_vir_addr = wmt_plat_get_emi_virt_add(buffer_start - p_emi_ctrl_state_info->emi_phy_addr);
 			if(!dump_vir_addr)
 			{
 				STP_BTM_ERR_FUNC("get vir dump address fail\n");
@@ -725,18 +711,10 @@ full_dump_end:
 		}while(0);
 		mtk_wcn_stp_ctx_restore();
 		break;
-#if 0
-		case STP_OPID_BTM_FORCE_FW_ASSERT:
-			ret = _stp_trigger_firmware_assert_via_emi();
-			if(0 != _stp_get_dump_info(EXP_APMEM_CTRL_HOST_OUTBAND_ASSERT_W1))
-			{
-				STP_BTM_INFO_FUNC("EXP_APMEM_CTRL_HOST_OUTBAND_ASSERT_W1 has not clear,reset it\n");
-				_stp_set_dump_info(EXP_APMEM_CTRL_HOST_OUTBAND_ASSERT_W1, 0x0);
-			}
-			else
-			{
-				STP_BTM_INFO_FUNC("EXP_APMEM_CTRL_HOST_OUTBAND_ASSERT_W1 reset by fw side\n");
-			}
+
+#if CFG_WMT_LTE_COEX_HANDLING
+		case STP_OPID_BTM_WMT_LTE_COEX:
+			ret = wmt_idc_msg_to_lte_handing();
 		break;
 #endif
         default:
@@ -958,7 +936,7 @@ static INT32 _stp_btm_proc (void *pvData)
         id = osal_op_get_id(pOp);
 
         STP_BTM_DBG_FUNC("======> lxop_get_opid = %d, %s, remaining count = *%d*\n",
-            id, (id >= 10)?("???"):(g_btm_op_name[id]), RB_COUNT(&stp_btm->rActiveOpQ));
+            id, (id >= osal_array_size(g_btm_op_name))?("???"):(g_btm_op_name[id]), RB_COUNT(&stp_btm->rActiveOpQ));
 
         if (id >= STP_OPID_BTM_NUM) 
         {
@@ -973,7 +951,7 @@ handler_done:
 
         if (result) 
         {
-            STP_BTM_WARN_FUNC("opid id(0x%x)(%s) error(%d)\n", id, (id >= 10)?("???"):(g_btm_op_name[id]), result);
+            STP_BTM_WARN_FUNC("opid id(0x%x)(%s) error(%d)\n", id, (id >= osal_array_size(g_btm_op_name))?("???"):(g_btm_op_name[id]), result);
         }
 
         if (osal_op_is_wait_for_signal(pOp)) 
@@ -991,7 +969,8 @@ handler_done:
             break;
         } else if (STP_OPID_BTM_RST == id) {
             /* prevent multi reset case */
-            stp_btm_reset_btm_wq(stp_btm); 
+            stp_btm_reset_btm_wq(stp_btm);
+			mtk_wcn_stp_coredump_start_ctrl(0);
         }
     }
     
@@ -1115,9 +1094,10 @@ static inline INT32 _stp_btm_dump_type(MTKSTP_BTM_T *stp_btm,ENUM_STP_BTM_OPID_T
 static inline INT32 _stp_btm_notify_wmt_dmp_wq(MTKSTP_BTM_T *stp_btm){
 
     INT32 retval;
+#if 0
 	UINT32 dump_type;
 	UINT8 *virtual_addr = NULL;
-	
+#endif	
     if(stp_btm == NULL)
     {
         return STP_BTM_OPERATION_FAIL;
@@ -1134,7 +1114,7 @@ static inline INT32 _stp_btm_notify_wmt_dmp_wq(MTKSTP_BTM_T *stp_btm){
 		}
 
 #else    
-    	virtual_addr = wmt_plat_get_emi_ctrl_state_base_add(EXP_APMEM_CTRL_CHIP_SYNC_ADDR);
+    	virtual_addr = wmt_plat_get_emi_virt_add(EXP_APMEM_CTRL_CHIP_SYNC_ADDR);
 		if(!virtual_addr){
 			STP_BTM_ERR_FUNC("get dump type virtual addr fail\n");
 			return -1;
@@ -1266,15 +1246,6 @@ static inline INT32 _stp_btm_do_fw_assert_via_emi(MTKSTP_BTM_T *stp_btm){
 	INT32 ret  = -1;
 
 	ret = _stp_trigger_firmware_assert_via_emi();
-	if(0 != _stp_get_dump_info(EXP_APMEM_CTRL_HOST_OUTBAND_ASSERT_W1))
-	{
-		STP_BTM_INFO_FUNC("EXP_APMEM_CTRL_HOST_OUTBAND_ASSERT_W1 has not clear,reset it\n");
-		_stp_set_dump_info(EXP_APMEM_CTRL_HOST_OUTBAND_ASSERT_W1, 0x0);
-	}
-	else
-	{
-		STP_BTM_INFO_FUNC("EXP_APMEM_CTRL_HOST_OUTBAND_ASSERT_W1 reset by fw side\n");
-	}
 
 	return ret;
 	
@@ -1316,6 +1287,45 @@ INT32 stp_notify_btm_do_fw_assert_via_emi(MTKSTP_BTM_T *stp_btm)
 {
 	return _stp_btm_do_fw_assert_via_emi(stp_btm);
 }
+
+#if CFG_WMT_LTE_COEX_HANDLING
+
+static inline INT32 _stp_notify_btm_handle_wmt_lte_coex(MTKSTP_BTM_T *stp_btm)
+{
+	P_OSAL_OP     pOp;
+    INT32         bRet;
+    INT32 retval;
+
+    if(stp_btm == NULL)
+    {
+        return STP_BTM_OPERATION_FAIL;
+    }
+    else 
+    {
+        pOp = _stp_btm_get_free_op(stp_btm);
+        if (!pOp) 
+        {
+            //STP_BTM_WARN_FUNC("get_free_lxop fail \n");
+            return -1;//break;
+        }
+        pOp->op.opId = STP_OPID_BTM_WMT_LTE_COEX;
+        pOp->signal.timeoutValue= 0;
+        bRet = _stp_btm_put_act_op(stp_btm, pOp);
+        STP_BTM_DBG_FUNC("OPID(%d) type(%d) bRet(%d) \n\n",
+            pOp->op.opId,
+            pOp->op.au4OpData[0],
+            bRet);
+        retval = (0 == bRet) ? STP_BTM_OPERATION_FAIL : STP_BTM_OPERATION_SUCCESS;
+    }
+    return retval;
+}
+
+INT32 stp_notify_btm_handle_wmt_lte_coex(MTKSTP_BTM_T *stp_btm)
+{
+	return _stp_notify_btm_handle_wmt_lte_coex(stp_btm);
+}
+
+#endif
 MTKSTP_BTM_T *stp_btm_init(void)
 {
     INT32 i = 0x0;

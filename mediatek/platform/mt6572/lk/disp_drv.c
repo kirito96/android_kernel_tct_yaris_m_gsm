@@ -1,11 +1,16 @@
 #include <assert.h>
+#include <string.h>
+#include <arch/ops.h>
 #include <platform/mt_typedefs.h>
+#include <platform/mt_gpt.h>
 #include <platform/ddp_reg.h>
+#include <platform/ddp_path.h>
 #include <platform/disp_drv.h>
 
 #ifdef BUILD_LK
 #include <platform/disp_drv_platform.h>
 
+#include "disp_drv_log.h"
 
 #else
 #include <linux/delay.h>
@@ -32,12 +37,13 @@ extern unsigned int lcd_fps;
 
 static const DISP_DRIVER *disp_drv = NULL;
 const LCM_DRIVER  *lcm_drv  = NULL;
-static LCM_PARAMS s_lcm_params= {0};
+static LCM_PARAMS s_lcm_params;
 LCM_PARAMS *lcm_params= &s_lcm_params;
 static LCD_IF_ID ctrl_if = LCD_IF_PARALLEL_0;
 
 static volatile int direct_link_layer = -1;
 static UINT32 disp_fb_bpp = 32;     ///ARGB8888
+static UINT32 disp_logo_bpp = 16;     ///RGB565
 #ifdef MTK_TRIPLE_FRAMEBUFFER_SUPPORT
 static UINT32 disp_fb_pages = 3;     ///TRIPLE buffer
 #else
@@ -57,21 +63,13 @@ static BOOL isLCMFound 					= FALSE;
 #define ALIGN_TO_POW_OF_2(x, n)  \
 	(((x) + ((n) - 1)) & ~((n) - 1))
 
-#define ALIGN_TO(x, n)  \
-	(((x) + ((n) - 1)) & ~((n) - 1))
 
+#if defined(DISP_DRV_DBG)
+    unsigned int disp_log_on = 1;
+#else
+    unsigned int disp_log_on = 0;
+#endif
 
-
-static size_t disp_log_on = FALSE;
-#define DISP_LOG(fmt, arg...) \
-    do { \
-        if (disp_log_on) DISP_LOG_PRINT(ANDROID_LOG_WARN, "COMMON", fmt, ##arg); \
-    }while (0)
-
-#define DISP_FUNC()	\
-	do { \
-		if(disp_log_on) DISP_LOG_PRINT(ANDROID_LOG_INFO, "COMMON", "[Func]%s\n", __func__); \
-	}while (0)
 
 void disp_log_enable(int enable)
 {
@@ -340,7 +338,7 @@ const LCM_DRIVER *disp_drv_get_lcm_driver(const char *lcm_name)
    }
    else
    {
-      int i;
+      unsigned int i;
       
       for(i = 0;i < lcm_count;i++)
       {
@@ -410,8 +408,8 @@ const LCM_DRIVER *disp_drv_get_lcm_driver(const char *lcm_name)
 
 static void disp_dump_lcm_parameters(LCM_PARAMS *lcm_params)
 {
-   unsigned char *LCM_TYPE_NAME[] = {"DBI", "DPI", "DSI"};
-   unsigned char *LCM_CTRL_NAME[] = {"NONE", "SERIAL", "PARALLEL", "GPIO"};
+   char *LCM_TYPE_NAME[] = {"DBI", "DPI", "DSI"};
+   char *LCM_CTRL_NAME[] = {"NONE", "SERIAL", "PARALLEL", "GPIO"};
    
    if(lcm_params == NULL)
       return;
@@ -429,7 +427,7 @@ BOOL disp_get_lcm_name_boot(char *cmdline)
    BOOL ret = FALSE;
    char *p, *q;
    
-   p = strstr(cmdline, "lcm=");
+   p = (char*)strstr(cmdline, "lcm=");
    if(p == NULL)
    {
       // we can't find lcm string in the command line, 
@@ -438,7 +436,7 @@ BOOL disp_get_lcm_name_boot(char *cmdline)
    }
    
    p += 4;
-   if((p - cmdline) > strlen(cmdline+1))
+   if((unsigned int)(p - cmdline) > strlen(cmdline+1))
    {
       ret = FALSE;
       goto done;
@@ -512,7 +510,7 @@ BOOL DISP_IsContextInited(void)
 BOOL DISP_SelectDeviceBoot(const char* lcm_name)
 {
    LCM_DRIVER *lcm = NULL;
-   int i;
+   unsigned int i;
    
    printk("%s\n", __func__);
    if(lcm_name == NULL)
@@ -574,8 +572,9 @@ BOOL DISP_SelectDeviceBoot(const char* lcm_name)
 
 BOOL DISP_SelectDevice(const char* lcm_name)
 {
-   LCD_STATUS ret;
 #ifndef MT65XX_NEW_DISP
+   LCD_STATUS ret;
+
    ret = LCD_Init();
    printk("ret of LCD_Init() = %d\n", ret);
 #endif
@@ -592,8 +591,9 @@ BOOL DISP_SelectDevice(const char* lcm_name)
 
 BOOL DISP_DetectDevice(void)
 {
-   LCD_STATUS ret;
 #ifndef MT65XX_NEW_DISP
+   LCD_STATUS ret;
+
    ret = LCD_Init();
    printk("ret of LCD_Init() = %d\n", ret);
 #endif
@@ -618,33 +618,26 @@ DISP_STATUS DISP_Init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
 {
    DISP_STATUS r = DISP_STATUS_OK;
 
-   printf("%s, %d\n", __func__, __LINE__);
 #ifdef MT65XX_NEW_DISP	
 	disp_path_ddp_clock_on();
 #endif
 
    OUTREG32(DISP_REG_CONFIG_OVL_MOUT_EN, 0x1);  // OVL output path, [0]: DISP_RDMA, [1]: DISP_WDMA, [2]: DISP_COLOR 
-   DISP_LOG("%s, %d\n", __func__, __LINE__);
    
    if (!disp_drv_init_context()) {
       return DISP_STATUS_NOT_IMPLEMENTED;
    }
-   DISP_LOG("%s, %d\n", __func__, __LINE__);
    
    //	/* power on LCD before config its registers*/
    //LCD_CHECK_RET(LCD_Init());
    
    disp_drv_init_ctrl_if();
-   DISP_LOG("%s, %d\n", __func__, __LINE__);
    
    // For DSI PHY current leakage SW workaround.
    ///TODO: HOW!!!
    #if !defined (MTK_HDMI_SUPPORT)
       #ifndef MT65XX_NEW_DISP
-         DISP_LOG("%s, %d\n", __func__, __LINE__);
-         
          if((lcm_params->type!=LCM_TYPE_DSI) && (lcm_params->type!=LCM_TYPE_DPI)){
-            printf("%s, %d\n", __func__, __LINE__);
             DSI_PHY_clk_switch(TRUE, lcm_params);
             DSI_PHY_clk_switch(FALSE, lcm_params);
          }
@@ -658,12 +651,10 @@ DISP_STATUS DISP_Init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
    #ifndef BUILD_LK
       DISP_InitVSYNC((100000000/lcd_fps) + 1);//us
    #endif
-   DISP_LOG("%s, %d\n", __func__, __LINE__);
    framebuffer_addr_va = fbVA;
    r = (disp_drv->init) ?
          (disp_drv->init(fbVA, fbPA, isLcmInited)) :
          DISP_STATUS_NOT_IMPLEMENTED;
-   DISP_LOG("%s, %d\n", __func__, __LINE__);
    
    {
       DAL_STATUS ret;
@@ -678,7 +669,6 @@ DISP_STATUS DISP_Init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
    }
    if(lcm_drv->check_status)
        lcm_drv->check_status();
-   DISP_LOG("%s, %d\n", __func__, __LINE__);
    
    return r;
 }
@@ -1321,7 +1311,6 @@ UINT32 DISP_GetScreenWidth(void)
       return 0;
    }
 }
-EXPORT_SYMBOL(DISP_GetScreenWidth);
 
 UINT32 DISP_GetScreenHeight(void)
 {
@@ -1334,6 +1323,7 @@ UINT32 DISP_GetScreenHeight(void)
       return 0;
    }
 }
+
 DISP_STATUS DISP_SetScreenBpp(UINT32 bpp)
 {
    ASSERT(bpp != 0);
@@ -1356,6 +1346,11 @@ DISP_STATUS DISP_SetScreenBpp(UINT32 bpp)
 UINT32 DISP_GetScreenBpp(void)
 {
    return disp_fb_bpp; 
+}
+
+UINT32 DISP_GetLogoBpp(void)
+{
+   return disp_logo_bpp; 
 }
 
 DISP_STATUS DISP_SetPages(UINT32 pages)
@@ -1393,6 +1388,15 @@ UINT32 DISP_GetFBRamSize(void)
                DISP_GetPages();
 }
 
+#if defined(MTK_OVL_DECOUPLE_SUPPORT)
+static unsigned int ovl_buffer_num = 3;
+#define BPP				 3
+UINT32 DISP_GetOVLRamSize(void)
+{
+	return ALIGN_TO(DISP_GetScreenWidth(), MTK_FB_ALIGNMENT) *
+	           ALIGN_TO(DISP_GetScreenHeight(), MTK_FB_ALIGNMENT) * BPP * ovl_buffer_num;
+}
+#endif
 
 UINT32 DISP_GetVRamSize(void)
 {
@@ -1412,6 +1416,11 @@ UINT32 DISP_GetVRamSize(void)
       
       // get assertion layer buffer size
       vramSize += DAL_GetLayerSize();
+
+#if defined(MTK_OVL_DECOUPLE_SUPPORT)
+        // get ovl-wdma buffer size
+        vramSize += DISP_GetOVLRamSize();
+#endif
       
       // Align vramSize to 1MB
       //

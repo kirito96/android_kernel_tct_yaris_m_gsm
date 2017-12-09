@@ -1,8 +1,10 @@
 #ifndef __DPI_DRV_H__
 #define __DPI_DRV_H__
 
-#include "disp_drv.h"
-#include "lcm_drv.h"
+#include "disp_hal.h"
+#include "disp_intr.h"
+
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -126,6 +128,7 @@ void DPI_InitVSYNC(unsigned int vsync_interval);
 void DPI_PauseVSYNC(bool enable);
 
 DPI_STATUS DPI_ConfigLVDS(LCM_PARAMS *lcm_params);
+unsigned int DPI_Check_LCM(void);
 // ---------------------------------------------------------------------------
 
 #ifdef __cplusplus

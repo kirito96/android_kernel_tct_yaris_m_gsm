@@ -1,14 +1,4 @@
-#ifdef BUILD_UBOOT
-#define ENABLE_DPI_INTERRUPT        0
-#define ENABLE_DPI_REFRESH_RATE_LOG 0
-
-#include <asm/arch/disp_drv_platform.h>
-#else
-    #if defined(CONFIG_MT6572_FPGA)
-        #define ENABLE_DPI_INTERRUPT        1
-    #else
-        #define ENABLE_DPI_INTERRUPT        1
-    #endif
+#define ENABLE_DPI_INTERRUPT        1
 #define ENABLE_DPI_REFRESH_RATE_LOG 0
 
 #if ENABLE_DPI_REFRESH_RATE_LOG && !ENABLE_DPI_INTERRUPT
@@ -31,12 +21,11 @@
 #include "disp_drv_log.h"
 #include "disp_drv_platform.h"
 
-#include "ddp_reg.h"
-#include "ddp_debug.h"
 #include "dpi_reg.h"
 #include "dsi_reg.h"
 #include "dpi_drv.h"
 #include "lcd_drv.h"
+#include "dsi_drv.h"
 #include <mach/mt_clkmgr.h>
 #include "debug.h"
 
@@ -52,7 +41,6 @@ static bool dpi_vsync = false;
 static bool wait_dpi_vsync = false;
 static struct hrtimer hrtimer_vsync_dpi;
 #include <linux/module.h>
-#endif
 
 #include <mach/sync_write.h>
 #ifdef OUTREG32
@@ -83,6 +71,9 @@ static void (*dpiIntCallback)(DISP_INTERRUPT_EVENTS);
 //#define DPI_MIPI_API
 #endif
 
+
+extern LCM_PARAMS *lcm_params;
+extern LCM_DRIVER *lcm_drv;
 
 const UINT32 BACKUP_DPI_REG_OFFSETS[] =
 {
@@ -199,7 +190,7 @@ static irqreturn_t _DPI_InterruptHandler(int irq, void *dev_id)
 {   
    static int counter = 0;
    DPI_REG_INTERRUPT status = DPI_REG->INT_STATUS;
-   MMProfileLogEx(DDP_MMP_Events.ROT_IRQ, MMProfileFlagPulse, AS_UINT32(&status), 0);
+
    //    if (status.FIFO_EMPTY) ++ counter;
    
    OUTREG32(&DPI_REG->INT_STATUS, 0);
@@ -238,13 +229,11 @@ unsigned int vsync_timer_dpi = 0;
 
 void DPI_WaitVSYNC(void)
 {
-#ifndef BUILD_UBOOT
    wait_dpi_vsync = true;
    hrtimer_start(&hrtimer_vsync_dpi, ktime_set(0, VSYNC_US_TO_NS(vsync_timer_dpi)), HRTIMER_MODE_REL);
    wait_event_interruptible(_vsync_wait_queue_dpi, dpi_vsync);
    dpi_vsync = false;
    wait_dpi_vsync = false;
-#endif
 }
 
 
@@ -253,7 +242,6 @@ void DPI_PauseVSYNC(bool enable)
 }
 
 
-#ifndef BUILD_UBOOT
 enum hrtimer_restart dpi_vsync_hrtimer_func(struct hrtimer *timer)
 {
    //	long long ret;
@@ -269,12 +257,10 @@ enum hrtimer_restart dpi_vsync_hrtimer_func(struct hrtimer *timer)
 
    return HRTIMER_NORESTART;
 }
-#endif
 
 
 void DPI_InitVSYNC(unsigned int vsync_interval)
 {
-#ifndef BUILD_UBOOT
    ktime_t ktime;
 
    vsync_timer_dpi = vsync_interval;
@@ -282,7 +268,6 @@ void DPI_InitVSYNC(unsigned int vsync_interval)
    hrtimer_init(&hrtimer_vsync_dpi, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
    hrtimer_vsync_dpi.function = dpi_vsync_hrtimer_func;
    //	hrtimer_start(&hrtimer_vsync_dpi, ktime, HRTIMER_MODE_REL);
-#endif
 }
 
 DPI_STATUS DPI_Init(BOOL isDpiPoweredOn)
@@ -364,41 +349,41 @@ EXPORT_SYMBOL(DPI_Init_PLL);
 
 DPI_STATUS DPI_Set_DrivingCurrent(LCM_PARAMS *lcm_params)
 {
-    LCD_Set_DrivingCurrent(lcm_params);
+    kal_uint32 data_driving;
+    kal_uint32 control_driving;
+    kal_uint32 driving_current = 0;
+
+
+    driving_current = lcm_params->dpi.io_driving_current;
+    data_driving = *((volatile u32 *)(IO_CFG_LEFT_BASE+0x0080));
+    control_driving = *((volatile u32 *)(IO_CFG_RIGHT_BASE+0x0060));
+
+    switch (driving_current) 
+    {
+        case LCM_DRIVING_CURRENT_6575_4MA:
+           *((volatile u32 *)(IO_CFG_LEFT_BASE+0x0080)) = (data_driving & (~0xC00)) | (LCD_IO_DATA_DRIVING_4MA << 10);
+           *((volatile u32 *)(IO_CFG_RIGHT_BASE+0x0060)) = (control_driving & (~0x7)) | (LCD_IO_CTL_DRIVING_9MA);
+            break;
+        case LCM_DRIVING_CURRENT_6575_8MA:
+           *((volatile u32 *)(IO_CFG_LEFT_BASE+0x0080)) = (data_driving & (~0xC00)) | (LCD_IO_DATA_DRIVING_8MA << 10);
+           *((volatile u32 *)(IO_CFG_RIGHT_BASE+0x0060)) = (control_driving & (~0x7)) | (LCD_IO_CTL_DRIVING_12MA);
+            break;
+        case LCM_DRIVING_CURRENT_6575_12MA:
+           *((volatile u32 *)(IO_CFG_LEFT_BASE+0x0080)) = (data_driving & (~0xC00)) | (LCD_IO_DATA_DRIVING_12MA << 10);
+           *((volatile u32 *)(IO_CFG_RIGHT_BASE+0x0060)) = (control_driving & (~0x7)) | (LCD_IO_CTL_DRIVING_18MA);
+            break;
+        case LCM_DRIVING_CURRENT_6575_16MA:
+           *((volatile u32 *)(IO_CFG_LEFT_BASE+0x0080)) = (data_driving & (~0xC00)) | (LCD_IO_DATA_DRIVING_16MA << 10);
+           *((volatile u32 *)(IO_CFG_RIGHT_BASE+0x0060)) = (control_driving & (~0x7)) | (LCD_IO_CTL_DRIVING_21MA);
+            break;
+        default:  // 8mA
+           *((volatile u32 *)(IO_CFG_LEFT_BASE+0x0080)) = (data_driving & (~0xC00)) | (LCD_IO_DATA_DRIVING_8MA << 10);
+           *((volatile u32 *)(IO_CFG_RIGHT_BASE+0x0060)) = (control_driving & (~0x7)) | (LCD_IO_CTL_DRIVING_12MA);
+            break;
+    }
 
     return DPI_STATUS_OK;
 }
-
-#ifdef BUILD_UBOOT
-DPI_STATUS DPI_PowerOn()
-{
-   if (!s_isDpiPowerOn)
-   {
-      DPI_RestoreRegisters();
-      s_isDpiPowerOn = TRUE;
-   }
-   
-   return DPI_STATUS_OK;
-}
-EXPORT_SYMBOL(DPI_PowerOn);
-
-
-DPI_STATUS DPI_PowerOff()
-{
-   if (s_isDpiPowerOn)
-   {
-      BOOL ret = TRUE;
-
-      DPI_BackupRegisters();
-      ASSERT(ret);
-      s_isDpiPowerOn = FALSE;
-   }
-   
-   return DPI_STATUS_OK;
-}
-EXPORT_SYMBOL(DPI_PowerOff);
-
-#else
 
 DPI_STATUS DPI_PowerOn()
 {
@@ -444,7 +429,6 @@ DPI_STATUS DPI_PowerOff()
     return DPI_STATUS_OK;
 }
 EXPORT_SYMBOL(DPI_PowerOff);
-#endif
 
 
 DPI_STATUS DPI_MIPI_PowerOn()
@@ -496,7 +480,6 @@ DPI_STATUS DPI_EnableClk()
    en.EN = 1;
    OUTREG32(&DPI_REG->DPI_EN, AS_UINT32(&en));
    //release mutex0
-   //#ifndef BUILD_UBOOT
 
    return DPI_STATUS_OK;
 }
@@ -549,7 +532,10 @@ DPI_STATUS DPI_StartTransfer(bool isMutexLocked)
 
     mutex_lock(&OverlaySettingMutex);
 
+#if !defined(MTK_OVL_DECOUPLE_SUPPORT)
     LCD_CHECK_RET(LCD_ConfigOVL());
+#endif
+
     // Insert log for trigger point.
     DBG_OnTriggerLcd();
 
@@ -773,6 +759,7 @@ static void _DPI_RDMA0_IRQ_Handler(unsigned int param)
     if (param & 4)
     {
         MMProfileLog(MTKFB_MMP_Events.ScreenUpdate, MMProfileFlagEnd);
+        dpiIntCallback(DISP_DPI_SCREEN_UPDATE_END_INT);
     }
     if (param & 8)
     {
@@ -781,6 +768,7 @@ static void _DPI_RDMA0_IRQ_Handler(unsigned int param)
     if (param & 2)
     {
         MMProfileLog(MTKFB_MMP_Events.ScreenUpdate, MMProfileFlagStart);
+        dpiIntCallback(DISP_DPI_SCREEN_UPDATE_START_INT);
 #if (ENABLE_DPI_INTERRUPT == 0)
         if(dpiIntCallback)
             dpiIntCallback(DISP_DPI_VSYNC_INT);
@@ -819,6 +807,12 @@ DPI_STATUS DPI_EnableInterrupt(DISP_INTERRUPT_EVENTS eventID)
             OUTREGBIT(DPI_REG_INTERRUPT,DPI_REG->INT_ENABLE,UNDERFLOW,1);
             break;
         case DISP_DPI_TARGET_LINE_INT:
+            disp_register_irq(DISP_MODULE_RDMA0, _DPI_RDMA0_IRQ_Handler);
+            break;
+        case DISP_DPI_SCREEN_UPDATE_START_INT:
+            disp_register_irq(DISP_MODULE_RDMA0, _DPI_RDMA0_IRQ_Handler);
+            break;
+        case DISP_DPI_SCREEN_UPDATE_END_INT:
             disp_register_irq(DISP_MODULE_RDMA0, _DPI_RDMA0_IRQ_Handler);
             break;
         case DISP_DPI_REG_UPDATE_INT:
@@ -899,3 +893,15 @@ DPI_STATUS DPI_Change_CLK(unsigned int clk)
 {
     return DPI_STATUS_OK;
 }
+
+
+unsigned int DPI_Check_LCM()
+{
+    unsigned int ret = 0;
+
+    if(lcm_drv->ata_check)
+        ret = lcm_drv->ata_check(NULL);
+
+    return ret;
+}
+

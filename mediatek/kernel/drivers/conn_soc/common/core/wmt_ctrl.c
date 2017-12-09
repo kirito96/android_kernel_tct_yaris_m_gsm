@@ -259,7 +259,8 @@ INT32 wmt_ctrl_rx(P_WMT_CTRL_DATA pWmtCtrlData/*UINT8 *pBuff, UINT32 buffLen, UI
         WMT_LOUD_FUNC("wmt_dev_rx_timeout returned\n");
 
         if (0 == waitRet) {
-            WMT_ERR_FUNC("wmt_dev_rx_timeout: timeout \n");
+            WMT_ERR_FUNC("wmt_dev_rx_timeout: timeout,jiffies(%lu),timeoutvalue(%d) \n",
+				jiffies,pDev->rWmtRxWq.timeoutValue);
             return -1;
         }
         else if (waitRet < 0) {
@@ -569,9 +570,15 @@ INT32 wmt_ctrl_soc_paldo_ctrl(P_WMT_CTRL_DATA pWmtCtrlData)
 	WMT_INFO_FUNC("ept(%d),epo(%d)\n",ept,epo);
 	iRet = wmt_plat_soc_paldo_ctrl(ept,epo);
 	if(iRet){
-		WMT_ERR_FUNC("soc palod ctrl fail(%d)\n",iRet);
+		if(PMIC_CHIPID_PALDO == ept)
+		{
+			pWmtCtrlData->au4CtrlData[2] = iRet;
+		}else
+		{
+			WMT_ERR_FUNC("soc palod ctrl fail(%d)\n",iRet);
+		}
 	}
-	
+
 	return iRet;
 }
 
@@ -858,7 +865,7 @@ INT32  wmt_ctrl_sdio_func(P_WMT_CTRL_DATA pWmtCtrlData)
             while (retry-- > 0 && iRet != 0) {
                 if (iRet) {
                     /* sleep 150ms before sdio slot ON ready */
-                    osal_msleep(150);
+                    osal_sleep_ms(150);
                 }
                 iRet = mtk_wcn_hif_sdio_wmt_control(sdioFuncType, MTK_WCN_BOOL_TRUE);
                 if (HIF_SDIO_ERR_NOT_PROBED == iRet) {
@@ -964,10 +971,18 @@ static INT32 wmt_ctrl_evt_err_trg_assert(P_WMT_CTRL_DATA pWmtCtrlData)
 {
 	INT32 iRet = -1;
 	
-	WMT_INFO_FUNC("++\n");
+	ENUM_WMTDRV_TYPE_T drv_type;
+	UINT32 reason = 0;
+
+	drv_type = pWmtCtrlData->au4CtrlData[0];
+	reason = pWmtCtrlData->au4CtrlData[1];
+	WMT_INFO_FUNC("wmt-ctrl:drv_type(%d),reason(%d)\n",drv_type,reason);
+	
 	if(0 == mtk_wcn_stp_get_wmt_evt_err_trg_assert())
 	{
 		mtk_wcn_stp_set_wmt_evt_err_trg_assert(1);
+		wmt_lib_set_host_assert_info(drv_type,reason,1);
+		
 		iRet = mtk_wcn_stp_wmt_evt_err_trg_assert();
 		if(iRet)
 		{

@@ -19,7 +19,7 @@ int ZOOM_TIME = 20;      //   4  //modify for PR353124
 #if MIN_CURRENT_MODE
 #define PPCOUNT_VALUE			0x90	// 发射脉冲个数
 #else
-#define PPCOUNT_VALUE			0x07//0x05//0x0A//0x1B	// 发射脉冲个数  modify by zy for 348261
+#define PPCOUNT_VALUE			0x10//0x05//0x0A//0x1B	// 发射脉冲个数  modify by zy for 348261
 #endif
 
 #define TMD2772_CMM_CONTROL_VALUE 0x60//0xA0//0x60

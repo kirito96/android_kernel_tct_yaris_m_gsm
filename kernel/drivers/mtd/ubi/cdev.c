@@ -334,8 +334,7 @@ static ssize_t vol_cdev_direct_write(struct file *file, const char __user *buf,
 			break;
 		}
 
-		err = ubi_eba_write_leb(ubi, vol, lnum, tbuf, off, len,
-					UBI_UNKNOWN);
+		err = ubi_eba_write_leb(ubi, vol, lnum, tbuf, off, len);
 		if (err)
 			break;
 
@@ -475,10 +474,7 @@ static long vol_cdev_ioctl(struct file *file, unsigned int cmd,
 		/* Validate the request */
 		err = -EINVAL;
 		if (req.lnum < 0 || req.lnum >= vol->reserved_pebs ||
-		    req.bytes < 0 || req.lnum >= vol->usable_leb_size)
-			break;
-		if (req.dtype != UBI_LONGTERM && req.dtype != UBI_SHORTTERM &&
-		    req.dtype != UBI_UNKNOWN)
+		    req.bytes < 0 || req.bytes > vol->usable_leb_size)
 			break;
 
 		err = get_exclusive(desc);
@@ -532,7 +528,7 @@ static long vol_cdev_ioctl(struct file *file, unsigned int cmd,
 			err = -EFAULT;
 			break;
 		}
-		err = ubi_leb_map(desc, req.lnum, req.dtype);
+		err = ubi_leb_map(desc, req.lnum);
 		break;
 	}
 
@@ -1029,6 +1025,7 @@ static long ctrl_cdev_ioctl(struct file *file, unsigned int cmd,
 	case UBI_IOCDET:
 	{
 		int ubi_num;
+
 		dbg_gen("dettach MTD device");
 		err = get_user(ubi_num, (__user int32_t *)argp);
 		if (err) {
@@ -1037,7 +1034,7 @@ static long ctrl_cdev_ioctl(struct file *file, unsigned int cmd,
 		}
 
 		mutex_lock(&ubi_devices_mutex);
-		err = ubi_detach_mtd_dev(ubi_num, 1);
+		err = ubi_detach_mtd_dev(ubi_num, 0);
 		mutex_unlock(&ubi_devices_mutex);
 		break;
 	}

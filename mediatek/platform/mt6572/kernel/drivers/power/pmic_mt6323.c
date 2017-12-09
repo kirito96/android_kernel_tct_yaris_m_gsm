@@ -17,7 +17,7 @@
  * James Lo
  *
  ****************************************************************************/
-#include <linux/autoconf.h>
+//#include <linux/autoconf.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -58,6 +58,8 @@
 #include <mach/battery_common.h>
 #include <linux/time.h> 
 
+#include <mtk_kpd.h>
+
 #if defined (MTK_KERNEL_POWER_OFF_CHARGING)
 #include <mach/mt_boot.h>
 #include <mach/system.h>
@@ -65,6 +67,9 @@
 #endif
 
 extern int Enable_BATDRV_LOG;
+
+U32 pmic_read_interface_nolock (U32 RegNum, U32 *val, U32 MASK, U32 SHIFT);
+U32 pmic_config_interface_nolock (U32 RegNum, U32 val, U32 MASK, U32 SHIFT);
 
 //#include <mach/mt_clock_manager.h>
 //----------------------------------------------------------------------test
@@ -171,12 +176,14 @@ kal_uint32  pmic_is_auxadc_busy(void)
 {
 	kal_uint32 ret=0;
 	kal_uint32 int_status_val_0=0;
-	ret=pmic_read_interface(0x73a,(&int_status_val_0),0x7FFF,0x1);
+	ret=pmic_read_interface_nolock(0x73a,(&int_status_val_0),0x7FFF,0x1);
 	return int_status_val_0;
 }
 
 void PMIC_IMM_PollingAuxadcChannel(void)
 {
+	kal_uint32 ret=0;
+    
 	 //xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[PMIC_IMM_PollingAuxadcChannel] before:%d ",upmu_get_rg_adc_deci_gdly());
 
 	if (upmu_get_rg_adc_deci_gdly()==1)
@@ -187,7 +194,8 @@ void PMIC_IMM_PollingAuxadcChannel(void)
 			spin_lock_irqsave(&pmic_adc_lock, flags);
 			if (pmic_is_auxadc_busy()==0)
 			{
-				upmu_set_rg_adc_deci_gdly(0);
+				//upmu_set_rg_adc_deci_gdly(0);
+				ret=pmic_config_interface_nolock(AUXADC_CON19,0,PMIC_RG_ADC_DECI_GDLY_MASK,PMIC_RG_ADC_DECI_GDLY_SHIFT);
 			}
 			spin_unlock_irqrestore(&pmic_adc_lock, flags);
 		}
@@ -495,7 +503,7 @@ int PMIC_IMM_GetMultiChannelValue(unsigned char *dwChannels, kal_int32 *adc_resu
 {
 
 	kal_uint16 i;
-	kal_bool dctEnable;
+//	kal_bool dctEnable;
 	kal_int32 ret=0;
 	kal_int32 adc_reg_val=0;	
 	kal_bool isCont=KAL_TRUE;
@@ -506,7 +514,7 @@ int PMIC_IMM_GetMultiChannelValue(unsigned char *dwChannels, kal_int32 *adc_resu
 	unsigned char channelcnts[AUXADCMULTICHANNELNO];
 	kal_int32 r_val_temp=0;   
 
-xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[PMIC_IMM_GetMultiChannelValue] =>\n", i);
+xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[PMIC_IMM_GetMultiChannelValue] =>\n");
 	
 	 //do not suppport BATON2 and THR SENSE2 for sw workaround
 	if (dwChannels[0]!=0 || dwChannels[2]!=0)
@@ -811,7 +819,11 @@ void cust_pmic_interrupt_en_setting(void)
     upmu_set_rg_int_en_ov(0);
     
     upmu_set_rg_int_en_ldo(0);
+#ifdef KPD_PMIC_RSTKEY_MAP
+		upmu_set_rg_int_en_fchrkey(1);
+#else
     upmu_set_rg_int_en_fchrkey(0);
+#endif    
     //upmu_set_rg_int_en_accdet(1);
     upmu_set_rg_int_en_audio(0);
     upmu_set_rg_int_en_rtc(1);
@@ -876,7 +888,9 @@ extern void kpd_pwrkey_pmic_handler(unsigned long pressed);
 void pwrkey_int_handler(void)
 {
     kal_uint32 ret=0;
-
+#if defined (MTK_KERNEL_POWER_OFF_CHARGING)
+	static kal_bool  key_press = KAL_FALSE;
+#endif
     xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pwrkey_int_handler]....\n");
 
     if(upmu_get_pwrkey_deb()==1)
@@ -885,7 +899,11 @@ void pwrkey_int_handler(void)
 #if defined (MTK_KERNEL_POWER_OFF_CHARGING)
 		if(g_boot_mode == KERNEL_POWER_OFF_CHARGING_BOOT)
 		{
+			if(key_press == KAL_TRUE)
+			{
+				key_press = KAL_FALSE;
 				timer_pos = sched_clock();
+				xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pmic_thread_kthread] timer_pos = %ld\r\n",timer_pos);
 				if(timer_pos - timer_pre >= LONG_PWRKEY_PRESS_TIME)
 				{
 					long_pwrkey_press = true;
@@ -897,6 +915,7 @@ void pwrkey_int_handler(void)
 					arch_reset(0, NULL);
 				}
 		}
+		}
 #endif
         kpd_pwrkey_pmic_handler(0x0);
        upmu_set_rg_pwrkey_int_sel(0);
@@ -907,7 +926,9 @@ void pwrkey_int_handler(void)
 #if defined (MTK_KERNEL_POWER_OFF_CHARGING)
 		if(g_boot_mode == KERNEL_POWER_OFF_CHARGING_BOOT)
 		{
+			key_press = KAL_TRUE;
 			timer_pre = sched_clock();
+			xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pmic_thread_kthread] timer_pre = %ld, \r\n",timer_pre);
 		}
 #endif
         kpd_pwrkey_pmic_handler(0x1);
@@ -988,8 +1009,20 @@ void ldo_oc_int_handler(void)
 void fchr_key_int_handler(void)
 {
     kal_uint32 ret=0;
-
+#ifdef KPD_PMIC_RSTKEY_MAP
+    if(upmu_get_fchrkey_deb()==1)
+    {
+        xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[homekey_int_handler] Release HomeKey\r\n");
+        kpd_pmic_rstkey_handler(0x0);
+    }
+    else
+    {
+        xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[homekey_int_handler] Press HomeKey\r\n");
+        kpd_pmic_rstkey_handler(0x1);
+    }    
+#else    
     xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[fchr_key_int_handler]....\n");
+#endif
     
     ret=pmic_config_interface(INT_STATUS1,0x1,0x1,1);    
 }
@@ -1081,8 +1114,8 @@ static int pmic_thread_kthread(void *x)
 {
 
     kal_uint32 ret=0;
-    kal_uint32 ret_val=0;
-    kal_uint32 reg_val=0;
+    //kal_uint32 ret_val=0;
+    //kal_uint32 reg_val=0;
     kal_uint32 int_status_val_0=0;
     kal_uint32 int_status_val_1=0;
 
@@ -1304,6 +1337,73 @@ U32 pmic_config_interface (U32 RegNum, U32 val, U32 MASK, U32 SHIFT)
     mutex_unlock(&pmic_access_mutex);
 #else
     xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pmic_config_interface] Can not access HW PMIC\n");
+#endif
+
+    return return_value;
+}
+
+//==============================================================================
+// PMIC read/write APIs : nolock
+//==============================================================================
+U32 pmic_read_interface_nolock (U32 RegNum, U32 *val, U32 MASK, U32 SHIFT)
+{
+    U32 return_value = 0;
+
+#if defined(CONFIG_PMIC_HW_ACCESS_EN)
+    U32 pmic6323_reg = 0;
+    U32 rdata;
+
+    //mt6323_read_byte(RegNum, &pmic6323_reg);
+    return_value= pwrap_wacs2(0, (RegNum), 0, &rdata);
+    pmic6323_reg=rdata;
+    if(return_value!=0)
+    {
+        xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pmic_read_interface_nolock] Reg[%x]= pmic_wrap read data fail\n", RegNum);
+        return return_value;
+    }
+    //xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[pmic_read_interface_nolock] Reg[%x]=0x%x\n", RegNum, pmic6323_reg);
+
+    pmic6323_reg &= (MASK << SHIFT);
+    *val = (pmic6323_reg >> SHIFT);
+    //xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[pmic_read_interface_nolock] val=0x%x\n", *val);
+#else
+    xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pmic_read_interface_nolock] Can not access HW PMIC\n");
+#endif
+
+    return return_value;
+}
+
+U32 pmic_config_interface_nolock (U32 RegNum, U32 val, U32 MASK, U32 SHIFT)
+{
+    U32 return_value = 0;
+
+#if defined(CONFIG_PMIC_HW_ACCESS_EN)
+    U32 pmic6323_reg = 0;
+    U32 rdata;
+
+    //1. mt6323_read_byte(RegNum, &pmic6323_reg);
+    return_value= pwrap_wacs2(0, (RegNum), 0, &rdata);
+    pmic6323_reg=rdata;
+    if(return_value!=0)
+    {
+        xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pmic_config_interface_nolock] Reg[%x]= pmic_wrap read data fail\n", RegNum);
+        return return_value;
+    }
+    //xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[pmic_config_interface_nolock] Reg[%x]=0x%x\n", RegNum, pmic6323_reg);
+
+    pmic6323_reg &= ~(MASK << SHIFT);
+    pmic6323_reg |= (val << SHIFT);
+
+    //2. mt6323_write_byte(RegNum, pmic6323_reg);
+    return_value= pwrap_wacs2(1, (RegNum), pmic6323_reg, &rdata);
+    if(return_value!=0)
+    {
+        xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pmic_config_interface_nolock] Reg[%x]= pmic_wrap read data fail\n", RegNum);
+        return return_value;
+    }
+    //xlog_printk(ANDROID_LOG_DEBUG, "Power/PMIC", "[pmic_config_interface_nolock] write Reg[%x]=0x%x\n", RegNum, pmic6323_reg);
+#else
+    xlog_printk(ANDROID_LOG_INFO, "Power/PMIC", "[pmic_config_interface_nolock] Can not access HW PMIC\n");
 #endif
 
     return return_value;
@@ -1675,11 +1775,14 @@ void dct_pmic_VCAMD_enable(kal_bool dctEnable)
 
     if(dctEnable == KAL_TRUE)
     {
+	pmic_config_interface(0x55c, 0x1,0x1,0x0);
         upmu_set_rg_vcamd_en(1);
     }
     else
     {
         upmu_set_rg_vcamd_en(0);
+	msleep(20);
+	pmic_config_interface(0x55c, 0x0,0x1,0x0);
     }
 }
 
@@ -3543,6 +3646,12 @@ ret = pmic_config_interface(0x778,0x1,0x1,15); // [15:15]: RG_VREF18_ENB_MD;
 
 void PMIC_CUSTOM_SETTING_V1(void)
 {    
+	pmic_config_interface(0x55c, 0x0,0x1,0x0);
+	#ifdef KPD_PMIC_RSTKEY_MAP
+		upmu_set_rg_fchr_keydet_en(0);
+		upmu_set_rg_fchr_pu_en(1);
+		upmu_set_rg_fchrkey_int_sel(1);
+	#endif
 }
 
 void pmic_setting_depends_rtc(void)

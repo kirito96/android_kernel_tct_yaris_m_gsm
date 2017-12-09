@@ -19,6 +19,7 @@
 #include <linux/module.h>
 #include <linux/netfilter/x_tables.h>
 #include <linux/netfilter/xt_qtaguid.h>
+#include <linux/ratelimit.h>
 #include <linux/skbuff.h>
 #include <linux/workqueue.h>
 #include <net/addrconf.h>
@@ -54,11 +55,16 @@ module_param_named(stats_perms, proc_stats_perms, uint, S_IRUGO | S_IWUSR);
 
 static struct proc_dir_entry *xt_qtaguid_ctrl_file;
 
+/* Everybody can write. But proc_ctrl_write_limited is true by default which
+ * limits what can be controlled. See the can_*() functions.
+ */
+
 #ifdef CONFIG_ANDROID_PARANOID_NETWORK
 #include <linux/android_aid.h>
 static gid_t proc_stats_readall_gid = AID_NET_BW_STATS;
 static gid_t proc_ctrl_write_gid = AID_NET_BW_ACCT;
 #endif
+
 /* Everybody can write. But proc_ctrl_write_limited is true by default which
  * limits what can be controlled. See the can_*() functions.
  */
@@ -1339,12 +1345,12 @@ static void iface_stat_update_from_skb(const struct sk_buff *skb,
 	}
 
 	if (unlikely(!el_dev)) {
-		pr_err("qtaguid[%d]: %s(): no par->in/out?!!\n",
-		       par->hooknum, __func__);
+		pr_err_ratelimited("qtaguid[%d]: %s(): no par->in/out?!!\n",
+				   par->hooknum, __func__);
 		BUG();
 	} else if (unlikely(!el_dev->name)) {
-		pr_err("qtaguid[%d]: %s(): no dev->name?!!\n",
-		       par->hooknum, __func__);
+		pr_err_ratelimited("qtaguid[%d]: %s(): no dev->name?!!\n",
+				   par->hooknum, __func__);
 		BUG();
 	} else {
 		proto = ipx_proto(skb, par);
@@ -1427,8 +1433,8 @@ static void if_tag_stat_update(const char *ifname, uid_t uid,
 
 	iface_entry = get_iface_entry(ifname);
 	if (!iface_entry) {
-		pr_err("qtaguid: iface_stat: stat_update() %s not found\n",
-		       ifname);
+		pr_err_ratelimited("qtaguid: iface_stat: stat_update() "
+				   "%s not found\n", ifname);
 		return;
 	}
 	/* It is ok to process data when an iface_entry is inactive */
@@ -1853,6 +1859,8 @@ static bool qtaguid_mt(const struct sk_buff *skb, struct xt_action_param *par)
 		account_for_uid(skb, sk, 0, par);
 		res = ((info->match ^ info->invert) &
 			(XT_QTAGUID_UID | XT_QTAGUID_GID)) == 0;
+		/*mtk_net: patch for duplicated account for uid 0*/
+		res = true;
 		atomic64_inc(&qtu_events.match_no_sk_file);
 		goto put_sock_ret_res;
 	}
@@ -2611,11 +2619,11 @@ static int pp_stats_line(struct proc_print_info *ppi, int cnt_set)
 	} else {
 		tag_t tag = ppi->ts_entry->tn.tag;
 		uid_t stat_uid = get_uid_from_tag(tag);
-
 		//if (!can_read_other_uid_stats(stat_uid)) {
 		/* Detailed tags are not available to everybody */
 		if (get_atag_from_tag(tag)
-				&& !can_read_other_uid_stats(stat_uid)) {
+		    && !can_read_other_uid_stats(stat_uid)) {
+
 			CT_DEBUG("qtaguid: stats line: "
 				 "%s 0x%llx %u: insufficient priv "
 				 "from pid=%u tgid=%u uid=%u stats.gid=%u\n",

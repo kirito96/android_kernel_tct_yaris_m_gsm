@@ -1,6 +1,7 @@
 #ifndef __DDP_CMDQ_H__
 #define __DDP_CMDQ_H__
 
+
 #define CMDQ_BUFFER_NUM 8
 #define CMDQ_BUFFER_SIZE 32*1024
 
@@ -11,6 +12,13 @@
 #define CMDQ_THREAD_NUM 7
 #define CMDQ_THREAD_LIST_LENGTH 10
 #define CMDQ_TIMEOUT 27
+
+#define CMDQ_CHECK_TIME(token) end_time = sched_clock();\
+            cost = ((unsigned long)(end_time-start_time))/1000;\
+            if (cost > 5000)\
+            {\
+                printk("[CMDQ][IRQ]" #token " %ld us, too long!\n", cost);\
+            }
 
 
 typedef struct {
@@ -56,6 +64,8 @@ cmdq_buff_t * cmdqBufAddr(int taskID);
 bool cmdqTaskAssigned(int taskID, unsigned int priority, unsigned int engineFlag, unsigned int blocksize);
 void cmdqThreadComplete(int cmdqThread, bool cmdqIntStatus);
 void dumpMDPRegInfo(void);
+void cmdqTerminated(void);
+bool checkMdpEngineStatus(unsigned int engineFlag);
 
 
 

@@ -74,6 +74,9 @@ static int scan_for_master(struct ubifs_info *c)
 		   UBIFS_MST_NODE_SZ - UBIFS_CH_SZ))
 		goto out;
 	c->mst_offs = offs;
+	/* MTK force recovery master node when ECC error */
+	if(sleb->ecc == 1)
+		goto out;
 	ubifs_scan_destroy(sleb);
 	return 0;
 
@@ -352,10 +355,9 @@ int ubifs_read_master(struct ubifs_info *c)
  * ubifs_write_master - write master node.
  * @c: UBIFS file-system description object
  *
- * This function writes the master node. The caller has to take the
- * @c->mst_mutex lock before calling this function. Returns zero in case of
- * success and a negative error code in case of failure. The master node is
- * written twice to enable recovery.
+ * This function writes the master node. Returns zero in case of success and a
+ * negative error code in case of failure. The master node is written twice to
+ * enable recovery.
  */
 int ubifs_write_master(struct ubifs_info *c)
 {
@@ -379,7 +381,7 @@ int ubifs_write_master(struct ubifs_info *c)
 	c->mst_offs = offs;
 	c->mst_node->highest_inum = cpu_to_le64(c->highest_inum);
 
-	err = ubifs_write_node(c, c->mst_node, len, lnum, offs, UBI_SHORTTERM);
+	err = ubifs_write_node(c, c->mst_node, len, lnum, offs);
 	if (err)
 		return err;
 
@@ -390,7 +392,7 @@ int ubifs_write_master(struct ubifs_info *c)
 		if (err)
 			return err;
 	}
-	err = ubifs_write_node(c, c->mst_node, len, lnum, offs, UBI_SHORTTERM);
+	err = ubifs_write_node(c, c->mst_node, len, lnum, offs);
 
 	return err;
 }

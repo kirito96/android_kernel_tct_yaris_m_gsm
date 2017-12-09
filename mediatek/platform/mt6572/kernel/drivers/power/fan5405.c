@@ -72,7 +72,7 @@ int fan5405_read_byte(kal_uint8 cmd, kal_uint8 *returnData)
     mutex_lock(&fan5405_i2c_access);
     
     //new_client->addr = ((new_client->addr) & I2C_MASK_FLAG) | I2C_WR_FLAG;    
-    new_client->ext_flag=((new_client->ext_flag ) & I2C_MASK_FLAG ) | I2C_WR_FLAG | I2C_DIRECTION_FLAG;
+    new_client->ext_flag=((new_client->ext_flag ) & I2C_MASK_FLAG ) | I2C_WR_FLAG;
 
     cmd_buf[0] = cmd;
     ret = i2c_master_send(new_client, &cmd_buf[0], (1<<8 | 1));
@@ -105,7 +105,7 @@ int fan5405_write_byte(kal_uint8 cmd, kal_uint8 writeData)
     write_data[0] = cmd;
     write_data[1] = writeData;
     
-    new_client->ext_flag=((new_client->ext_flag ) & I2C_MASK_FLAG ) | I2C_DIRECTION_FLAG;
+    new_client->ext_flag=((new_client->ext_flag ) & I2C_MASK_FLAG );
     
     ret = i2c_master_send(new_client, write_data, 2);
     if (ret < 0) 

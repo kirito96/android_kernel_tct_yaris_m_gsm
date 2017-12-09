@@ -12,11 +12,13 @@
 #include "SpeechBGSPlayer.h"
 #include "SpeechVMRecorder.h"
 
+#include "WCNChipController.h"
+
 #define LOG_TAG "SpeechPhoneCallController"
 
 
 // TODO(Andrew Hsu): MUST connect (DAIBT) <=> (MODEM_PCM_1 / MODEM_PCM_2) when next ECO!!
-//#define DAIBT_NO_INTERCONNECTION_TO_MODEM_PCM
+#define DAIBT_NO_INTERCONNECTION_TO_MODEM_PCM
 
 namespace android
 {
@@ -34,7 +36,8 @@ SpeechPhoneCallController *SpeechPhoneCallController::GetInstance()
     static Mutex mGetInstanceLock;
     Mutex::Autolock _l(mGetInstanceLock);
 
-    if (mSpeechPhoneCallController == NULL) {
+    if (mSpeechPhoneCallController == NULL)
+    {
         mSpeechPhoneCallController = new SpeechPhoneCallController();
     }
     ASSERT(mSpeechPhoneCallController != NULL);
@@ -44,9 +47,7 @@ SpeechPhoneCallController *SpeechPhoneCallController::GetInstance()
 SpeechPhoneCallController::SpeechPhoneCallController()
 {
     // VT flag
-    char vt_need_on[PROPERTY_VALUE_MAX];
-    property_get(PROPERTY_KEY_VT_NEED_ON, vt_need_on, "0"); //"0": default off
-    mVtNeedOn = (vt_need_on[0] == '0') ? false : true;
+    mVtNeedOn = false;
 
     // Need Mute Mic
     char mic_mute_on[PROPERTY_VALUE_MAX];
@@ -57,7 +58,7 @@ SpeechPhoneCallController::SpeechPhoneCallController()
     mAudioResourceManager = AudioResourceManager::getInstance();
 
     // get analog control instance
-    mAudioAnalogInstance  = AudioAnalogControlFactory::CreateAudioAnalogControl();
+    // mAudioAnalogInstance  = AudioAnalogControlFactory::CreateAudioAnalogControl();
 
     // get digital control instnace
     mAudioDigitalInstance = AudioDigitalControlFactory::CreateAudioDigitalControl();
@@ -71,6 +72,9 @@ SpeechPhoneCallController::SpeechPhoneCallController()
     // tty
     mRoutingForTty = AUDIO_DEVICE_OUT_EARPIECE;
     mTty_Ctm = AUD_TTY_OFF;
+
+    // BT mode, 0:NB, 1:WB
+    mBTMode = 0;
 }
 
 SpeechPhoneCallController::~SpeechPhoneCallController()
@@ -80,7 +84,7 @@ SpeechPhoneCallController::~SpeechPhoneCallController()
 
 bool SpeechPhoneCallController::IsModeIncall(const audio_mode_t audio_mode) const
 {
-    return (audio_mode == AUDIO_MODE_IN_CALL || audio_mode == AUDIO_MODE_IN_CALL_2);
+    return (audio_mode == AUDIO_MODE_IN_CALL || audio_mode == AUDIO_MODE_IN_CALL_2  || audio_mode == AUDIO_MODE_IN_CALL_EXTERNAL);
 }
 
 
@@ -109,7 +113,8 @@ status_t SpeechPhoneCallController::OpenModemSpeechControlFlow(const audio_mode_
 
     ALOGD("+%s(), audio_mode = %d", __FUNCTION__, audio_mode);
 
-    if (IsModeIncall(audio_mode) == false) {
+    if (IsModeIncall(audio_mode) == false)
+    {
         ALOGE("-%s() new_mode(%d) != MODE_IN_CALL / MODE_IN_CALL_2", __FUNCTION__, audio_mode);
         return INVALID_OPERATION;
     }
@@ -122,20 +127,49 @@ status_t SpeechPhoneCallController::OpenModemSpeechControlFlow(const audio_mode_
 
     // check BT device
     const bool bt_device_on = android_audio_legacy::AudioSystem::isBluetoothScoDevice((android_audio_legacy::AudioSystem::audio_devices)mAudioResourceManager->getDlOutputDevice());
+#if 1
+    int sample_rate;
+    if (bt_device_on == true)
+    {
+        if (mBTMode == 0) //NB BTSCO
+        {
+            sample_rate = 8000;
+        }
+        else
+        {
+            sample_rate = 16000;
+        }
+    }
+    else
+    {
+        sample_rate = 16000;
+    }
+    ALOGD("+%s(), bt_device_on = %d, sample_rate = %d", __FUNCTION__, bt_device_on, sample_rate);
+#else
     const int  sample_rate  = (bt_device_on == true) ? 8000 : 16000; // TODO: MT6628 BT only use NB
+#endif
 
-    // enable clock
-    SetAfeAnalogClock(true);
+#ifdef EXT_MODEM_BT_CVSD
+    if (!bt_device_on || modem_index != MODEM_EXTERNAL)
+    {
+#endif
+        // enable clock
+        SetAfeAnalogClock(true);
 
-    // set sampling rate
-    mAudioAnalogInstance->SetFrequency(AudioAnalogType::DEVICE_OUT_DAC, sample_rate);
-    mAudioAnalogInstance->SetFrequency(AudioAnalogType::DEVICE_IN_ADC,  sample_rate);
+        // set sampling rate
+        mAudioResourceManager->SetFrequency(AudioResourceManagerInterface::DEVICE_OUT_DAC, sample_rate);
+        mAudioResourceManager->SetFrequency(AudioResourceManagerInterface::DEVICE_IN_ADC,  sample_rate);
+#ifdef EXT_MODEM_BT_CVSD
+    }
+#endif
 
     // set device
-    if (CheckTtyNeedOn() == true) {
+    if (CheckTtyNeedOn() == true)
+    {
         SetTtyInOutDevice(GetRoutingForTty(), mTty_Ctm, audio_mode);
     }
-    else {
+    else
+    {
         // Note: set output device in phone call will also assign input device
         mAudioResourceManager->setDlOutputDevice(mAudioResourceManager->getDlOutputDevice());
     }
@@ -158,16 +192,6 @@ status_t SpeechPhoneCallController::OpenModemSpeechControlFlow(const audio_mode_
 
     // Set PMIC digital/analog part - uplink has pop, open first
     mAudioResourceManager->StartInputDevice();
-    if (bt_device_on == false) usleep(kDelayForUplinkPulseMs * 1000); // PMIC HW pulse
-
-    // Set PMIC digital/analog part - DL need trim code.
-    mAudioResourceManager->StartOutputDevice(); // also set volume here
-
-    // start Side Tone Filter
-    if (CheckSideToneFilterNeedOn(output_device) == true) {
-        mAudioDigitalInstance->EnableSideToneFilter(true);
-    }
-
 
 
     // Set MODEM_PCM - open modem pcm here s.t. modem/DSP can learn the uplink background noise, but not zero
@@ -175,41 +199,47 @@ status_t SpeechPhoneCallController::OpenModemSpeechControlFlow(const audio_mode_
     mAudioDigitalInstance->SetModemPcmEnable(modem_index, true);
 
 
-
     // Set MD side sampling rate
     pSpeechDriver->SetModemSideSamplingRate(sample_rate);
 
     // Set speech mode
     pSpeechDriver->SetSpeechMode(input_device, output_device);
-    usleep(1*1000);  // 1ms to make sure speech mode sent to MD
 
     // Speech/VT on
-    if (mVtNeedOn == true) {
+    if (mVtNeedOn == true)
+    {
         pSpeechDriver->VideoTelephonyOn();
 
         // trun on P2W for Video Telephony
         bool wideband_on = false; // VT default use Narrow Band (8k), modem side will SRC to 16K
         pSpeechDriver->PCM2WayOn(wideband_on);
     }
-    else {
-        // chen liang modify for ptt begin
-        if (/*(pSpeechDriver->LAD_GetPCM4WayState() != 0) && */(pSpeechDriver->GetApSideModemStatus(SPEECH_STATUS_MASK) == true)) {
-            ALOGD("%s(), speech is already on, no need to call SpeechOn()", __FUNCTION__);
-        }
-        else {
-            pSpeechDriver->SpeechOn();
-        }
-        // chen liang modify for ptt end
+    else
+    {
+        pSpeechDriver->SpeechOn();
 
         // turn on TTY
-        if (CheckTtyNeedOn() == true) {
+        if (CheckTtyNeedOn() == true)
+        {
             pSpeechDriver->TtyCtmOn(BAUDOT_MODE);
         }
     }
 
+
+    // Set PMIC digital/analog part - DL need trim code.
+    mAudioResourceManager->StartOutputDevice(); // also set volume here
+
+    // start Side Tone Filter
+    if (CheckSideToneFilterNeedOn(output_device) == true)
+    {
+        mAudioDigitalInstance->EnableSideToneFilter(true);
+    }
+
+
     // check VM need open
     SpeechVMRecorder *pSpeechVMRecorder = SpeechVMRecorder::GetInstance();
-    if (pSpeechVMRecorder->GetVMRecordCapability() == true) {
+    if (pSpeechVMRecorder->GetVMRecordCapability() == true)
+    {
         ALOGD("%s(), Open VM/EPL record", __FUNCTION__);
         pSpeechVMRecorder->Open();
     }
@@ -227,11 +257,13 @@ status_t SpeechPhoneCallController::CloseModemSpeechControlFlow(const audio_mode
 
     const modem_index_t modem_index = mSpeechDriverFactory->GetActiveModemIndex();
     ASSERT((modem_index == MODEM_1 && audio_mode == AUDIO_MODE_IN_CALL) ||
-           (modem_index == MODEM_2 && audio_mode == AUDIO_MODE_IN_CALL_2));
+           (modem_index == MODEM_2 && audio_mode == AUDIO_MODE_IN_CALL_2) ||
+           (modem_index == MODEM_EXTERNAL && audio_mode == AUDIO_MODE_IN_CALL_EXTERNAL));
 
     // check VM need close
     SpeechVMRecorder *pSpeechVMRecorder = SpeechVMRecorder::GetInstance();
-    if (pSpeechVMRecorder->GetVMRecordStatus() == true) {
+    if (pSpeechVMRecorder->GetVMRecordStatus() == true)
+    {
         ALOGD("%s(), Close VM/EPL record", __FUNCTION__);
         pSpeechVMRecorder->Close();
     }
@@ -249,6 +281,7 @@ status_t SpeechPhoneCallController::CloseModemSpeechControlFlow(const audio_mode
     mAudioResourceManager->StopInputDevice();
 
     // Stop AP side digital part
+    const bool bt_device_on = android_audio_legacy::AudioSystem::isBluetoothScoDevice((android_audio_legacy::AudioSystem::audio_devices)mAudioResourceManager->getDlOutputDevice());
     CloseModemSpeechDigitalPart(modem_index, (audio_devices_t)mAudioResourceManager->getDlOutputDevice());
 
 
@@ -256,18 +289,28 @@ status_t SpeechPhoneCallController::CloseModemSpeechControlFlow(const audio_mode
     // Get current active speech driver
     SpeechDriverInterface *pSpeechDriver = mSpeechDriverFactory->GetSpeechDriver();
 
+    // check BGS need close
+    if (pSpeechDriver->GetApSideModemStatus(BGS_STATUS_MASK) == true)
+    {
+        pSpeechDriver->BGSoundOff();
+    }
+
     // Speech/VT off
-    if (pSpeechDriver->GetApSideModemStatus(VT_STATUS_MASK) == true) {
+    if (pSpeechDriver->GetApSideModemStatus(VT_STATUS_MASK) == true)
+    {
         pSpeechDriver->PCM2WayOff();
         pSpeechDriver->VideoTelephonyOff();
     }
-    else if (pSpeechDriver->GetApSideModemStatus(SPEECH_STATUS_MASK) == true) {
-        if (pSpeechDriver->GetApSideModemStatus(TTY_STATUS_MASK) == true) {
+    else if (pSpeechDriver->GetApSideModemStatus(SPEECH_STATUS_MASK) == true)
+    {
+        if (pSpeechDriver->GetApSideModemStatus(TTY_STATUS_MASK) == true)
+        {
             pSpeechDriver->TtyCtmOff();
         }
         pSpeechDriver->SpeechOff();
     }
-    else {
+    else
+    {
         ALOGE("%s(), audio_mode = %d, Speech & VT are already closed!!", __FUNCTION__, audio_mode);
         ASSERT(pSpeechDriver->GetApSideModemStatus(VT_STATUS_MASK)     == true ||
                pSpeechDriver->GetApSideModemStatus(SPEECH_STATUS_MASK) == true);
@@ -276,12 +319,26 @@ status_t SpeechPhoneCallController::CloseModemSpeechControlFlow(const audio_mode
     // AFE_ON = false
     mAudioDigitalInstance->SetAfeEnable(false);
 
-    // recover sampling rate
-    mAudioAnalogInstance->SetFrequency(AudioAnalogType::DEVICE_OUT_DAC, 44100);
-    mAudioAnalogInstance->SetFrequency(AudioAnalogType::DEVICE_IN_ADC, 44100);
+#ifdef EXT_MODEM_BT_CVSD
+    if (!bt_device_on || modem_index != MODEM_EXTERNAL)
+    {
+#endif
+        // recover sampling rate
+        mAudioResourceManager->SetFrequency(AudioResourceManagerInterface::DEVICE_OUT_DAC, 44100);
+        mAudioResourceManager->SetFrequency(AudioResourceManagerInterface::DEVICE_IN_ADC, 44100);
 
-    // disable clock
-    SetAfeAnalogClock(false);
+        // disable clock
+        SetAfeAnalogClock(false);
+#ifdef EXT_MODEM_BT_CVSD
+    }
+#endif
+
+    // clean VT status
+    if (mVtNeedOn == true)
+    {
+        ALOGD("%s(), Set mVtNeedOn = false");
+        mVtNeedOn = false;
+    }
 
     ALOGD("-%s(), audio_mode = %d", __FUNCTION__, audio_mode);
 
@@ -297,7 +354,8 @@ status_t SpeechPhoneCallController::ChangeDeviceForModemSpeechControlFlow(const 
 
     const modem_index_t modem_index = mSpeechDriverFactory->GetActiveModemIndex();
     ASSERT((modem_index == MODEM_1 && audio_mode == AUDIO_MODE_IN_CALL) ||
-           (modem_index == MODEM_2 && audio_mode == AUDIO_MODE_IN_CALL_2));
+           (modem_index == MODEM_2 && audio_mode == AUDIO_MODE_IN_CALL_2) ||
+           (modem_index == MODEM_EXTERNAL && audio_mode == AUDIO_MODE_IN_CALL_EXTERNAL));
 
     // Get current active speech driver
     SpeechDriverInterface *pSpeechDriver = mSpeechDriverFactory->GetSpeechDriver();
@@ -325,11 +383,14 @@ status_t SpeechPhoneCallController::ChangeDeviceForModemSpeechControlFlow(const 
 
 
 
+
     // Set new device
-    if (CheckTtyNeedOn() == true) {
+    if (CheckTtyNeedOn() == true)
+    {
         SetTtyInOutDevice(GetRoutingForTty(), mTty_Ctm, audio_mode);
     }
-    else {
+    else
+    {
         mAudioResourceManager->setDlOutputDevice(new_device);
     }
 
@@ -342,29 +403,55 @@ status_t SpeechPhoneCallController::ChangeDeviceForModemSpeechControlFlow(const 
 
     // Check BT device
     const bool bt_device_on = android_audio_legacy::AudioSystem::isBluetoothScoDevice((android_audio_legacy::AudioSystem::audio_devices)output_device);
-    const int  sample_rate  = (bt_device_on == true) ? 8000 : 16000; // TODO: MT6628 BT only use NB
 
-    // Set sampling rate
-    mAudioAnalogInstance->SetFrequency(AudioAnalogType::DEVICE_OUT_DAC, sample_rate);
-    mAudioAnalogInstance->SetFrequency(AudioAnalogType::DEVICE_IN_ADC,  sample_rate);
+#if 1
+    int sample_rate;
+    if (bt_device_on == true)
+    {
+        if (mBTMode == 0) //NB BTSCO
+        {
+            sample_rate = 8000;
+        }
+        else
+        {
+            sample_rate = 16000;
+        }
+    }
+    else
+    {
+        sample_rate = 16000;
+    }
+    ALOGD("+%s(), bt_device_on = %d, sample_rate = %d", __FUNCTION__, bt_device_on, sample_rate);
+#else
+    const int  sample_rate  = (bt_device_on == true) ? 8000 : 16000; // TODO: MT6628 BT only use NB
+#endif
+
+#ifdef EXT_MODEM_BT_CVSD
+    if (!bt_device_on || modem_index != MODEM_EXTERNAL)
+    {
+#endif
+        // Set sampling rate
+        mAudioResourceManager->SetFrequency(AudioResourceManagerInterface::DEVICE_OUT_DAC, sample_rate);
+        mAudioResourceManager->SetFrequency(AudioResourceManagerInterface::DEVICE_IN_ADC,  sample_rate);
+#ifdef EXT_MODEM_BT_CVSD
+    }
+#endif
 
     // Open ADC/DAC I2S, or DAIBT
     OpenModemSpeechDigitalPart(modem_index, output_device);
-
-
 
     // Clean Side Tone Filter gain
     pSpeechDriver->SetSidetoneGain(0);
 
     // Set PMIC digital/analog part - uplink has pop, open first
     mAudioResourceManager->StartInputDevice();
-    if (bt_device_on == false) usleep(kDelayForUplinkPulseMs * 1000); // PMIC HW pulse
 
     // Set PMIC digital/analog part - DL need trim code.
     mAudioResourceManager->StartOutputDevice(); // also set volume here
 
     // start Side Tone Filter
-    if (CheckSideToneFilterNeedOn(output_device) == true) {
+    if (CheckSideToneFilterNeedOn(output_device) == true)
+    {
         mAudioDigitalInstance->EnableSideToneFilter(true);
     }
 
@@ -382,7 +469,6 @@ status_t SpeechPhoneCallController::ChangeDeviceForModemSpeechControlFlow(const 
     // Set speech mode
     pSpeechDriver->SetSpeechMode(input_device, output_device);
 
-
     // Need recover mute state
     pSpeechDriver->SetUplinkMute(mMicMute);
     pSpeechDriver->SetDownlinkMute(false);
@@ -394,11 +480,13 @@ status_t SpeechPhoneCallController::ChangeDeviceForModemSpeechControlFlow(const 
 
 status_t SpeechPhoneCallController::SetAfeAnalogClock(const bool clock_on)
 {
-    if (clock_on == true) {
+    if (clock_on == true)
+    {
         mAudioResourceManager->EnableAudioClock(AudioResourceManagerInterface::CLOCK_AUD_AFE, true);
         mAudioResourceManager->EnableAudioClock(AudioResourceManagerInterface::CLOCK_AUD_ANA, true);
     }
-    else {
+    else
+    {
         mAudioResourceManager->EnableAudioClock(AudioResourceManagerInterface::CLOCK_AUD_ANA, false);
         mAudioResourceManager->EnableAudioClock(AudioResourceManagerInterface::CLOCK_AUD_AFE, false);
     }
@@ -408,39 +496,105 @@ status_t SpeechPhoneCallController::SetAfeAnalogClock(const bool clock_on)
 status_t SpeechPhoneCallController::OpenModemSpeechDigitalPart(const modem_index_t modem_index, const audio_devices_t output_device)
 {
     const bool bt_device_on = android_audio_legacy::AudioSystem::isBluetoothScoDevice((android_audio_legacy::AudioSystem::audio_devices)output_device);
-    const int  sample_rate  = (bt_device_on == true) ? 8000 : 16000; // TODO: MT6628 BT only use NB
+    int  sample_rate;
 
-    if (bt_device_on) { // DAIBT
-        SetModemSpeechInterConnection(AudioDigitalType::DAI_BT, modem_index, AudioDigitalType::Connection);
+    if (bt_device_on == true)
+    {
+        if (WCNChipController::GetInstance()->BTChipSamplingRate() == 0)
+        {
+            sample_rate = 8000;
 
-        SetModemSpeechDAIBTAttribute(sample_rate);
-        mAudioDigitalInstance->SetDAIBTEnable(true);
+        }
+        else
+        {
+            sample_rate = 16000;
+        }
+    }
+    else
+    {
+        sample_rate = 16000;
+    }
+
+    if (bt_device_on) // DAIBT
+    {
+        if (WCNChipController::GetInstance()->BTUseCVSDRemoval() == true)
+        {
+            if (modem_index != MODEM_EXTERNAL)
+            {
+
+                SetModemSpeechInterConnection(AudioDigitalType::DAI_BT, modem_index, AudioDigitalType::Connection);
+
+                SetModemSpeechDAIBTAttribute(sample_rate);
+                mAudioDigitalInstance->SetDAIBTEnable(true);
 
 #ifdef DAIBT_NO_INTERCONNECTION_TO_MODEM_PCM // DAIBT <-> HW_GAIN2 <-> MODEM_PCM
-        AudioMEMIFAttribute::SAMPLINGRATE mem_sample_rate =
-            (sample_rate == 8000) ? AudioMEMIFAttribute::AFE_8000HZ : AudioMEMIFAttribute::AFE_16000HZ;
+                AudioMEMIFAttribute::SAMPLINGRATE mem_sample_rate =
+                    (sample_rate == 8000) ? AudioMEMIFAttribute::AFE_8000HZ : AudioMEMIFAttribute::AFE_16000HZ;
 
-        // SET HW_GAIN2
-        mAudioDigitalInstance->SetHwDigitalGainMode(AudioDigitalType::HW_DIGITAL_GAIN2, mem_sample_rate, 0xC8);
-        mAudioDigitalInstance->SetHwDigitalGain(0x80000, AudioDigitalType::HW_DIGITAL_GAIN2);
-        mAudioDigitalInstance->SetHwDigitalGainEnable(AudioDigitalType::HW_DIGITAL_GAIN2, true);
+                // SET HW_GAIN2
+                mAudioDigitalInstance->SetHwDigitalGainMode(AudioDigitalType::HW_DIGITAL_GAIN2, mem_sample_rate, 0xC8);
+                mAudioDigitalInstance->SetHwDigitalGain(0x80000, AudioDigitalType::HW_DIGITAL_GAIN2);
+                mAudioDigitalInstance->SetHwDigitalGainEnable(AudioDigitalType::HW_DIGITAL_GAIN2, true);
 
-        // USE HW_GAIN2 MUST TURN ON "MASTER/SLAVE" I2S IN/OUT
-        AudioDigtalI2S master_2nd_i2s_out_attribute;
-        memset((void *)&master_2nd_i2s_out_attribute, 0, sizeof(master_2nd_i2s_out_attribute));
-        master_2nd_i2s_out_attribute.mI2S_SAMPLERATE = sample_rate;
-        master_2nd_i2s_out_attribute.mINV_LRCK = AudioDigtalI2S::NO_INVERSE;
-        master_2nd_i2s_out_attribute.mI2S_FMT  = AudioDigtalI2S::I2S;
-        master_2nd_i2s_out_attribute.mI2S_WLEN = AudioDigtalI2S::WLEN_16BITS;
-        mAudioDigitalInstance->Set2ndI2SOut(&master_2nd_i2s_out_attribute);
-        #if 1
-        mAudioDigitalInstance->Set2ndI2SOutEnable(true);
-        #else
-        mAudioDigitalInstance->Set2ndI2SEnable(true);
-        #endif
+                // USE HW_GAIN2 MUST TURN ON "MASTER/SLAVE" I2S IN/OUT
+                AudioDigtalI2S master_2nd_i2s_out_attribute;
+                memset((void *)&master_2nd_i2s_out_attribute, 0, sizeof(master_2nd_i2s_out_attribute));
+                master_2nd_i2s_out_attribute.mI2S_SAMPLERATE = sample_rate;
+                master_2nd_i2s_out_attribute.mINV_LRCK = AudioDigtalI2S::NO_INVERSE;
+                master_2nd_i2s_out_attribute.mI2S_FMT  = AudioDigtalI2S::I2S;
+                master_2nd_i2s_out_attribute.mI2S_WLEN = AudioDigtalI2S::WLEN_16BITS;
+                mAudioDigitalInstance->Set2ndI2SOut(&master_2nd_i2s_out_attribute);
+#if 1
+                mAudioDigitalInstance->Set2ndI2SOutEnable(true);
+#else
+                mAudioDigitalInstance->Set2ndI2SEnable(true);
 #endif
+#endif
+            }
+            else
+            {
+                mAudioBTCVSDControl = AudioBTCVSDControl::getInstance();
+                if (!mAudioBTCVSDControl)
+                {
+                    ALOGE("OpenModemSpeechDigitalPart() AudioBTCVSDControl::getInstance() fail");
+                }
+                mAudioBTCVSDControl->AudioExtMDCVSDCreateThread();
+            }
+        }
+        else
+        {
+            SetModemSpeechInterConnection(AudioDigitalType::DAI_BT, modem_index, AudioDigitalType::Connection);
+
+            SetModemSpeechDAIBTAttribute(sample_rate);
+            mAudioDigitalInstance->SetDAIBTEnable(true);
+
+#ifdef DAIBT_NO_INTERCONNECTION_TO_MODEM_PCM // DAIBT <-> HW_GAIN2 <-> MODEM_PCM
+            AudioMEMIFAttribute::SAMPLINGRATE mem_sample_rate =
+                (sample_rate == 8000) ? AudioMEMIFAttribute::AFE_8000HZ : AudioMEMIFAttribute::AFE_16000HZ;
+
+            // SET HW_GAIN2
+            mAudioDigitalInstance->SetHwDigitalGainMode(AudioDigitalType::HW_DIGITAL_GAIN2, mem_sample_rate, 0xC8);
+            mAudioDigitalInstance->SetHwDigitalGain(0x80000, AudioDigitalType::HW_DIGITAL_GAIN2);
+            mAudioDigitalInstance->SetHwDigitalGainEnable(AudioDigitalType::HW_DIGITAL_GAIN2, true);
+
+            // USE HW_GAIN2 MUST TURN ON "MASTER/SLAVE" I2S IN/OUT
+            AudioDigtalI2S master_2nd_i2s_out_attribute;
+            memset((void *)&master_2nd_i2s_out_attribute, 0, sizeof(master_2nd_i2s_out_attribute));
+            master_2nd_i2s_out_attribute.mI2S_SAMPLERATE = sample_rate;
+            master_2nd_i2s_out_attribute.mINV_LRCK = AudioDigtalI2S::NO_INVERSE;
+            master_2nd_i2s_out_attribute.mI2S_FMT  = AudioDigtalI2S::I2S;
+            master_2nd_i2s_out_attribute.mI2S_WLEN = AudioDigtalI2S::WLEN_16BITS;
+            mAudioDigitalInstance->Set2ndI2SOut(&master_2nd_i2s_out_attribute);
+#if 1
+            mAudioDigitalInstance->Set2ndI2SOutEnable(true);
+#else
+            mAudioDigitalInstance->Set2ndI2SEnable(true);
+#endif
+#endif
+        }
     }
-    else { // ADC/DAC I2S
+    else // ADC/DAC I2S
+    {
         SetModemSpeechInterConnection(AudioDigitalType::I2S_IN_ADC, modem_index, AudioDigitalType::Connection);
         SetModemSpeechInterConnection(AudioDigitalType::I2S_OUT_DAC, modem_index, AudioDigitalType::Connection);
 
@@ -452,6 +606,7 @@ status_t SpeechPhoneCallController::OpenModemSpeechDigitalPart(const modem_index
     }
 
     return NO_ERROR;
+
 }
 
 status_t SpeechPhoneCallController::CloseModemSpeechDigitalPart(const modem_index_t modem_index, const audio_devices_t output_device)
@@ -459,19 +614,49 @@ status_t SpeechPhoneCallController::CloseModemSpeechDigitalPart(const modem_inde
     // stop Input/Output module
     const bool bt_device_on = android_audio_legacy::AudioSystem::isBluetoothScoDevice((android_audio_legacy::AudioSystem::audio_devices)output_device);
 
-    if (bt_device_on) {
+    if (bt_device_on)
+    {
+        if (WCNChipController::GetInstance()->BTUseCVSDRemoval() != true)
+        {
 #ifdef DAIBT_NO_INTERCONNECTION_TO_MODEM_PCM // DAIBT <-> HW_GAIN2 <-> MODEM_PCM
-        #if 1
-        mAudioDigitalInstance->Set2ndI2SOutEnable(false);
-        #else
-        mAudioDigitalInstance->Set2ndI2SEnable(false);
-        #endif
-        mAudioDigitalInstance->SetHwDigitalGainEnable(AudioDigitalType::HW_DIGITAL_GAIN2, false);
+#if 1
+            mAudioDigitalInstance->Set2ndI2SOutEnable(false);
+#else
+            mAudioDigitalInstance->Set2ndI2SEnable(false);
 #endif
-        mAudioDigitalInstance->SetDAIBTEnable(false);
-        SetModemSpeechInterConnection(AudioDigitalType::DAI_BT, modem_index, AudioDigitalType::DisConnect);
+            mAudioDigitalInstance->SetHwDigitalGainEnable(AudioDigitalType::HW_DIGITAL_GAIN2, false);
+#endif
+            mAudioDigitalInstance->SetDAIBTEnable(false);
+            SetModemSpeechInterConnection(AudioDigitalType::DAI_BT, modem_index, AudioDigitalType::DisConnect);
+        }
+        else
+        {
+            if (modem_index == MODEM_EXTERNAL)
+            {
+                mAudioBTCVSDControl = AudioBTCVSDControl::getInstance();
+                if (!mAudioBTCVSDControl)
+                {
+                    ALOGE("AudioBTCVSDControl::getInstance() fail");
+                }
+                mAudioBTCVSDControl->AudioExtMDCVSDDeleteThread();
+            }
+            else
+            {
+#ifdef DAIBT_NO_INTERCONNECTION_TO_MODEM_PCM // DAIBT <-> HW_GAIN2 <-> MODEM_PCM
+#if 1
+                mAudioDigitalInstance->Set2ndI2SOutEnable(false);
+#else
+                mAudioDigitalInstance->Set2ndI2SEnable(false);
+#endif
+                mAudioDigitalInstance->SetHwDigitalGainEnable(AudioDigitalType::HW_DIGITAL_GAIN2, false);
+#endif
+                mAudioDigitalInstance->SetDAIBTEnable(false);
+                SetModemSpeechInterConnection(AudioDigitalType::DAI_BT, modem_index, AudioDigitalType::DisConnect);
+            }
+        }
     }
-    else {
+    else
+    {
         mAudioDigitalInstance->SetI2SDacEnable(false);
         mAudioDigitalInstance->SetI2SAdcEnable(false);
         SetModemSpeechInterConnection(AudioDigitalType::I2S_OUT_DAC, modem_index, AudioDigitalType::DisConnect);
@@ -479,6 +664,7 @@ status_t SpeechPhoneCallController::CloseModemSpeechDigitalPart(const modem_inde
     }
 
     return NO_ERROR;
+
 }
 
 
@@ -495,7 +681,8 @@ status_t SpeechPhoneCallController::SetModemSpeechInterConnection(AudioDigitalTy
     AudioDigitalType::InterConnectionInput  hw_gain_2_out_rch = AudioDigitalType::I13;
 #endif
 
-    switch (block) {
+    switch (block)
+    {
         case AudioDigitalType::DAI_BT:
 #ifndef DAIBT_NO_INTERCONNECTION_TO_MODEM_PCM
             mAudioDigitalInstance->SetinputConnection(Connection, AudioDigitalType::I02, modem_pcm_tx_lch);      // DAIBT_IN       -> MODEM_PCM_TX_L
@@ -562,16 +749,19 @@ status_t SpeechPhoneCallController::SetModemSpeechDAIBTAttribute(int sample_rate
     AudioDigitalDAIBT daibt_attribute;
     memset((void *)&daibt_attribute, 0, sizeof(daibt_attribute));
 
-#if defined(MTK_MERGE_INTERFACE_SUPPORT)
-    daibt_attribute.mUSE_MRGIF_INPUT = AudioDigitalDAIBT::FROM_MGRIF;
-#else
-    daibt_attribute.mUSE_MRGIF_INPUT = AudioDigitalDAIBT::FROM_BT;
-#endif
+    if (WCNChipController::GetInstance()->IsBTMergeInterfaceSupported() == true)
+    {
+        daibt_attribute.mUSE_MRGIF_INPUT = AudioDigitalDAIBT::FROM_MGRIF;
+    }
+    else
+    {
+        daibt_attribute.mUSE_MRGIF_INPUT = AudioDigitalDAIBT::FROM_BT;
+    }
     daibt_attribute.mDAI_BT_MODE = (sample_rate == 8000) ? AudioDigitalDAIBT::Mode8K : AudioDigitalDAIBT::Mode16K;
     daibt_attribute.mDAI_DEL = AudioDigitalDAIBT::HighWord; // suggest always HighWord
-    daibt_attribute.mBT_LEN  = 0;
+    daibt_attribute.mBT_LEN  = WCNChipController::GetInstance()->BTChipSyncLength();;
     daibt_attribute.mDATA_RDY = true;
-    daibt_attribute.mBT_SYNC = AudioDigitalDAIBT::Short_Sync;
+    daibt_attribute.mBT_SYNC = WCNChipController::GetInstance()->BTChipSyncFormat();
     daibt_attribute.mBT_ON = true;
     daibt_attribute.mDAIBT_ON = false;
     mAudioDigitalInstance->SetDAIBBT(&daibt_attribute);
@@ -584,7 +774,8 @@ status_t SpeechPhoneCallController::SetModemPcmAttribute(const modem_index_t mod
     memset((void *)&modem_pcm_attribute, 0, sizeof(modem_pcm_attribute));
 
     // modem 2 only
-    if (modem_index == MODEM_2) {
+    if (modem_index == MODEM_2)
+    {
         // TODO: only config internal modem here.. Add external modem setting by project config!!
         modem_pcm_attribute.mExtModemSel          = AudioDigitalPCM::MODEM_2_USE_INTERNAL_MODEM;
         modem_pcm_attribute.mSlaveModeSel         = AudioDigitalPCM::SALVE_MODE;
@@ -604,6 +795,16 @@ status_t SpeechPhoneCallController::SetModemPcmAttribute(const modem_index_t mod
     modem_pcm_attribute.mPcmModeWidebandSel = (sample_rate == 8000) ? AudioDigitalPCM::PCM_MODE_8K : AudioDigitalPCM::PCM_MODE_16K;
     modem_pcm_attribute.mPcmFormat          = AudioDigitalPCM::PCM_MODE_B;
     modem_pcm_attribute.mModemPcmOn         = false;
+#ifdef EVDO_DT_SUPPORT  //overwrite some config when modem is EVDO
+    if (modem_index == MODEM_EXTERNAL)
+    {
+        modem_pcm_attribute.mExtModemSel          = AudioDigitalPCM::MODEM_2_USE_EXTERNAL_MODEM;
+        modem_pcm_attribute.mSlaveModeSel         = AudioDigitalPCM::MASTER_MODE;    // pcm is master mode when external modem is EVDO
+        modem_pcm_attribute.mAsyncFifoSel         = AudioDigitalPCM::SLAVE_USE_ASRC;
+        modem_pcm_attribute.mExtendBckSyncTypeSel = AudioDigitalPCM::BCK_CYCLE_SYNC; // short sync
+        modem_pcm_attribute.mExtendBckSyncLength  = 0;
+    }
+#endif
 
     return mAudioDigitalInstance->SetModemPcmConfig(modem_index, &modem_pcm_attribute);
 }
@@ -612,17 +813,20 @@ status_t SpeechPhoneCallController::SetTtyCtmMode(const tty_mode_t tty_mode, con
 {
     ALOGD("+%s(), mTty_Ctm = %d, new tty mode = %d, audio_mode = %d", __FUNCTION__, mTty_Ctm, tty_mode, audio_mode);
 
-    if (mTty_Ctm != tty_mode) {
+    if (mTty_Ctm != tty_mode)
+    {
         mTty_Ctm = tty_mode;
 
         SpeechDriverInterface *pSpeechDriver = mSpeechDriverFactory->GetSpeechDriver();
-        if(pSpeechDriver->GetApSideModemStatus(VT_STATUS_MASK) == false &&
-            pSpeechDriver->GetApSideModemStatus(SPEECH_STATUS_MASK) == true ) {
-            mAudioResourceManager->EnableAudioLock(AudioResourceManagerInterface::AUDIO_HARDWARE_LOCK, 3000);
-            mAudioResourceManager->EnableAudioLock(AudioResourceManagerInterface::AUDIO_STREAMOUT_LOCK, 3000);
+        if (pSpeechDriver->GetApSideModemStatus(VT_STATUS_MASK) == false &&
+            pSpeechDriver->GetApSideModemStatus(SPEECH_STATUS_MASK) == true)
+        {
+            mAudioResourceManager->EnableAudioLock(AudioResourceManagerInterface::AUDIO_HARDWARE_LOCK, AUDIO_LOCK_TIMEOUT_VALUE_MS);
+            mAudioResourceManager->EnableAudioLock(AudioResourceManagerInterface::AUDIO_STREAMOUT_LOCK, AUDIO_LOCK_TIMEOUT_VALUE_MS);
 
             pSpeechDriver->SetUplinkMute(true);
-            if (pSpeechDriver->GetApSideModemStatus(TTY_STATUS_MASK) == true) {
+            if (pSpeechDriver->GetApSideModemStatus(TTY_STATUS_MASK) == true)
+            {
                 pSpeechDriver->TtyCtmOff();
             }
 
@@ -637,7 +841,8 @@ status_t SpeechPhoneCallController::SetTtyCtmMode(const tty_mode_t tty_mode, con
             pSpeechDriver->SetSpeechMode(input_device, output_device);
 
             if ((mTty_Ctm != AUD_TTY_OFF) && (mTty_Ctm != AUD_TTY_ERR) &&
-                (pSpeechDriver->GetApSideModemStatus(TTY_STATUS_MASK) == false)) {
+                (pSpeechDriver->GetApSideModemStatus(TTY_STATUS_MASK) == false))
+            {
                 pSpeechDriver->TtyCtmOn(BAUDOT_MODE);
             }
             pSpeechDriver->SetUplinkMute(mMicMute);
@@ -655,15 +860,20 @@ void SpeechPhoneCallController::SetTtyInOutDevice(audio_devices_t routing_device
 {
     ALOGD("+%s(), routing_device = 0x%x, tty_mode = %d", __FUNCTION__, routing_device, tty_mode);
 
-    if (tty_mode == AUD_TTY_OFF) {
+    if (tty_mode == AUD_TTY_OFF)
+    {
         mAudioResourceManager->setDlOutputDevice(routing_device);
     }
-    else {
-        if (routing_device == 0) {
+    else
+    {
+        if (routing_device == 0)
+        {
             mAudioResourceManager->setDlOutputDevice(AUDIO_DEVICE_OUT_DEFAULT);    // avoid routing=0 cause reamain headset path
         }
-        else if (routing_device & AUDIO_DEVICE_OUT_SPEAKER) {
-            if (tty_mode == AUD_TTY_VCO) {
+        else if (routing_device & AUDIO_DEVICE_OUT_SPEAKER)
+        {
+            if (tty_mode == AUD_TTY_VCO)
+            {
                 ALOGD("%s(), speaker, TTY_VCO", __FUNCTION__);
 #if defined(ENABLE_EXT_DAC) || defined(ALL_USING_VOICEBUFFER_INCALL)
                 mAudioResourceManager->setDlOutputDevice(AUDIO_DEVICE_OUT_EARPIECE);
@@ -673,7 +883,8 @@ void SpeechPhoneCallController::SetTtyInOutDevice(audio_devices_t routing_device
                 mAudioResourceManager->setUlInputDevice(AUDIO_DEVICE_IN_BUILTIN_MIC);
                 mAudioVolumeInstance->ApplyMicGain(Handfree_Mic, audio_mode);
             }
-            else if (tty_mode == AUD_TTY_HCO) {
+            else if (tty_mode == AUD_TTY_HCO)
+            {
                 ALOGD("%s(), speaker, TTY_HCO", __FUNCTION__);
 #if defined(ENABLE_EXT_DAC) || defined(ALL_USING_VOICEBUFFER_INCALL)
                 mAudioResourceManager->setDlOutputDevice(AUDIO_DEVICE_OUT_EARPIECE);
@@ -683,7 +894,8 @@ void SpeechPhoneCallController::SetTtyInOutDevice(audio_devices_t routing_device
                 mAudioResourceManager->setUlInputDevice(AUDIO_DEVICE_IN_WIRED_HEADSET);
                 mAudioVolumeInstance->ApplyMicGain(TTY_CTM_Mic, audio_mode);
             }
-            else if (tty_mode == AUD_TTY_FULL) {
+            else if (tty_mode == AUD_TTY_FULL)
+            {
                 ALOGD("%s(), speaker, TTY_FULL", __FUNCTION__);
 #if defined(ENABLE_EXT_DAC) || defined(ALL_USING_VOICEBUFFER_INCALL)
                 mAudioResourceManager->setDlOutputDevice(AUDIO_DEVICE_OUT_EARPIECE);
@@ -695,8 +907,10 @@ void SpeechPhoneCallController::SetTtyInOutDevice(audio_devices_t routing_device
             }
         }
         else if ((routing_device == AUDIO_DEVICE_OUT_WIRED_HEADSET) ||
-                 (routing_device == AUDIO_DEVICE_OUT_WIRED_HEADPHONE)) {
-            if (tty_mode == AUD_TTY_VCO) {
+                 (routing_device == AUDIO_DEVICE_OUT_WIRED_HEADPHONE))
+        {
+            if (tty_mode == AUD_TTY_VCO)
+            {
                 ALOGD("%s(), headset, TTY_VCO", __FUNCTION__);
 #if defined(ENABLE_EXT_DAC) || defined(ALL_USING_VOICEBUFFER_INCALL)
                 mAudioResourceManager->setDlOutputDevice(AUDIO_DEVICE_OUT_EARPIECE);
@@ -706,13 +920,15 @@ void SpeechPhoneCallController::SetTtyInOutDevice(audio_devices_t routing_device
                 mAudioResourceManager->setUlInputDevice(AUDIO_DEVICE_IN_BUILTIN_MIC);
                 mAudioVolumeInstance->ApplyMicGain(Normal_Mic, audio_mode);
             }
-            else if (tty_mode == AUD_TTY_HCO) {
+            else if (tty_mode == AUD_TTY_HCO)
+            {
                 ALOGD("%s(), headset, TTY_HCO", __FUNCTION__);
                 mAudioResourceManager->setDlOutputDevice(AUDIO_DEVICE_OUT_EARPIECE);
                 mAudioResourceManager->setUlInputDevice(AUDIO_DEVICE_IN_WIRED_HEADSET);
                 mAudioVolumeInstance->ApplyMicGain(TTY_CTM_Mic, audio_mode);
             }
-            else if (tty_mode == AUD_TTY_FULL) {
+            else if (tty_mode == AUD_TTY_FULL)
+            {
                 ALOGD("%s(), headset, TTY_FULL", __FUNCTION__);
 #if defined(ENABLE_EXT_DAC) || defined(ALL_USING_VOICEBUFFER_INCALL)
                 mAudioResourceManager->setDlOutputDevice(AUDIO_DEVICE_OUT_EARPIECE);
@@ -723,11 +939,13 @@ void SpeechPhoneCallController::SetTtyInOutDevice(audio_devices_t routing_device
                 mAudioVolumeInstance->ApplyMicGain(TTY_CTM_Mic, audio_mode);
             }
         }
-        else if (routing_device == AUDIO_DEVICE_OUT_EARPIECE) {
+        else if (routing_device == AUDIO_DEVICE_OUT_EARPIECE)
+        {
             // tty device is removed. TtyCtm already off in CloseMD.
             ALOGD("%s(), receiver", __FUNCTION__);
         }
-        else {
+        else
+        {
             mAudioResourceManager->setDlOutputDevice(routing_device);
             ALOGD("%s(), routing = 0x%x", __FUNCTION__, routing_device);
         }
@@ -758,14 +976,13 @@ void SpeechPhoneCallController::SetMicMute(const bool mute_on)
     mMicMute = mute_on;
 }
 
-void SpeechPhoneCallController::SetMicMuteStateOnly(const bool mute_on)
+void SpeechPhoneCallController::SetBTMode(const int mode)
 {
     Mutex::Autolock _l(mLock);
 
-    ALOGD("%s(), new mute_on = %d, old mMicMute state= %d", __FUNCTION__, mute_on, mMicMute);
+    ALOGD("%s(), mode %d", __FUNCTION__, mode);
 
-    property_set(PROPERTY_KEY_MIC_MUTE_ON, (mute_on == false) ? "0" : "1");
-    mMicMute = mute_on;
+    mBTMode = mode;
 }
 
 } // end of namespace android

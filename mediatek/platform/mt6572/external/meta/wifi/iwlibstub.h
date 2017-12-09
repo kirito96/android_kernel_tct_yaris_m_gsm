@@ -1,10 +1,22 @@
 #ifndef _IWLIB_STUB_H
 #define _IWLIB_STUB_H
 
+/*******************************************************************************
+** Copyright (c) 2005 MediaTek Inc.
+**
+** All rights reserved. Copying, compilation, modification, distribution
+** or any other use whatsoever of this material is strictly prohibited
+** except in accordance with a Software License Agreement with
+** MediaTek Inc.
+********************************************************************************
+*/
 
 #include "type.h"
 
 #if WIRELESS_EXT >= 12
+/* New wireless extensions API - SET/GET convention (even ioctl numbers are
+ * root only)
+ */
 #define IOCTL_SET_INT       (SIOCIWFIRSTPRIV + 0)
 #define IOCTL_GET_INT       (SIOCIWFIRSTPRIV + 1)
 #define IOCTL_SET_ADDRESS   (SIOCIWFIRSTPRIV + 2)

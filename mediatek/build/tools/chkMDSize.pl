@@ -12,7 +12,7 @@ unless (-e $project_config) {
     exit -1;
 }
 
-my $temp = `cat $project_config | grep -P '^CUSTOM_MODEM\\s*=' | head -1 | cut -d '=' -f2 | tr -d [:cntrl:]`;
+my $temp = `cat $project_config | grep -P '^CUSTOM_MODEM\\s*=' | head -1 | cut -d '#' -f1 | cut -d '=' -f2 | tr -d [:cntrl:]`;
 $temp =~ m/^\s*(.*)\s*$/;
 $temp = $1;
 
@@ -22,18 +22,20 @@ unless (defined $temp) {
 }
 
 my @projects = split(' ', $temp);
-
+my $size = "0x00000000";
 foreach my $i (@projects) {
     my $search = $modem_path . "$i";
     unless (-e $search) {
         print "$search NOT existed\n";
-        exit -1;
+        #exit -1;
+        last;
     }
 
     my $modem = `find $search -name '*.img' | head -1 | tr -d [:cntrl:]`;
     unless (defined $modem) {
         print "No modem image is found under $search\n";
-        exit -1;
+        #exit -1;
+        last;
     }
 
     my $result = `xxd -ps -l4 -s-20 $modem |  tr -d [:cntrl:]`;
@@ -43,12 +45,12 @@ foreach my $i (@projects) {
    
     if ($modem_type eq $type) {
         $result = `xxd -ps -l4 -s-16 $modem |  tr -d [:cntrl:]`;
-        print "0x". substr($result,6,2) . substr($result,4,2) . substr($result,2,2) . substr($result,0,2) . "\n";
-        exit 0;
+        $result = "0x". substr($result,6,2) . substr($result,4,2) . substr($result,2,2) . substr($result,0,2);
+        $size = $result if ($result gt $size);
     } 
 }
 
-print "0x00000000\n";
+print "$size\n";
 exit 0;
 
 sub usage

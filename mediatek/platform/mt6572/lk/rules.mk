@@ -10,23 +10,32 @@ DEFINES += PERIPH_BLK_BLSP=1
 DEFINES += WITH_CPU_EARLY_INIT=0 WITH_CPU_WARM_BOOT=0 \
 	   MMC_SLOT=$(MMC_SLOT)
 
-#susheng.ye add for FR470200 20130614 begin
-ifeq ($(TARGET_BUILD_MMITEST),true)
- DEFINES += TARGET_BUILD_MMITEST
+ifeq ($(MTK_SECURITY_SW_SUPPORT), yes)
+	DEFINES += MTK_SECURITY_SW_SUPPORT
 endif
-#susheng.ye add for FR470200 20130614 end
+
+ifeq ($(TARGET_BUILD_MMITEST),true)
+	DEFINES += TARGET_BUILD_MMITEST
+endif	   
+
+$(info libshowlogo new path ------- $(LOCAL_DIR)/../../../../bootable/bootloader/lk/lib/libshowlogo)
 
 INCLUDES += -I$(LOCAL_DIR)/include \
 	    -I$(LOCAL_DIR)/include/platform \
-	    -Icustom/$(FULL_PROJECT)/lk/include/target \
-	    -Icustom/$(FULL_PROJECT)/lk/lcm/inc \
-	    -Icustom/$(FULL_PROJECT)/lk/inc \
-	    -Icustom/$(FULL_PROJECT)/common \
-	    -Icustom/$(FULL_PROJECT)/kernel/dct/ \
+            -I$(LOCAL_DIR)/../../../../bootable/bootloader/lk/lib/libshowlogo \
+	    -Iout/lk/include/target \
+	    -Iout/lk/lcm/inc \
+	    -Iout/lk/inc \
+	    -Iout/common \
+	    -Iout/kernel/dct/ \
 	    -I$(BUILDDIR)/include/dfo
+#for ptgen
+INCLUDES += -I../../../$(MTK_ROOT_OUT)/PTGEN/lk/inc
+INCLUDES += -I../../../$(MTK_ROOT_OUT)/PTGEN/common
+#for nandgen
+INCLUDES += -I../../../$(MTK_ROOT_OUT)/NANDGEN/common
 
 OBJS += \
-	$(LOCAL_DIR)/aee_platform.o \
 	$(LOCAL_DIR)/bitops.o \
 	$(LOCAL_DIR)/platform.o \
 	$(LOCAL_DIR)/pwm.o \
@@ -88,7 +97,7 @@ OBJS += \
 
 ifeq ($(MTK_FAN5405_SUPPORT),yes)
 	OBJS += $(LOCAL_DIR)/fan5405.o
-	OBJS += $(LOCAL_DIR)/mt_bat_fan5405.o
+	OBJS += $(LOCAL_DIR)/mt_battery.o
 else
   ifeq ($(MTK_BQ24196_SUPPORT),yes)
       OBJS += $(LOCAL_DIR)/bq24196.o
@@ -107,7 +116,11 @@ else
 endif
 
 ifneq ($(MTK_EMMC_SUPPORT),yes)
+	ifeq ($(MTK_SPI_NAND_SUPPORT),yes)
+		OBJS +=$(LOCAL_DIR)/mtk_snand_lk.o
+	else
 	OBJS +=$(LOCAL_DIR)/mtk_nand.o
+	endif
 	OBJS +=$(LOCAL_DIR)/bmt.o
 endif
 

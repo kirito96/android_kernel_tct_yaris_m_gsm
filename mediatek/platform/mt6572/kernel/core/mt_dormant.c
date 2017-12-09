@@ -96,6 +96,10 @@ static int pmu_mode = PMU_STATE0;
 #define DBGREG_WP_CTRL    0x3
 #define DBGREG_BP_XVAL    0x4
 
+/* CA7_CACHE_CONFIG Bits */
+#define L1RSTDISABLE0     (0x1)
+#define L1RSTDISABLE1     (0x2)
+#define L2RSTDISABLE      (0x10)
 
 /*********************************
 * macro for log
@@ -179,6 +183,7 @@ typedef struct ns_cpu_context {
     unsigned int vfp_regs[34];  /* Dummy entry for VFP context. */
     //debug_context_t debug_ctx;  /* Entry for Debug context. */
     unsigned int  dbg_data[32]; /* Entry for Debug context. */
+    unsigned int cache_cfg_stat;
 } cpu_context;
 
 typedef struct ns_global_context {
@@ -1351,6 +1356,7 @@ static void platform_save_context(void)
     cp15_fault_regs *fault_ctx = &cp15_context->ns_cp15_fault_regs;
     gic_cpu_context *gic_pvt_context = &ns_cpu_ctx->gic_cpu_ctx;
     global_context *gbl_context = &switcher_context.cluster.ns_cluster_ctx;
+    unsigned int stat = 0;
 
     //printk("[platform_save_context] cpu_id=%d", cpu_id);
 
@@ -1398,9 +1404,19 @@ static void platform_save_context(void)
     //for save/restore breakpoint and watchpoint
     save_dbg_regs(dbg_ctx);
 
-    if (power_state[cpu_id] == STATUS_DORMANT) {
-        /* disable L2 invalidate when reset */
-        reg_write(CA7_CACHE_CONFIG, reg_read(CA7_CACHE_CONFIG) | (1U << 4));
+    stat = reg_read(CA7_CACHE_CONFIG);
+    if (cpu_id == 1) {
+        reg_write(CA7_CACHE_CONFIG, stat & ~L1RSTDISABLE1);
+        ns_cpu_ctx->cache_cfg_stat &= ~L1RSTDISABLE1;
+        ns_cpu_ctx->cache_cfg_stat |= (stat & L1RSTDISABLE1);
+    }
+    else if (cpu_id == 0) {
+        if (power_state[cpu_id] == STATUS_DORMANT)
+            reg_write(CA7_CACHE_CONFIG, (stat & ~L1RSTDISABLE0) | L2RSTDISABLE);
+        else if (power_state[cpu_id] == STATUS_SHUTDOWN)
+            reg_write(CA7_CACHE_CONFIG, stat & ~(L1RSTDISABLE0 | L2RSTDISABLE));
+        ns_cpu_ctx->cache_cfg_stat &= ~(L1RSTDISABLE0 | L2RSTDISABLE);
+        ns_cpu_ctx->cache_cfg_stat |= (stat & (L1RSTDISABLE0 | L2RSTDISABLE));
     }
 
     dormant_ret_flag[cpu_id] = 0;
@@ -1427,6 +1443,8 @@ static void platform_restore_context(void)
     banked_cp15_context *cp15_context_v = &ns_cpu_ctx_v->banked_cp15_regs;
     generic_timer_context *cp15_timer_ctx_v = &ns_cpu_ctx_v->cp15_timer_ctx;
     unsigned int *dbg_ctx = ns_cpu_ctx_v->dbg_data;    
+    unsigned int cache_cfg_stat = ns_cpu_ctx->cache_cfg_stat;
+    unsigned int stat = 0;
 
 #if 1 // GIC APIs by Sten
     if(cpu_id==0)
@@ -1470,10 +1488,16 @@ static void platform_restore_context(void)
     //restore_v7_debug((unsigned *)debug_context);
     restore_dbg_regs(dbg_ctx);
 
-    if (power_state[cpu_id] == STATUS_DORMANT) {
-        /* enable L2 invalidate when reset */
-        reg_write(CA7_CACHE_CONFIG, reg_read(CA7_CACHE_CONFIG) & ~(1U << 4));
+    stat = reg_read(CA7_CACHE_CONFIG);
+    if (cpu_id == 1) {
+        stat &= ~L1RSTDISABLE1;
+        stat |= (cache_cfg_stat & L1RSTDISABLE1);
     }
+    else if (cpu_id == 0) {
+        stat &= ~(L1RSTDISABLE0 | L2RSTDISABLE);
+        stat |= (cache_cfg_stat & (L1RSTDISABLE0 | L2RSTDISABLE));
+    }
+    reg_write(CA7_CACHE_CONFIG, stat);
     
     dormant_ret_flag[cpu_id] = 1;
 
@@ -1537,6 +1561,7 @@ void cpu_dormant_init(void)
 void cpu_check_dormant_abort(void)
 {
     unsigned cpu_id;
+    unsigned int stat = 0;
     cpu_id = read_cpuid();
 
     __enable_cache();
@@ -1559,10 +1584,16 @@ void cpu_check_dormant_abort(void)
         restore_generic_timer((unsigned *)cp15_timer_ctx, 0x0);
         restore_pmu_context(cluster_id, cpu_id);
 
-        if (power_state[cpu_id] == STATUS_DORMANT) {
-            /* enable L2 invalidate when reset */
-            reg_write(CA7_CACHE_CONFIG, reg_read(CA7_CACHE_CONFIG) & ~(1U << 4));
+        stat = reg_read(CA7_CACHE_CONFIG);
+        if (cpu_id == 1) {
+            stat &= ~L1RSTDISABLE1;
+            stat |= (ns_cpu_ctx->cache_cfg_stat & L1RSTDISABLE1);
         }
+        else if (cpu_id == 0) {
+            stat &= ~(L1RSTDISABLE0 | L2RSTDISABLE);
+            stat |= (ns_cpu_ctx->cache_cfg_stat & (L1RSTDISABLE0 | L2RSTDISABLE));
+        }
+        reg_write(CA7_CACHE_CONFIG, stat);
        
         power_state[cpu_id] = STATUS_RUN;
     }

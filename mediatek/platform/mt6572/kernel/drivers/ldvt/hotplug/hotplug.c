@@ -57,7 +57,7 @@ static long uvvp_hotplug_ioctl(struct file *file,
     //void __user *argp = (void __user *)arg;
     //int __user *p = argp;
     
-    int i, j;
+    int i;
 
     switch (cmd) {
         default:

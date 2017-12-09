@@ -327,6 +327,10 @@
 
 #endif
 
+#if CFG_ENABLE_PKT_LIFETIME_PROFILE
+#define NIC_TX_TIME_THRESHOLD                       100     //in unit of ms
+#endif
+
 /*******************************************************************************
 *                             D A T A   T Y P E S
 ********************************************************************************
@@ -433,9 +437,12 @@ typedef WLAN_STATUS (*PFN_TX_DONE_HANDLER) (
 #if CFG_ENABLE_PKT_LIFETIME_PROFILE
 typedef struct _PKT_PROFILE_T {
     BOOLEAN fgIsValid;
+#if CFG_PRINT_RTP_PROFILE
     BOOLEAN fgIsPrinted;
     UINT_16 u2IpSn;
     UINT_16 u2RtpSn;
+    UINT_8  ucTcxFreeCount;
+#endif    
     OS_SYSTIME rHardXmitArrivalTimestamp;
     OS_SYSTIME rEnqueueTimestamp;
     OS_SYSTIME rDequeueTimestamp;
@@ -532,11 +539,12 @@ struct _MSDU_INFO_T {
 #define PRINT_PKT_PROFILE(_pkt_profile, _note) \
     { \
         if(!(_pkt_profile)->fgIsPrinted) { \
-            DBGLOG(TX, TRACE, ("X[%lu] E[%lu] D[%lu] HD[%lu] RTP[%d] %s\n", \
+            DBGLOG(TX, TRACE, ("X[%lu] E[%lu] D[%lu] HD[%lu] B[%d] RTP[%d] %s\n", \
                     (UINT_32)((_pkt_profile)->rHardXmitArrivalTimestamp), \
                     (UINT_32)((_pkt_profile)->rEnqueueTimestamp), \
                     (UINT_32)((_pkt_profile)->rDequeueTimestamp), \
                     (UINT_32)((_pkt_profile)->rHifTxDoneTimestamp), \
+                    (UINT_8)((_pkt_profile)->ucTcxFreeCount), \
                     (UINT_16)((_pkt_profile)->u2RtpSn), \
                     (_note))); \
             (_pkt_profile)->fgIsPrinted = TRUE; \

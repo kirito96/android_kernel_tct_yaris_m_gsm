@@ -1,5 +1,3 @@
-
-
 //
 #define LOG_TAG "IspTuningCustom_effect"
 #ifndef ENABLE_MY_LOG
@@ -18,6 +16,9 @@ namespace NSIspTuning
 {
 
 #if 0
+/*******************************************************************************
+* Effect: MONO
+*******************************************************************************/
 template <>
 MVOID
 IspTuningCustom::
@@ -42,6 +43,9 @@ prepare_effect<MEFFECT_MONO>(ISP_EFFECT_T& rEffect)
 }
 
 
+/*******************************************************************************
+* Effect: SEPIA
+*******************************************************************************/
 template <>
 MVOID
 IspTuningCustom::
@@ -66,6 +70,9 @@ prepare_effect<MEFFECT_SEPIA>(ISP_EFFECT_T& rEffect)
 }
 
 
+/*******************************************************************************
+* Effect: AQUA
+*******************************************************************************/
 template <>
 MVOID
 IspTuningCustom::
@@ -90,6 +97,9 @@ prepare_effect<MEFFECT_AQUA>(ISP_EFFECT_T& rEffect)
 }
 
 
+/*******************************************************************************
+* Effect: NEGATIVE
+*******************************************************************************/
 template <>
 MVOID
 IspTuningCustom::
@@ -111,6 +121,9 @@ prepare_effect<MEFFECT_NEGATIVE>(ISP_EFFECT_T& rEffect)
 }
 
 
+/*******************************************************************************
+* Effect: SOLARIZE
+*******************************************************************************/
 template <>
 MVOID
 IspTuningCustom::
@@ -144,6 +157,9 @@ prepare_effect<MEFFECT_SOLARIZE>(ISP_EFFECT_T& rEffect)
 }
 
 
+/*******************************************************************************
+* Effect: POSTERIZE
+*******************************************************************************/
 template <>
 MVOID
 IspTuningCustom::
@@ -193,6 +209,9 @@ prepare_effect<MEFFECT_POSTERIZE>(ISP_EFFECT_T& rEffect)
 }
 
 
+/*******************************************************************************
+* Effect: BLACKBOARD
+*******************************************************************************/
 template <>
 MVOID
 IspTuningCustom::
@@ -259,6 +278,9 @@ prepare_effect<MEFFECT_BLACKBOARD>(ISP_EFFECT_T& rEffect)
 }
 
 
+/*******************************************************************************
+* Effect: WHITEBOARD
+*******************************************************************************/
 template <>
 MVOID
 IspTuningCustom::
@@ -325,6 +347,9 @@ prepare_effect<MEFFECT_WHITEBOARD>(ISP_EFFECT_T& rEffect)
 }
 #endif
 
+/*******************************************************************************
+*
+*******************************************************************************/
 };  //NSIspTuning
 
 

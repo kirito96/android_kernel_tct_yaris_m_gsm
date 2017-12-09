@@ -10,6 +10,7 @@ $(error Invalid ccci platform path, please check)
 endif
 
 
+
 obj-$(CONFIG_MTK_CCCI_DRIVER) += ccci.o
 ccci-y :=ccci_init.o
 ccci-y +=ccci_hw.o ccci_logical.o ccci_chrdev.o 
@@ -19,10 +20,14 @@ ccci-y +=ccci_ipc.o
 ccci-y +=ccci_pmic.o
 ccci-y +=ccci_fs_main.o
 ccci-y +=ccci_rpc_main.o
+ccci-y +=ccmni_net.o
+ccci-y +=ccmni_pfp.o
 
 #include $(CCCI_PLATFORM_DRIVER_DIR)/Makefile
 
-
+ifeq ($(CONFIG_MTK_CCCI_DRIVER), y)
+ccflags-y += -DENABLE_CCCI_DRV_BUILDIN
+endif
 
 clean-files += $(patsubst $(obj)/%,%,$(wildcard $(obj)/*~))
 
@@ -34,10 +39,6 @@ ccflags-y  += -DCCCI_DEBUG_ON  -DCCCI_MD_DEBUG_ON  #-save-temps
 #ccflags-y  += -DENCRYPT_DEBUG -DCCCI_RPC_DEBUG_ON
 endif
 ccflags-y  += -D__CCCI_LOG__
-
-ifdef CONFIG_ARCH_MT6573
-ccflags-y += #-DCCCI_STATIC_SHARED_MEM
-endif
 
 else 
 obj- :=dummy.o

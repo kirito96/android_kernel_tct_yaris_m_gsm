@@ -18,7 +18,7 @@
 #include <board-custom.h>
 
 #define SPM_SUSPEND_FIRMWARE_VER   "pcm_suspend_v26-42"
- 
+
 static const u32 spm_pcm_suspend[] = {
     0x19c0001f, 0x001c49d7, 0x1800001f, 0x17cf0f3f, 0x1b80001f, 0x20000042,
     0x1800001f, 0x17cf0f16, 0x19c0001f, 0x001c49e7, 0x1a00001f, 0x10006604,
@@ -137,8 +137,6 @@ static const u32 spm_pcm_suspend[] = {
         (WAKE_SRC_KP | WAKE_SRC_EINT | WAKE_SRC_CCIF | WAKE_SRC_USB_CD | WAKE_SRC_SYSPWREQ | WAKE_SRC_MD_WDT)
 #endif
 
-extern kal_int32 get_dynamic_period(int first_use, int first_wakeup_time, int battery_capacity_level);
-
 SPM_PCM_CONFIG pcm_config_suspend ={
     .scenario = SPM_PCM_KERNEL_SUSPEND,
     .ver = SPM_SUSPEND_FIRMWARE_VER,
@@ -176,35 +174,12 @@ SPM_PCM_CONFIG pcm_config_suspend ={
 
      };
 
-static u32 spm_get_wake_period(wake_reason_t last_wr)
-{
-    int period;
- 
-    /* battery decreases 1% */
-    period = get_dynamic_period(!!(last_wr != WR_PCM_TIMER), 600, 1);
-    if (period <= 1) 
-    {
-        spm_error("!!! CANNOT GET PERIOD FROM FUEL GAUGE !!!\n");
-        period = 600;
-    }
-    else if (period > 36 * 3600)
-    {    /* max period is 36.4 hours */
-        period = 36 * 3600;
-    }
-
-    return period;
-}
-
-
 wake_reason_t spm_go_to_sleep(void)
 {
     wake_status_t *wakesta;
-    unsigned long flags,i;
+    unsigned long flags;
     struct mtk_irq_mask mask;
     static wake_reason_t last_wr = WR_NONE;
-
-    if(pcm_config_suspend.reserved & SPM_SUSPEND_GET_FGUAGE)
-        pcm_config_suspend.timer_val_ms = spm_get_wake_period(last_wr)*1000;
     
     mtk_wdt_suspend();
 
@@ -221,16 +196,15 @@ wake_reason_t spm_go_to_sleep(void)
     spm_trigger_wfi(&pcm_config_suspend);
     
     wakesta = spm_get_wakeup_status(&pcm_config_suspend);
-
-
-// Begin. Merged by jinming.xiang 2013.0807 for 502351
-// Patch ALPS00890330(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P52)
     
     if(wakesta->wakeup_event & WAKE_SRC_CCIF)
         exec_ccci_kern_func_by_md_id(0, ID_GET_MD_WAKEUP_SRC, NULL, 0);
-
-// End. Merged by jinming.xiang 2013.0807 for 502351    
-	
+    else if(wakesta->wakeup_event & WAKE_SRC_GPT)
+    {
+      //if(pcm_config_suspend.reserved & SPM_SUSPEND_GET_FGUAGE)
+        wakesta->wake_reason = WR_PCM_TIMER;
+    }
+    
     last_wr = wakesta->wake_reason;
 
     spm_clean_after_wakeup();

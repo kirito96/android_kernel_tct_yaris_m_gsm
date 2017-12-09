@@ -40,24 +40,19 @@ pmic_wrap register define
 // #define TOP_CLOCK_CTRL_BASE  (0x10000000) // defined in pll.h
 // #define TOPRGU_BASE          (0x10007000) // defined in mt_reg_base.h
 
-#if 0 // defined in pll.h
-#define CLK_SEL_0             (TOP_CLOCK_CTRL_BASE + 0x0)
-#define CLK_SWCG_1              (TOP_CLOCK_CTRL_BASE + 0x24)
-#define CLK_SETCG_1             (TOP_CLOCK_CTRL_BASE + 0x54)
-#define CLK_CLRCG_1             (TOP_CLOCK_CTRL_BASE + 0x84)
-#define CLK_SETCG_3             (TOP_CLOCK_CTRL_BASE + 0x5C)
-#endif
-
 #define WDT_SWSYSRST            (TOPRGU_BASE + 0x18)
+
+#define PMIC_WRAP_REG_RANGE	86
+#define PMIC_SPISLV_REG_RANGE	15
 
 //-------macro for pmic register--------------------------------
 // #define PMIC_REG_BASE           (0x0000)
 #define DEW_BASE                (DEW_DIO_EN)
 
 #ifdef SLV_6320
-#define PMIC_WRP_CKPDN          (PMIC_BASE+0x011A) //0x0056
-#define PMICWRP_RST_CON         (PMIC_BASE+0x0120)//0x005C
-#define PMIC_TOP_CKCON2         (PMIC_BASE+0x012A)
+#define PMIC_WRP_CKPDN          (PMIC_REG_BASE+0x011A) //0x0056
+#define PMIC_WRP_RST_CON        (PMIC_REG_BASE+0x0120) //0x005C
+#define PMIC_TOP_CKCON2         (PMIC_REG_BASE+0x012A)
 #endif
 
 #if 0 // defined in upmu_hw.h
@@ -94,11 +89,7 @@ global variable and  sys interface
 #define TIMEOUT_WAIT_IDLE       0xFF //us
 
 
-//-------macro for spi clock config--------------------------------
-//#define CLK_CFG_8                       (AP_RGU_BASE+0x164) //6585
-// #define CLK_CFG_8                       (TOPRGU_BASE+0x164) //6589
-
-
+//-------pmic_wrap register define--------------------------------
 #define PMIC_WRAP_MUX_SEL               (PMIC_WRAP_BASE+0x0)
 #define PMIC_WRAP_WRAP_EN               (PMIC_WRAP_BASE+0x4)
 #define PMIC_WRAP_DIO_EN                (PMIC_WRAP_BASE+0x8)

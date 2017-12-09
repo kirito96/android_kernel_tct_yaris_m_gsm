@@ -1,7 +1,9 @@
-
 #ifndef AUDIO_HD_RECORD_48K_CUSTOM_H
 #define AUDIO_HD_RECORD_48K_CUSTOM_H
 
+/****************************************************
+* Define default AP side speech enhancement compensation filter parameters
+*****************************************************/
 //hd_rec_fir
 /* 0: Input FIR coefficients for Normal mode */
 /* 1: Input FIR coefficients for Headset mode */

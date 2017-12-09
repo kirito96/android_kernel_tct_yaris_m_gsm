@@ -28,6 +28,42 @@
 /*=============================================================================
     SMI Bandwidth Control
   =============================================================================*/
+BWC_MONITOR::BWC_MONITOR(){
+    this->smi_fd = -1;
+    this->start();
+}
+
+BWC_MONITOR::~BWC_MONITOR(){
+    this->stop();
+}
+
+int BWC_MONITOR::start(){
+    if(this->smi_fd == -1){
+        //BWC_INFO("Start BWC_NONITOR");
+        this->smi_fd = open("/dev/MTK_SMI", O_RDONLY);
+        
+        if( this->smi_fd == -1 ){
+            BWC_ERROR("Open SMI(/dev/MTK_SMI) driver file failed.:%s\n", strerror(errno));
+            return -1;
+        }else{
+            return 0;
+        }
+    }
+    return -1;
+}
+
+int BWC_MONITOR::stop(){
+    if(this->smi_fd != -1){
+        close(smi_fd);
+    }
+    //BWC_INFO("Stop BWC_NONITOR");
+    this->smi_fd = -1;
+    return 0;
+}
+
+unsigned int BWC_MONITOR::get_smi_bw_state(){
+    return 0;
+}
 
 int BWC::smi_bw_ctrl_set( BWC_PROFILE_TYPE profile_type , BWC_VCODEC_TYPE codec_type , bool bOn )
 {
@@ -104,10 +140,13 @@ static int emi_ctrl_str_generate( BWC_PROFILE_TYPE profile_type , BWC_VCODEC_TYP
     char *p_cmdstr_profile = NULL;
     char *p_cmdstr_switch  = NULL;
     
-    
+    // Doesn't support BWCPT_VIDEO_WIFI_DISPLAY and BWCPT_VIDEO_LIVE_PHOTO in 72
+    // So they are mapped to normal profile.
     switch( profile_type )
     {
     case BWCPT_VIDEO_NORMAL:
+    case BWCPT_VIDEO_WIFI_DISPLAY:
+    case BWCPT_VIDEO_LIVE_PHOTO:
         p_cmdstr_profile = (char*)"CON_SCE_NORMAL";
         break;
         

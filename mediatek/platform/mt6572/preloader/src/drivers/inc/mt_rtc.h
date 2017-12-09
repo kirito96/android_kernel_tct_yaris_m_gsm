@@ -1,9 +1,54 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ * 
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ * 
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #ifndef __MT_RTC_H__
 #define __MT_RTC_H__
 
 #include <typedefs.h>
+#include <cust_rtc.h>
+
 //#include <platform.h>
+/*
+#define TOP_CKPDN		0x004E
+#define TOP_CKTST2      0x012E
+#define FQMTR_CON0      0x0188
+#define FQMTR_CON1      0x018A
+#define FQMTR_CON2      0x018C
+*/
 /* RTC registers */
 #define RTC_BASE	(0x8000)
 #define RTC_BBPU	(RTC_BASE + 0x0000)
@@ -77,10 +122,10 @@
 #define RTC_CON_GPI             (1U << 14)
 #define RTC_CON_LPSTA_RAW       (1U << 15)  /* 32K was stopped */
 
-#define RTC_CALI_BBPU_2SEC_STAT_CLR (1U << 11)
 #define RTC_CALI_BBPU_2SEC_EN       (1U << 8)
-#define RTC_CALI_BBPU_2SEC_MODE     ((1U << 9)&(1U << 10))
-#define RTC_CALI_BBPU_2SEC_STAT     (1U << 12)
+#define RTC_CALI_BBPU_2SEC_MODE_SHIFT		9
+#define RTC_CALI_BBPU_2SEC_MODE_MSK			(3U << RTC_CALI_BBPU_2SEC_MODE_SHIFT)
+#define RTC_CALI_BBPU_2SEC_STAT	  (1U << 11)
 
 /* we map HW YEA 0 (2000) to 1968 not 1970 because 2000 is the leap year */
 #define RTC_MIN_YEAR            1968
@@ -96,5 +141,7 @@ extern U16 rtc_rdwr_uart_bits(U16 *val);
 extern bool rtc_boot_check(void);
 
 extern void pl_power_off(void);
+
+extern bool rtc_2sec_reboot_check(void); 
 
 #endif /* __MT_RTC_H__ */

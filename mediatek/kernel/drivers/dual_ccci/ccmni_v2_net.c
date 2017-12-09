@@ -18,10 +18,7 @@
  *
  ****************************************************************************/
 
-#include <ccci_common.h>
-#include <ccmni_net.h>
-
-
+#include <ccci.h>
 #define CCMNI_DBG_INFO 1
 
 extern void *ccmni_ctl_block[];
@@ -87,10 +84,45 @@ static unsigned char *ccmni_v2_phys_to_virt(int md_id, unsigned char *addr_phy)
 
 	ccmni_v2_ul_base_req(md_id, &ccmni_rx_base_virt, &ccmni_rx_base_phy);
 	p_to_v_offset = (unsigned char*)(ccmni_rx_base_virt) - (unsigned char *)(ccmni_rx_base_phy);
+	//CCCI_MSG_INF(md_id,"ctl","ccmni_v2_phys_to_virt:,ccmni_v2_ul_base_phy=%08X,ccmni_v2_ul_base_virt=%08X,p_to_v_offset=%08X\n",ccmni_rx_base_phy,ccmni_rx_base_virt, p_to_v_offset);
 
-	return (p_to_v_offset + addr_phy);
+	return (p_to_v_offset + addr_phy+ get_md2_ap_phy_addr_fixed());
 }
 
+void ccmni_v2_dump(int md_id)
+{
+	int i=0,port=0;
+	ccmni_v2_ctl_block_t *ctl_b = (ccmni_v2_ctl_block_t *)ccmni_ctl_block[md_id];
+	
+	CCCI_MSG_INF(md_id, "ctl", "ccmni v2 dump start\n");
+	for(port=0;port<CCMNI_V2_PORT_NUM;port++){
+		ccmni_v2_instance_t *ccmni= ctl_b->ccmni_v2_instance[port];
+		CCCI_MSG_INF(md_id, "ctl", "Port%d RX CONTROL: read_out=%d, avai_out=%d, avai_in=%d,q_len=%d\n",port,
+			ccmni->shared_mem->rx_control.read_out,
+			ccmni->shared_mem->rx_control.avai_out,
+			ccmni->shared_mem->rx_control.avai_in,
+			ccmni->shared_mem->rx_control.q_length);
+		CCCI_MSG_INF(md_id, "ctl", "Port%d RX ringbuff:\n",port);
+		for(i=0; i<CCMNI_CTRL_Q_RX_SIZE; i++)
+		{
+			if(ccmni->shared_mem->q_rx_ringbuff[i].ptr!=NULL && ccmni->shared_mem->q_rx_ringbuff[i].len!=0)
+				CCCI_MSG_INF(md_id,"ctl","[%d]: ptr=%08X len=%d\n",i,(int)(ccmni->shared_mem->q_rx_ringbuff[i].ptr), ccmni->shared_mem->q_rx_ringbuff[i].len);
+		}
+		CCCI_MSG_INF(md_id, "ctl", "Port%d TX CONTROL: read_out=%d, avai_out=%d, avai_in=%d,q_len=%d\n",port,
+			ccmni->shared_mem->tx_control.read_out,
+			ccmni->shared_mem->tx_control.avai_out,
+			ccmni->shared_mem->tx_control.avai_in,
+			ccmni->shared_mem->tx_control.q_length);
+		CCCI_MSG_INF(md_id, "ctl", "Port%d TX ringbuff:\n",port);
+		
+		for(i=0; i < CCMNI_CTRL_Q_TX_SIZE; i++)
+		{
+			if(ccmni->shared_mem->q_tx_ringbuff[i].ptr!=NULL&&ccmni->shared_mem->q_tx_ringbuff[i].len!=0)
+				CCCI_MSG_INF(md_id,"ctl","[%d]: ptr=%08X len=%d\n",i,(int)(ccmni->shared_mem->q_tx_ringbuff[i].ptr),ccmni->shared_mem->q_tx_ringbuff[i].len);
+		}
+	}
+	CCCI_MSG_INF(md_id, "ctl", "ccmni v2 dump end\n");
+}
 
 
 static void ccmni_v2_reset_buffers(ccmni_v2_instance_t *ccmni)
@@ -127,10 +159,10 @@ static void ccmni_v2_reset_buffers(ccmni_v2_instance_t *ccmni)
 	{
 		ccmni->shared_mem->q_rx_ringbuff[count].ptr = \
 			(CCMNI_CTRL_Q_RX_SIZE_DEFAULT * ccmni->channel + count ) * CCMNI_SINGLE_BUFF_SIZE + \
-			(unsigned char *)ccmni_rx_base_phy + CCMNI_BUFF_HEADER_SIZE + CCMNI_BUFF_DBG_INFO_SIZE;
+			(unsigned char *)ccmni_rx_base_phy + CCMNI_BUFF_HEADER_SIZE + CCMNI_BUFF_DBG_INFO_SIZE- get_md2_ap_phy_addr_fixed();
 
 		ptr_virt = ccmni_v2_phys_to_virt(md_id, (unsigned char *)(ccmni->shared_mem->q_rx_ringbuff[count].ptr));
-		
+		//CCCI_MSG_INF(md_id,"ctl","ccmni_v2_reset_buffers:cnt=%d,ccmni->channel=%d ptr_virt=%08X ptr=%08X,ccmni_rx_base_phy=%08X,ccmni_rx_base_virt=%08X\n",count,ccmni->channel,(unsigned int)ptr_virt,(unsigned int)ccmni->shared_mem->q_rx_ringbuff[count].ptr,ccmni_rx_base_phy,ccmni_rx_base_virt);
 		//buffer header and footer init
 		//Assume int to be 32bit. May need further modifying!!!!!
 		*((int*)(ptr_virt - CCMNI_BUFF_HEADER_SIZE)) = CCMNI_BUFF_HEADER;
@@ -143,6 +175,7 @@ static void ccmni_v2_reset_buffers(ccmni_v2_instance_t *ccmni)
 		dbg_info->avai_in_no  = count;
 #endif
 	}
+	CCCI_MSG("ccmni_v2_reset_buffers\n");
 }
 
 int ccmni_v2_ipo_h_restore(int md_id)
@@ -207,6 +240,16 @@ static void ccmni_v2_notifier_call(MD_CALL_BACK_QUEUE *notifier, unsigned long v
 				}
 			}
 			break;
+		case CCCI_MD_STOP	   :
+			for(i=0;i<CCMNI_V2_PORT_NUM;i++)
+			{
+				instance = ctl_b->ccmni_v2_instance[i];
+				if (instance)
+				{
+					stop_ccmni_v2_instance(instance);
+				}
+			}
+			break;
 			
 		case CCCI_MD_RESET     :
 			ctl_b->ccci_is_ready=0;
@@ -215,7 +258,6 @@ static void ccmni_v2_notifier_call(MD_CALL_BACK_QUEUE *notifier, unsigned long v
 				instance = ctl_b->ccmni_v2_instance[i];
 				if (instance)
 				{
-			stop_ccmni_v2_instance(instance);
 			reset_ccmni_v2_instance_buffer(instance);
 				}
 			}
@@ -574,7 +616,6 @@ out:
 	return;
 }
 
-
 //  will be called when modem sends us something.
 //  we will then copy it to the tty's buffer.
 //  this is essentially the "read" fops.
@@ -641,14 +682,14 @@ static int ccmni_v2_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	if ((read_out < 0) || (avai_out < 0) || (avai_in < 0) || (q_length < 0))
 	{
-		CCCI_DBG_MSG(md_id, "net", "CCMNI%d_read fail: avai_out=%d, read_out=%d, avai_in=%d, q_length=%d\n", \
+		CCCI_DBG_MSG(md_id, "net", "CCMNI%d TX fail: avai_out=%d, read_out=%d, avai_in=%d, q_length=%d\n", \
 			ccmni->channel, avai_out, read_out, avai_in, q_length);
 		goto _ccmni_start_xmit_busy;
 	}
 	
 	if ((read_out >= q_length) || (avai_out >= q_length) || (avai_in >= q_length))
 	{
-		CCCI_DBG_MSG(md_id, "net", "CCMNI%d_read fail: avai_out=%d, read_out=%d, avai_in=%d, q_length=%d\n", \
+		CCCI_DBG_MSG(md_id, "net", "CCMNI%d TX fail: avai_out=%d, read_out=%d, avai_in=%d, q_length=%d\n", \
 			ccmni->channel, avai_out, read_out, avai_in, q_length);
 		goto _ccmni_start_xmit_busy;
 	}
@@ -932,7 +973,7 @@ static int ccmni_v2_create_instance(int md_id, int channel)
 	{
 		ccmni->shared_mem->q_rx_ringbuff[count].ptr = \
 			(CCMNI_CTRL_Q_RX_SIZE_DEFAULT * ccmni->channel + count ) * CCMNI_SINGLE_BUFF_SIZE + \
-			(unsigned char *)ccmni_rx_base_phy + CCMNI_BUFF_HEADER_SIZE + CCMNI_BUFF_DBG_INFO_SIZE;
+			(unsigned char *)ccmni_rx_base_phy + CCMNI_BUFF_HEADER_SIZE + CCMNI_BUFF_DBG_INFO_SIZE- get_md2_ap_phy_addr_fixed();
 
 		ptr_virt = ccmni_v2_phys_to_virt(md_id, (unsigned char *)(ccmni->shared_mem->q_rx_ringbuff[count].ptr));
 		
@@ -1008,7 +1049,6 @@ int ccmni_v2_init(int md_id)
 {
 	int						count, ret, curr;
 	ccmni_v2_ctl_block_t	*ctl_b;
-	char					ccmni_lock_name[32];
 
 	// Create control block structure
 	ctl_b = (ccmni_v2_ctl_block_t *)kmalloc(sizeof(ccmni_v2_ctl_block_t), GFP_KERNEL);
@@ -1042,7 +1082,7 @@ int ccmni_v2_init(int md_id)
 
 	snprintf(ctl_b->wakelock_name, sizeof(ctl_b->wakelock_name), "ccci%d_net_v2", (md_id+1));  
 	wake_lock_init(&ctl_b->ccmni_wake_lock, WAKE_LOCK_SUSPEND, ctl_b->wakelock_name);
-	
+    
 	return ret;
 
 _CCMNI_INSTANCE_CREATE_FAIL:
@@ -1066,12 +1106,10 @@ void ccmni_v2_exit(int md_id)
 		}
 		md_unregister_call_chain(md_id, &ctl_b->ccmni_notifier);
 		wake_lock_destroy(&ctl_b->ccmni_wake_lock);
-
-		kfree(ctl_b);
-		ccmni_ctl_block[md_id] = NULL;
 	}
 
 	return;
 }
+
 
 

@@ -1,8 +1,6 @@
 #ifndef __CCIF_H__
 #define __CCIF_H__
 
-//#include <ccci_common.h>
-
 // CCIF common macro definition
 #define CCIF_INTR_MAX_RE_ENTER_CNT			(5)
 
@@ -34,6 +32,7 @@ typedef int (*ccif_notify_funct_t)(void);
 typedef struct _ccif
 {
 	unsigned long		m_reg_base;
+	unsigned long		m_md_reg_base;
 	unsigned long		m_status;
 	unsigned int		m_rx_idx;
 	unsigned int		m_tx_idx;

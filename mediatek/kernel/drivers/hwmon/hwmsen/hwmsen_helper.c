@@ -1,8 +1,29 @@
+/* alps/ALPS_SW/TRUNK/MAIN/alps/kernel/drivers/hwmon/mt6516/hwmsen_helper.c
+ *
+ * (C) Copyright 2009 
+ * MediaTek <www.MediaTek.com>
+ *
+ * Sensor helper
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <linux/autoconf.h>
+#include <generated/autoconf.h>
 #include <linux/platform_device.h>
 #include <linux/hwmon-sysfs.h>
 #include <linux/types.h>
@@ -16,21 +37,16 @@
 #include <linux/hwmsensor.h>
 #include <linux/hwmsen_helper.h>
 
-#ifdef MT6516
-#include <mach/mt6516_reg_base.h>
-#include <mach/mt6516_gpio.h>
-#endif
 
-#ifdef MT6573
-#include <mach/mt6573_reg_base.h>
-#include <mach/mt6573_gpio.h>
-#endif
 /*----------------------------------------------------------------------------*/
 #define hex2int(c) ( (c >= '0') && (c <= '9') ? (c - '0') : ((c & 0xf) + 9) )
 /*----------------------------------------------------------------------------*/
 #define C_MAX_REG_LEN (4)
 /*----------------------------------------------------------------------------*/
 //#define HWMSEN_DEBUG
+/******************************************************************************
+ * Functions 
+******************************************************************************/
 int hwmsen_set_bits(struct i2c_client *client, u8 addr, u8 bits)
 {
     int err;

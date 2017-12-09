@@ -1,16 +1,34 @@
+/******************************************************************************
+ * mtk_tpd.c - MTK Android Linux Touch Panel Device Driver               *
+ *                                                                            *
+ * Copyright 2008-2009 MediaTek Co.,Ltd.                                      *
+ *                                                                            *
+ * DESCRIPTION:                                                               *
+ *     this file provide basic touch panel event to input sub system          *
+ *                                                                            *
+ * AUTHOR:                                                                    *
+ *     Kirby.Wu (mtk02247)                                                    *
+ *                                                                            *
+ * NOTE:                                                                      *
+ * 1. Sensitivity for touch screen should be set to edge-sensitive.           *
+ *    But in this driver it is assumed to be done by interrupt core,          *
+ *    though not done yet. Interrupt core may provide interface to            *
+ *    let drivers set the sensitivity in the future. In this case,            *
+ *    this driver should set the sensitivity of the corresponding IRQ         *
+ *    line itself.                                                            *
+ ******************************************************************************/
 
 #include "tpd.h"
 
 //#ifdef VELOCITY_CUSTOM
+#include <linux/slab.h>
 #include <linux/device.h>
 #include <linux/miscdevice.h>
 #include <linux/device.h>
+#include <linux/slab.h>
 #include <asm/uaccess.h>
 
 #ifdef CONFIG_TOUCHSCREEN_PREVENT_SLEEP
-#ifdef CONFIG_TOUCHSCREEN_SWEEP2WAKE
-#include <linux/input/sweep2wake.h>
-#endif
 #ifdef CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE
 #include <linux/input/doubletap2wake.h>
 #endif
@@ -24,6 +42,8 @@
 
 extern int tpd_v_magnify_x;
 extern int tpd_v_magnify_y;
+extern UINT32 DISP_GetScreenHeight(void);
+extern UINT32 DISP_GetScreenWidth(void);
 
 static int tpd_misc_open(struct inode *inode, struct file *file)
 {
@@ -255,7 +275,7 @@ static void tpd_create_attributes(struct device *dev, struct tpd_attrs *attrs)
 #ifdef CONFIG_TOUCHSCREEN_PREVENT_SLEEP
 
 static void eros_suspend(struct early_suspend *h) {
-#if defined(CONFIG_TOUCHSCREEN_SWEEP2WAKE) || defined(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE)
+#if defined(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE)
 	bool prevent_sleep = false;
 #endif
 	/*
@@ -265,10 +285,7 @@ static void eros_suspend(struct early_suspend *h) {
 	 * If it doesn't, well, that breaks things.
 	 *
 	 */
-#if defined(CONFIG_TOUCHSCREEN_SWEEP2WAKE)
-	prevent_sleep = (s2w_switch > 0) && (s2w_s2sonly == 0);
-	s2w_scr_suspended = true;
-#endif
+
 #if defined(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE)
 	prevent_sleep = prevent_sleep || (dt2w_switch > 0);
 	dt2w_scr_suspended = true;
@@ -282,12 +299,8 @@ static void eros_suspend(struct early_suspend *h) {
 }
 
 static void eros_resume(struct early_suspend *h) {
-#if defined(CONFIG_TOUCHSCREEN_SWEEP2WAKE) || defined(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE)
+#if defined(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE)
 	bool prevent_sleep = false;
-#endif
-#if defined(CONFIG_TOUCHSCREEN_SWEEP2WAKE)
-	prevent_sleep = (s2w_switch > 0) && (s2w_s2sonly == 0);
-	s2w_scr_suspended = false;
 #endif
 #if defined(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE)
 	prevent_sleep = prevent_sleep || (dt2w_switch > 0);
@@ -316,6 +329,33 @@ static void eros_resume(struct early_suspend *h) {
 	}
 }
 
+#endif
+
+//user touch version information
+#define TP_VERSION_INFO
+#ifdef TP_VERSION_INFO
+static ssize_t tpd_version_read(struct device *dev,struct device_attribute *attr, char *buf)
+{
+	int i;
+	int info_len = 0 ;
+
+	info_len+=sprintf(buf+info_len, "touch register list:\n");
+	//printk("touch register list:\n");
+	for(i = 1; i < TP_DRV_MAX_COUNT; i++)
+	{
+		/* read tpd driver into list */
+		if(tpd_driver_list[i].tpd_device_name != NULL)
+		{
+			info_len+=sprintf(buf+info_len, "[%d] %s\n",i, tpd_driver_list[i].tpd_device_name);
+			//printk("[%d] %s\n",i, tpd_driver_list[i].tpd_device_name);
+		}
+	}
+    info_len+=sprintf(buf+info_len, "current tp:%s\n", g_tpd_drv->tpd_device_name);
+    //printk("current tp:%s\n", g_tpd_drv->tpd_device_name);
+
+	return info_len;
+}
+DEVICE_ATTR(tpversion, 0664, tpd_version_read,NULL);
 #endif
 
 /* touch panel probe */
@@ -352,8 +392,11 @@ static int tpd_probe(struct platform_device *pdev) {
     /* allocate input device */
     if((tpd->dev=input_allocate_device())==NULL) { kfree(tpd); return -ENOMEM; }
   
-    TPD_RES_X = simple_strtoul(LCM_WIDTH, NULL, 0);
-    TPD_RES_Y = simple_strtoul(LCM_HEIGHT, NULL, 0);
+  //TPD_RES_X = simple_strtoul(LCM_WIDTH, NULL, 0);
+  //TPD_RES_Y = simple_strtoul(LCM_HEIGHT, NULL, 0);    
+  TPD_RES_X = DISP_GetScreenWidth();
+    TPD_RES_Y = DISP_GetScreenHeight();
+
   
     printk("mtk_tpd: TPD_RES_X = %d, TPD_RES_Y = %d\n", TPD_RES_X, TPD_RES_Y);
   
@@ -387,9 +430,6 @@ static int tpd_probe(struct platform_device *pdev) {
 		}    
   }
 	 if(g_tpd_drv == NULL) {
-		//FR 437079 llf 20130427 star
-	 	g_tpd_drv = &tpd_driver_list[1];//fix minitest fail by wwl llf
-		//FR 437079 llf 20130427 end
 	 	if(tpd_driver_list[0].tpd_device_name != NULL) {
 	  	g_tpd_drv = &tpd_driver_list[0];
 	  	/* touch_type:0: r-touch, 1: C-touch */
@@ -492,6 +532,10 @@ static int tpd_probe(struct platform_device *pdev) {
 
 	if (g_tpd_drv->attrs.num)
 		tpd_create_attributes(&pdev->dev, &g_tpd_drv->attrs);
+
+    #ifdef TP_VERSION_INFO
+    device_create_file(&pdev->dev, &dev_attr_tpversion);
+    #endif
 
     return 0;
 }

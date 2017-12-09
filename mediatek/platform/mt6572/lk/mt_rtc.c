@@ -26,6 +26,10 @@
 #include <target/board.h>
 #include <platform/mtk_wdt.h>
 
+#define DBG_RTC_C(x...) dprintf(CRITICAL, x)
+#define DBG_RTC_I(x...) dprintf(INFO, x)
+#define DBG_RTC_S(x...) dprintf(SPEW, x)
+
 #define RTC_RELPWR_WHEN_XRST	1	/* BBPU = 0 when xreset_rstb goes low */
 
 #if defined(CFG_FPGA_PLATFORM)
@@ -174,9 +178,9 @@ bool rtc_boot_check(bool can_alarm_boot)
 			now_time = rtc_mktime(now_yea, now_mth, now_dom, now_hou, now_min, now_sec);
 			time = rtc_mktime(yea, mth, dom, hou, min, sec);
 
-			printf("now = %d/%d/%d %d:%d:%d (%lu)\n",
+			DBG_RTC_I("now = %d/%d/%d %d:%d:%d (%lu)\n",
 			       now_yea, now_mth, now_dom, now_hou, now_min, now_sec, now_time);
-			printf("power-on = %d/%d/%d %d:%d:%d (%lu)\n",
+			DBG_RTC_I("power-on = %d/%d/%d %d:%d:%d (%lu)\n",
 			       yea, mth, dom, hou, min, sec, time);
 
 			if (now_time >= time - 1 && now_time <= time + 4) {	/* power on */
@@ -206,7 +210,6 @@ bool rtc_boot_check(bool can_alarm_boot)
 	}
 
 	if ((pdn1 & RTC_PDN1_RECOVERY_MASK) == RTC_PDN1_FAC_RESET) {	/* factory data reset */
-		printf("RTC_PDN1_FAC_RESET\n");
 		RTC_Write(RTC_PDN1, pdn1 & ~RTC_PDN1_FAC_RESET);
 		rtc_write_trigger();
 		return true;
@@ -258,18 +261,42 @@ bool Check_RTC_Recovery_Mode(void)
 	else
 		return false;
 }
+#ifdef RTC_2SEC_REBOOT_ENABLE
+extern BOOT_ARGUMENT *g_boot_arg;
 
+RTC_2SEC_REBOOT_KPOC rtc_2sec_boot_check_kpoc(void)
+{
+	return RTC_2SEC_BOOT_NONE; //return false, HW can not detect auto reboot when charger in
+}
+
+bool rtc_2sec_boot_check(void)
+{
+	int boot_reason;
+
+	DBG_RTC_I("rtc_2sec_boot_check\n");
+
+	if (g_boot_arg->maggic_number == BOOT_ARGUMENT_MAGIC) {
+		boot_reason = g_boot_arg->boot_reason;
+		DBG_RTC_I("rtc_2sec_boot_check boot_reason %d\n", boot_reason);
+		if (boot_reason == BR_2SEC_REBOOT)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+#endif //#ifdef RTC_2SEC_REBOOT_ENABLE
 /*
 extern kal_bool pmic_chrdet_status(void);
 #ifdef CFG_POWER_CHARGING
 void mt6575_power_off(void)
 {
-	printf("mt6575_power_off\n");
+	DBG_RTC_I("mt6575_power_off\n");
 
 	rtc_bbpu_power_down();
 
 	while (1) {
-		printf("mt6575_power_off : check charger\n");
+		DBG_RTC_I("mt6575_power_off : check charger\n");
 		if (pmic_chrdet_status() == KAL_TRUE)
 			mtk_arch_reset(0);
 	}
@@ -288,6 +315,6 @@ void Set_RTC_Recovery_Mode(bool flag)
       pdn1 = pdn1 & ~RTC_PDN1_FAC_RESET;
    RTC_Write(RTC_PDN1, pdn1);
    rtc_write_trigger();
-   printf("Set_RTC_Fastboot_Mode\n");
+   DBG_RTC_I("Set_RTC_Fastboot_Mode\n");
 }
 

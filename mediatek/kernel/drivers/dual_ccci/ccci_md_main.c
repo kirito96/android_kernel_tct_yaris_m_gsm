@@ -14,8 +14,8 @@
  *
  *
  ****************************************************************************/
-
 #include <linux/module.h>
+#include <linux/sched.h>
 #include <linux/device.h>
 #include <linux/cdev.h>
 #include <linux/semaphore.h>
@@ -28,14 +28,12 @@
 #include <linux/fs.h>
 #include <linux/syscalls.h>
 #include <linux/timer.h>
-#include <asm/atomic.h>
 #include <linux/delay.h>
-#include <ccci.h>
 #include <linux/wakelock.h>
-#include <ccif.h>
-#include <ccci_common.h>
-#include <ccci_cfg.h>
 #include <linux/rtc.h>
+#include <asm/atomic.h>
+#include <ccci.h>
+#include <ccif.h>
 
 
 //------------------- md cotrol variable define---------------------//
@@ -73,11 +71,8 @@ typedef struct _md_ctl_block
 
 static md_ctl_block_t *md_ctlb[MAX_MD_NUM];
 
-
-
 static void ex_monitor_func(unsigned long);
 static void md_boot_up_timeout_func(unsigned long);
-
 
 //-------------------external variable and function define--------------//
 extern unsigned long long lg_ch_tx_debug_enable[];
@@ -86,15 +81,26 @@ extern unsigned int tty_debug_enable[];
 extern unsigned int fs_tx_debug_enable[]; 
 extern unsigned int fs_rx_debug_enable[]; 
 
-
 #if defined (CONFIG_MTK_AEE_FEATURE) && defined (ENABLE_AEE_MD_EE)
 extern void aed_md_exception(const int *log, int log_size, const int *phy, int phy_size, const char* detail);
+extern __weak void aee_kernel_warning_api(const char *file, const int line, const int db_opt, const char *module, const char *msg, ...);
+
+#define DB_OPT_FTRACE		(1<<0)
 #endif
 
 extern int get_md_wakeup_src(int md_id, char *buf, unsigned int len);
 
-
-
+#ifndef ENABLE_SW_MEM_REMAP
+int get_md2_ap_phy_addr_fixed(void)
+{
+	return 0;
+}
+#endif
+#ifndef ENABLE_DUMP_MD_REGISTER
+void ccci_dump_md_register(int md_id)
+{
+}
+#endif
 //-------------------other variable and function define----------------//
 volatile atomic_t data_connect_sta[MAX_MD_NUM];
 
@@ -332,6 +338,24 @@ int get_md_exception_type(int md_id)
 	return md_ctlb[md_id]->md_ex_type;
 }
 
+int get_common_cfg_setting(int md_id, int cfg[], int *num)
+{
+	#ifdef EVDO_DT_SUPPORT
+	unsigned char*	str_slot1_mode = MTK_TELEPHONY_BOOTUP_MODE_SLOT1;
+	unsigned char*	str_slot2_mode = MTK_TELEPHONY_BOOTUP_MODE_SLOT2;
+
+	cfg[0] = str_slot1_mode[0] - '0';
+	cfg[1] = str_slot2_mode[0] - '0';
+
+	*num = 2;
+
+	return 0;
+
+	#else
+	return -1;
+	#endif
+}
+
 
 /****************************************************************************/
 /* API about transfer information between AP and MD                                                    */
@@ -440,6 +464,15 @@ int md_get_battery_info(int md_id, int data)
 
 	return 0;
 }
+
+int md_set_sim_type(int md_id, int data)
+{
+	set_sim_type(md_id, data);
+	CCCI_MSG_INF(md_id, "ctl", "receive sim type from md\n");		
+
+	return 0;
+}
+
 
 void wakeup_md(int md_id)
 {
@@ -594,7 +627,6 @@ static void ccci_mem_dump(void *start_addr, int len)
 	}
 }
 
-
 void ccci_ee_info_dump(int md_id, DEBUG_INFO_T *debug_info)
 {
 	char ex_info[EE_BUF_LEN]="";
@@ -703,6 +735,9 @@ void ccci_ee_info_dump(int md_id, DEBUG_INFO_T *debug_info)
 		case MD_EE_CASE_AP_MASK_I_BIT_TOO_LONG:
 			strcat(i_bit_ex_info, ex_info);
 			strcpy(ex_info, i_bit_ex_info);
+			#if defined (CONFIG_MTK_AEE_FEATURE) && defined (ENABLE_AEE_MD_EE)
+			aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_FTRACE, "CCCI", i_bit_ex_info);
+			#endif
 			break;
 		case MD_EE_CASE_TX_TRG:
 		case MD_EE_CASE_ISR_TRG:
@@ -720,7 +755,10 @@ void ccci_ee_info_dump(int md_id, DEBUG_INFO_T *debug_info)
 	// Dump Exception share memory
 	CCCI_DBG_MSG(md_id, "cci", "\n\n");
 	CCCI_DBG_MSG(md_id, "cci", "Dump MD%d Exception share memory\n", md_id+1);
-	ccci_mem_dump((int*)md_ctlb[md_id]->smem_table->ccci_exp_smem_base_virt, MD_EX_LOG_SIZE);
+	ccci_mem_dump((int*)md_ctlb[md_id]->smem_table->ccci_exp_smem_base_virt, md_ctlb[md_id]->smem_table->ccci_exp_smem_size);
+
+	// Dump MD MCU  register
+	ccci_dump_md_register(md_id);
 
 	// Dump MD image memory
 	CCCI_DBG_MSG(md_id, "cci", "\n\n");
@@ -738,7 +776,7 @@ void ccci_ee_info_dump(int md_id, DEBUG_INFO_T *debug_info)
 
 	ccci_aed(md_id, CCCI_AED_DUMP_EX_MEM|CCCI_AED_DUMP_MD_IMG_MEM, ex_info);
 }
-
+extern void ccmni_v2_dump(int md_id);
 static void ccci_dump_runtime_data(int md_id, modem_runtime_t *runtime, smem_alloc_t *smem)
 {
 	int		i;
@@ -822,13 +860,14 @@ static void ccci_dump_runtime_data(int md_id, modem_runtime_t *runtime, smem_all
 	CCCI_DBG_MSG(md_id, "ctl", "----------------------------------------------\n");
 
 	CCCI_MSG_INF(md_id, "ctl", "ccci_smem_virt              0x%x\n", (unsigned int)smem->ccci_smem_vir);
-	CCCI_MSG_INF(md_id, "ctl", "ccci_smem_phy               0x%x\n", (unsigned int)smem->ccci_smem_phy);
+	CCCI_MSG_INF(md_id, "ctl", "ccci_smem_phy,              AP=0x%x,MD=0x%x\n", (unsigned int)smem->ccci_smem_phy,(unsigned int)smem->ccci_smem_phy - get_md2_ap_phy_addr_fixed());
 	CCCI_MSG_INF(md_id, "ctl", "ccci_smem_size              0x%x\n", smem->ccci_smem_size);
 
 	CCCI_DBG_MSG(md_id, "ctl", "md_runtime_data_smem_virt   0x%x\n", smem->ccci_md_runtime_data_smem_base_virt);
-	CCCI_DBG_MSG(md_id, "ctl", "md_runtime_data_smem_phy    0x%x\n", smem->ccci_md_runtime_data_smem_base_phy);
+	CCCI_DBG_MSG(md_id, "ctl", "md_runtime_data_smem_phy    AP=0x%x,MD=0x%x\n", smem->ccci_md_runtime_data_smem_base_phy,smem->ccci_md_runtime_data_smem_base_phy - get_md2_ap_phy_addr_fixed());
 	CCCI_DBG_MSG(md_id, "ctl", "md_runtime_data_smem_size   0x%x\n", smem->ccci_md_runtime_data_smem_size);
 	CCCI_MSG_INF(md_id, "ctl", "**********************************************\n");
+	ccmni_v2_dump(md_id);
 }
 
 
@@ -940,7 +979,7 @@ static void ccci_md_exception(int md_id, DEBUG_INFO_T *debug_info)
 	}
 
 	debug_info->ext_mem=(int*)ex_info;
-	debug_info->ext_size=MD_EX_LOG_SIZE;
+	debug_info->ext_size=md_ctlb[md_id]->smem_table->ccci_exp_smem_size;
 	debug_info->md_image=(int*)md_ctlb[md_id]->md_layout->md_region_vir;
 	debug_info->md_size=MD_IMG_DUMP_SIZE;
 }
@@ -1066,7 +1105,7 @@ void ccci_aed(int md_id, unsigned int dump_flag, char *aed_str)
 
 	if(dump_flag & CCCI_AED_DUMP_EX_MEM){
 		ex_log_addr = (int*)md_ctlb[md_id]->smem_table->ccci_exp_smem_base_virt;
-		ex_log_len = MD_EX_LOG_SIZE;
+		ex_log_len = md_ctlb[md_id]->smem_table->ccci_exp_smem_size;
 	}
 	if(dump_flag & CCCI_AED_DUMP_MD_IMG_MEM){
 		md_img_addr = (int*)md_ctlb[md_id]->md_layout->md_region_vir;
@@ -1108,8 +1147,6 @@ void md_ee_info_check(int md_id, unsigned int *p_ee_info)
 
 	if(exp_ee_info->exception_occur) {
 		*p_ee_info = exp_ee_info->exception_occur << MD_EE_INFO_OFFSET;
-		//CCCI_MSG_INF(md_id, "ctl", "MD_EX status(%08X)(%d:%d)\n", exp_ee_info->exception_occur, \
-		//					exp_ee_info->send_time, exp_ee_info->wait_time);
 	}
 }
 
@@ -1132,7 +1169,7 @@ void ccci_check_md_no_physical_channel(int md_id, unsigned int args)
 							exp_ee_info->send_time, exp_ee_info->wait_time);
 			ccci_dump_hw_reg_val(md_id, NULL, 0);
 			trigger_ee = 1;
-		}		
+		}
 	}
 
 	// Trigger EE if needed
@@ -1151,33 +1188,33 @@ void ccci_check_md_no_physical_channel(int md_id, unsigned int args)
 		if(ctl_b->ee_info_got == 0) {
 			switch(args) 
 			{
-			case 1: // pending 50ms, dump EE buffer only
-				CCCI_DBG_MSG(md_id, "cci", "TX 50ms\n");
-				ccci_dump_hw_reg_val(md_id, NULL, 0);
-				CCCI_DBG_MSG(md_id, "cci", "Dump MD%d Exception share memory\n", md_id+1);
-				ccci_mem_dump((int*)md_ctlb[md_id]->smem_table->ccci_exp_smem_base_virt, MD_EX_LOG_SIZE);
-				break;
+				case 1: // pending 50ms, dump EE buffer only
+					CCCI_DBG_MSG(md_id, "cci", "TX 50ms\n");
+					ccci_dump_hw_reg_val(md_id, NULL, 0);
+					CCCI_DBG_MSG(md_id, "cci", "Dump MD%d Exception share memory\n", md_id+1);
+				ccci_mem_dump((int*)md_ctlb[md_id]->smem_table->ccci_exp_smem_base_virt, md_ctlb[md_id]->smem_table->ccci_exp_smem_size);
+					break;
 
-			case 2: //pending 1500ms, trigger EE
+				case 2: //pending 1500ms, trigger EE
 					CCCI_DBG_MSG(md_id, "cci", "TX 1500ms\n");
-					if (ctl_b->ee_info_flag & (1<<MD_EE_FLOW_START) == 0) {
+					if ((ctl_b->ee_info_flag & (1<<MD_EE_FLOW_START)) == 0) {
 						ccci_dump_hw_reg_val(md_id, NULL, 0);
 					}
 					
-				spin_lock_irqsave(&ctl_b->ctl_lock, flags);
-				if((ctl_b->ee_info_flag & ((1<<MD_EE_PENDING_TOO_LONG)|(1<<MD_STATE_UPDATE))) == 0) {
-					trigger_ee_timer = 1;
-				}
-				ctl_b->ee_info_flag |= ((1<<MD_EE_FLOW_START)|(1<<MD_EE_PENDING_TOO_LONG));
-				spin_unlock_irqrestore(&ctl_b->ctl_lock, flags);
-					
-				if(trigger_ee_timer) {
-					mod_timer(&ctl_b->md_ex_monitor,jiffies+EE_TIMER_BASE+1);
-				}
-				break;
-					
-			default:
-				break;
+					spin_lock_irqsave(&ctl_b->ctl_lock, flags);
+					if((ctl_b->ee_info_flag & ((1<<MD_EE_PENDING_TOO_LONG)|(1<<MD_STATE_UPDATE))) == 0) {
+						trigger_ee_timer = 1;
+					}
+					ctl_b->ee_info_flag |= ((1<<MD_EE_FLOW_START)|(1<<MD_EE_PENDING_TOO_LONG));
+					spin_unlock_irqrestore(&ctl_b->ctl_lock, flags);
+						
+					if(trigger_ee_timer) {
+						mod_timer(&ctl_b->md_ex_monitor,jiffies+EE_TIMER_BASE+1);
+					}
+					break;
+						
+				default:
+					break;
 			}
 		}
 	}
@@ -1204,7 +1241,7 @@ void ccif_isr_check(int md_id)
 							exp_ee_info->send_time, exp_ee_info->wait_time);
 			ccci_dump_hw_reg_val(md_id, NULL, 0);
 			trigger_ee = 1;
-		}		
+		}
 	}
 	// Trigger EE if needed
 	if(trigger_ee) {
@@ -1251,7 +1288,7 @@ void md_call_chain(MD_CALL_BACK_HEAD_T *head,unsigned long data)
 static void notify_chain(unsigned long data)
 {
 	md_ctl_block_t	*ctl_b = (md_ctl_block_t *)data;
-	md_call_chain(&ctl_b->md_notifier,CCCI_MD_RESET);
+	md_call_chain(&ctl_b->md_notifier,CCCI_MD_STOP);
 }
 
 
@@ -1342,18 +1379,27 @@ static void md_boot_up_timeout_func(unsigned long data)
 		snprintf(ex_info, EE_BUF_LEN, "\n[Others] MD_BOOT_UP_FAIL(HS%d)\n", (ctl_b->md_boot_stage+1));
 		CCCI_DBG_MSG(md_id, "cci", "Dump MD%d Image memory\n", md_id+1);
 		ccci_mem_dump((int*)md_ctlb[md_id]->md_layout->md_region_vir, MD_IMG_DUMP_SIZE);
-		
+	#ifdef ENABLE_CCCI_DRV_BUILDIN	
+		CCCI_DBG_MSG(md_id, "cci", "Dump TASK_UNINTERRUPTIBLE\n");
+		show_state_filter(TASK_UNINTERRUPTIBLE);
+	#endif
 		ccci_aed(md_id, CCCI_AED_DUMP_CCIF_REG, ex_info);
 	} else if(ctl_b->md_boot_stage == MD_BOOT_STAGE_1) {
+		#if defined (CONFIG_MTK_AEE_FEATURE) && defined (ENABLE_AEE_MD_EE)
+		aee_kernel_warning_api(__FILE__, __LINE__, DB_OPT_FTRACE, "CCCI", "modem boot up timeout");
+		#endif
 		// Handshake 2 fail
 		snprintf(ex_info, EE_BUF_LEN, "\n[Others] MD_BOOT_UP_FAIL(HS%d)\n", (ctl_b->md_boot_stage+1));
 		CCCI_DBG_MSG(md_id, "cci", "Dump MD%d Image memory\n", md_id+1);
 		ccci_mem_dump((int*)md_ctlb[md_id]->md_layout->md_region_vir, MD_IMG_DUMP_SIZE);
-		
+	#ifdef ENABLE_CCCI_DRV_BUILDIN	
+		CCCI_DBG_MSG(md_id, "cci", "Dump TASK_UNINTERRUPTIBLE\n");
+		show_state_filter(TASK_UNINTERRUPTIBLE);
+	#endif
 		ccci_dump_hw_reg_val(md_id, NULL, 0);
 		
 		CCCI_DBG_MSG(md_id, "cci", "Dump MD%d Exception share memory\n", md_id+1);
-		ccci_mem_dump((int*)md_ctlb[md_id]->smem_table->ccci_exp_smem_base_virt, MD_EX_LOG_SIZE);
+		ccci_mem_dump((int*)md_ctlb[md_id]->smem_table->ccci_exp_smem_base_virt, md_ctlb[md_id]->smem_table->ccci_exp_smem_size);
 		
 		ccci_aed(md_id, CCCI_AED_DUMP_EX_MEM, ex_info);
 	}
@@ -1377,32 +1423,132 @@ static int set_md_runtime(int md_id,
 	runtime->Prefix = 0x46494343; // "CCIF"
 	runtime->Postfix = 0x46494343; // "CCIF"
 	runtime->BootChannel = CCCI_CONTROL_RX;
-	runtime->SysShareMemBase = ctl_b->smem_table->ccci_sys_smem_base_phy;
+	
+	if(ctl_b->smem_table->ccci_sys_smem_size)
+	{
+		runtime->SysShareMemBase = ctl_b->smem_table->ccci_sys_smem_base_phy - get_md2_ap_phy_addr_fixed();
 	runtime->SysShareMemSize = ctl_b->smem_table->ccci_sys_smem_size;
-	runtime->ExceShareMemBase = ctl_b->smem_table->ccci_exp_smem_base_phy;
+	}
+	else
+	{
+		runtime->SysShareMemBase = 0;
+		runtime->SysShareMemSize = 0;
+	}
+
+	if(ctl_b->smem_table->ccci_exp_smem_size)
+	{
+		runtime->ExceShareMemBase = ctl_b->smem_table->ccci_exp_smem_base_phy- get_md2_ap_phy_addr_fixed();
 	runtime->ExceShareMemSize = ctl_b->smem_table->ccci_exp_smem_size;
-	runtime->MdlogShareMemBase = ctl_b->smem_table->ccci_mdlog_smem_base_phy;
+	}
+	else
+	{
+		runtime->ExceShareMemBase = 0;
+		runtime->ExceShareMemSize = 0;
+	}
+	if(ctl_b->smem_table->ccci_mdlog_smem_size)
+	{
+		runtime->MdlogShareMemBase = ctl_b->smem_table->ccci_mdlog_smem_base_phy- get_md2_ap_phy_addr_fixed();
 	runtime->MdlogShareMemSize = ctl_b->smem_table->ccci_mdlog_smem_size;
-	runtime->PcmShareMemBase = ctl_b->smem_table->ccci_pcm_smem_base_phy;
+	}
+	else
+	{
+		runtime->MdlogShareMemBase = 0;
+		runtime->MdlogShareMemSize = 0;
+	}
+	if(ctl_b->smem_table->ccci_pcm_smem_size)
+	{
+		runtime->PcmShareMemBase = ctl_b->smem_table->ccci_pcm_smem_base_phy- get_md2_ap_phy_addr_fixed();
 	runtime->PcmShareMemSize = ctl_b->smem_table->ccci_pcm_smem_size;
-	runtime->PmicShareMemBase = ctl_b->smem_table->ccci_pmic_smem_base_phy;
+	}
+	else
+	{
+		runtime->PcmShareMemBase = 0;
+		runtime->PcmShareMemSize = 0;
+	}
+
+	if(ctl_b->smem_table->ccci_pmic_smem_size)
+	{
+		runtime->PmicShareMemBase = ctl_b->smem_table->ccci_pmic_smem_base_phy- get_md2_ap_phy_addr_fixed();
 	runtime->PmicShareMemSize = ctl_b->smem_table->ccci_pmic_smem_size;
-	runtime->FileShareMemBase = ctl_b->smem_table->ccci_fs_smem_base_phy;
+
+	}
+	else
+	{
+		runtime->PmicShareMemBase = 0;
+		runtime->PmicShareMemSize = 0;
+	}
+
+	if(ctl_b->smem_table->ccci_fs_smem_size)
+	{
+		runtime->FileShareMemBase = ctl_b->smem_table->ccci_fs_smem_base_phy- get_md2_ap_phy_addr_fixed();
 	runtime->FileShareMemSize = ctl_b->smem_table->ccci_fs_smem_size;
-	runtime->RpcShareMemBase = ctl_b->smem_table->ccci_rpc_smem_base_phy;
+	}
+	else
+	{
+		runtime->FileShareMemBase = 0;
+		runtime->FileShareMemSize = 0;
+	}
+
+	if(ctl_b->smem_table->ccci_rpc_smem_size)
+	{
+		runtime->RpcShareMemBase = ctl_b->smem_table->ccci_rpc_smem_base_phy- get_md2_ap_phy_addr_fixed();
 	runtime->RpcShareMemSize = ctl_b->smem_table->ccci_rpc_smem_size;
-	runtime->IPCShareMemBase = ctl_b->smem_table->ccci_ipc_smem_base_phy+offset_of(CCCI_IPC_MEM,buffer); // Note this
+	}
+	else
+	{
+		runtime->RpcShareMemBase = 0;
+		runtime->RpcShareMemSize = 0;
+	}
+
+	if(sizeof(CCCI_IPC_BUFFER))
+	{
+		runtime->IPCShareMemBase = ctl_b->smem_table->ccci_ipc_smem_base_phy+offset_of(CCCI_IPC_MEM,buffer)- get_md2_ap_phy_addr_fixed(); // Note this
 	runtime->IPCShareMemSize = sizeof(CCCI_IPC_BUFFER); // Note this
+	}
+	else
+	{
+		runtime->IPCShareMemBase = 0;
+		runtime->IPCShareMemSize = 0;
+	}
+
+	if(sizeof(ipc_ilm_t) * MAX_NUM_IPC_TASKS_MD)
+	{
 	runtime->IPCMDIlmShareMemBase = (int)ctl_b->smem_table->ccci_ipc_smem_base_phy \
-										+ offset_of(CCCI_IPC_MEM, ilm_md);
+										+ offset_of(CCCI_IPC_MEM, ilm_md)- get_md2_ap_phy_addr_fixed();
 	runtime->IPCMDIlmShareMemSize = sizeof(ipc_ilm_t) * MAX_NUM_IPC_TASKS_MD;
 
+	}
+	else
+	{
+		runtime->IPCMDIlmShareMemBase = 0;
+		runtime->IPCMDIlmShareMemSize = 0;
+	}
+
+	if(sizeof(ipc_ilm_t) * MAX_NUM_IPC_TASKS_MD)
+	{
+		runtime->IPCMDIlmShareMemBase = (int)ctl_b->smem_table->ccci_ipc_smem_base_phy \
+											+ offset_of(CCCI_IPC_MEM, ilm_md)- get_md2_ap_phy_addr_fixed();
+		runtime->IPCMDIlmShareMemSize = sizeof(ipc_ilm_t) * MAX_NUM_IPC_TASKS_MD;
+	}
+	else
+	{
+		runtime->IPCMDIlmShareMemBase = 0;
+		runtime->IPCMDIlmShareMemSize = 0;
+	}
 	for (i = 0; i < CCCI_UART_PORT_NUM; i++) {
 		if((ctl_b->smem_table->ccci_uart_smem_base_phy[i] != 0) && 
 		   (ctl_b->smem_table->ccci_uart_smem_size[i] != 0)) 
 		{
-			runtime->UartShareMemBase[i] = ctl_b->smem_table->ccci_uart_smem_base_phy[i];
+			if(ctl_b->smem_table->ccci_uart_smem_size[i])
+			{
+				runtime->UartShareMemBase[i] = ctl_b->smem_table->ccci_uart_smem_base_phy[i]- get_md2_ap_phy_addr_fixed();
 			runtime->UartShareMemSize[i] = ctl_b->smem_table->ccci_uart_smem_size[i];
+		}
+			else
+			{
+				runtime->UartShareMemBase[i] = 0;
+				runtime->UartShareMemSize[i] = 0;
+			}
 		}
 	}
 	runtime->UartPortNum = i;
@@ -1422,20 +1568,71 @@ static int set_md_runtime(int md_id,
 			CCCI_MSG_INF(md_id, "ctl", "Get net_ul_ctl fail\n");
 			dl_ctl_mem_size = 0;
 		}
-		runtime->NetDLCtrlShareMemBase[i] = ctl_b->smem_table->ccci_ccmni_ctl_smem_base_phy[i];
+		if(dl_ctl_mem_size)
+		{
+			runtime->NetDLCtrlShareMemBase[i] = ctl_b->smem_table->ccci_ccmni_ctl_smem_base_phy[i]- get_md2_ap_phy_addr_fixed();
 		runtime->NetDLCtrlShareMemSize[i] = dl_ctl_mem_size;
-		runtime->NetULCtrlShareMemBase[i] = ctl_b->smem_table->ccci_ccmni_ctl_smem_base_phy[i] + dl_ctl_mem_size;
+		}
+		else
+		{
+			runtime->NetDLCtrlShareMemBase[i] = 0;
+			runtime->NetDLCtrlShareMemSize[i] = 0;
+		}
+
+		if(ul_ctl_mem_size)
+		{
+			runtime->NetULCtrlShareMemBase[i] = ctl_b->smem_table->ccci_ccmni_ctl_smem_base_phy[i] + dl_ctl_mem_size- get_md2_ap_phy_addr_fixed();
 		runtime->NetULCtrlShareMemSize[i] = ul_ctl_mem_size;
 	}
+		else
+		{
+			runtime->NetULCtrlShareMemBase[i] = 0;
+			runtime->NetULCtrlShareMemSize[i] = 0;
+		}
+
+	}
 	runtime->NetPortNum = i;
-	runtime->MDDLNetShareMemBase = ctl_b->smem_table->ccci_ccmni_smem_dl_base_phy;
+
+	if(ctl_b->smem_table->ccci_ccmni_smem_dl_size)
+	{
+		runtime->MDDLNetShareMemBase = ctl_b->smem_table->ccci_ccmni_smem_dl_base_phy- get_md2_ap_phy_addr_fixed();
 	runtime->MDDLNetShareMemSize = ctl_b->smem_table->ccci_ccmni_smem_dl_size;
-	runtime->MDULNetShareMemBase = ctl_b->smem_table->ccci_ccmni_smem_ul_base_phy;
+	}
+	else
+	{
+		runtime->MDDLNetShareMemBase = 0;
+		runtime->MDDLNetShareMemSize = 0;
+	}
+	if(ctl_b->smem_table->ccci_ccmni_smem_ul_size)
+	{
+		runtime->MDULNetShareMemBase = ctl_b->smem_table->ccci_ccmni_smem_ul_base_phy- get_md2_ap_phy_addr_fixed();
 	runtime->MDULNetShareMemSize = ctl_b->smem_table->ccci_ccmni_smem_ul_size;
-	runtime->MDExExpInfoBase = ctl_b->smem_table->ccci_md_ex_exp_info_smem_base_phy;
+	}
+	else
+	{
+		runtime->MDULNetShareMemBase = 0;
+		runtime->MDULNetShareMemSize = 0;
+	}
+	if(ctl_b->smem_table->ccci_md_ex_exp_info_smem_size)
+	{
+		runtime->MDExExpInfoBase = ctl_b->smem_table->ccci_md_ex_exp_info_smem_base_phy- get_md2_ap_phy_addr_fixed();
 	runtime->MDExExpInfoSize = ctl_b->smem_table->ccci_md_ex_exp_info_smem_size;
-	runtime->MiscInfoBase = ctl_b->smem_table->ccci_misc_info_base_phy;
+	}
+	else
+	{
+		runtime->MDExExpInfoBase = 0;
+		runtime->MDExExpInfoSize = 0;
+	}
+	if(ctl_b->smem_table->ccci_md_ex_exp_info_smem_size)
+	{
+		runtime->MiscInfoBase = ctl_b->smem_table->ccci_misc_info_base_phy- get_md2_ap_phy_addr_fixed();
 	runtime->MiscInfoSize = ctl_b->smem_table->ccci_misc_info_size;
+	}
+	else
+	{
+		runtime->MiscInfoBase = 0;
+		runtime->MiscInfoSize = 0;
+	}
 
 	//add a new attribute of mdlogger auto start info to notify md
 	filp = filp_open(MDLOGGER_FILE_PATH, O_RDONLY, 0777);
@@ -1472,7 +1669,7 @@ static int set_md_runtime(int md_id,
 	tag->platform_L = runtime->Platform_L;
 	tag->platform_H = runtime->Platform_H;
 	tag->driver_version = runtime->DriverVersion;
-	tag->runtime_data_base = ctl_b->smem_table->ccci_md_runtime_data_smem_base_phy;
+	tag->runtime_data_base = ctl_b->smem_table->ccci_md_runtime_data_smem_base_phy- get_md2_ap_phy_addr_fixed();
 	tag->runtime_data_size = sizeof(modem_runtime_t);
 	CCCI_MSG_INF(md_id, "ctl", "set runtime data: size=%d!\n", sizeof(modem_runtime_t));
 	tag->postfix = runtime->Postfix;
@@ -1537,6 +1734,14 @@ int ccci_send_run_time_data(int md_id)
 	return 0;
 }
 
+int ccci_set_reload_modem(int md_id)
+{
+	md_ctl_block_t *ctl_b;
+	ctl_b = md_ctlb[md_id];
+	ctl_b->need_reload_image = 1;
+	CCCI_MSG_INF(md_id, "ctl", "md image will be reloaded!\n");
+	return 0;
+}
 
 //ccci_start_modem: do start modem operation
 int ccci_start_modem(int md_id)
@@ -1553,7 +1758,7 @@ int ccci_start_modem(int md_id)
 	if(ctl_b->ipo_h_restore) {
 		ctl_b->ipo_h_restore = 0;
 		ccci_load_firmware(md_id, LOAD_ALL_IMG, err_str, 256);
-	}else if(ctl_b->need_reload_image) {
+	} else if(ctl_b->need_reload_image) {
 		CCCI_MSG_INF(md_id, "ctl", "re-load firmware!\n");
 		if((ret = ccci_load_firmware(md_id, RELOAD_ONLY, err_str, 256)) <0) {
 			CCCI_MSG_INF(md_id, "ctl", "load firmware fail, so modem boot fail:%d!\n", ret);
@@ -1604,13 +1809,19 @@ int ccci_pre_stop(int md_id)
 
 	additional_operation_before_stop_md(md_id);	
 
+	CCCI_MSG_INF(md_id, "ctl", "Now disable CCIF irq\n");
+
 	ccci_disable_md_intr(md_id);
+
+	CCCI_MSG_INF(md_id, "ctl", "CCIF irq disabled\n");
 	//set_curr_md_state(md_id, MD_BOOT_STAGE_0);
 	ctl_b->md_boot_stage = MD_BOOT_STAGE_0;
 
 	return ret;
 }
 
+extern void ccci_md_logger_notify(void);
+extern void ccci_fs_resetfifo(int md_id);
 int ccci_stop_modem(int md_id, unsigned int timeout)
 {
 	md_ctl_block_t		*ctl_b;
@@ -1624,17 +1835,24 @@ int ccci_stop_modem(int md_id, unsigned int timeout)
 		tasklet_schedule(&ctl_b->md_notifier.tasklet);
 	} else {
 		CCCI_MSG_INF(md_id, "ctl", "@N\n");
-		md_call_chain(&ctl_b->md_notifier,CCCI_MD_RESET);
+		md_call_chain(&ctl_b->md_notifier,CCCI_MD_STOP);
 	}
+	ccci_md_logger_notify();
+	CCCI_MSG_INF(md_id, "ctl", "md power off before\n");
 
+	CCCI_MSG_INF(md_id, "ctl", "stop modem, delete boot up check timer\n");
+	del_timer(&ctl_b->md_boot_up_check_timer);
+	ccmni_v2_dump(md_id);
 	let_md_stop(md_id, timeout);
 	for (i = 0; i < NR_CCCI_RESET_USER; i++) {
 		ctl_b->reset_sta[i].is_reset = 0;
 	}
-
+	md_call_chain(&ctl_b->md_notifier,CCCI_MD_RESET);
+	CCCI_MSG_INF(md_id, "ctl", "md power off end\n");
+	ccmni_v2_dump(md_id);
 	// Reset share memory if needed
 	memset( (void*)ctl_b->smem_table->ccci_md_ex_exp_info_smem_base_virt, 0, sizeof(modem_exception_exp_t));
-
+	ccci_fs_resetfifo(md_id);
 	ret = logic_layer_reset(md_id);
 
 	return ret;
@@ -1652,12 +1870,13 @@ int send_md_reset_notify(int md_id)
 		return -CCCI_ERR_FATAL_ERR;
 	}
 
+	CCCI_MSG_INF(md_id, "ctl", "send reset modem request message\n");
+
 	ret = ccci_pre_stop(md_id);
 	//if( (ret < 0)&&(ret != -CCCI_ERR_MD_IN_RESET) )
 	if (ret < 0)
 		return ret;
 	wake_lock_timeout(&ctl_b->trm_wake_lock, 10*HZ);
-	CCCI_MSG_INF(md_id, "ctl", "send reset modem request message\n");
 	ccci_system_message(md_id, CCCI_MD_MSG_RESET, 0);
 
 	return 0;
@@ -1702,7 +1921,7 @@ int send_enter_flight_mode_request(int md_id)
 	int 			ret;
 
 	ctl_b = md_ctlb[md_id];
-	if(ctl_b == NULL) {
+	if(ctl_b == NULL) {	
 		return -CCCI_ERR_FATAL_ERR;
 	}
 	if(ctl_b->md_boot_stage != MD_BOOT_STAGE_2){
@@ -1759,6 +1978,20 @@ int send_power_down_md_request(int md_id)
 
 	CCCI_MSG_INF(md_id, "ctl", "send power down md message\n");
 	ccci_system_message(md_id, CCCI_MD_MSG_POWER_DOWN_REQUEST, 0);
+	return 0;
+}
+
+int send_update_cfg_request(int md_id, unsigned int val)
+{
+	md_ctl_block_t		*ctl_b;
+
+	ctl_b = md_ctlb[md_id];
+	if(ctl_b == NULL) {
+		return -CCCI_ERR_FATAL_ERR;
+	}
+
+	CCCI_MSG_INF(md_id, "ctl", "send update nvram request 0x%x\n", val);
+	ccci_system_message(md_id, CCCI_MD_MSG_CFG_UPDATE, val);
 	return 0;
 }
 
@@ -1880,6 +2113,11 @@ int ccci_trigger_md_assert(int md_id)
 	return ccci_message_send(md_id, &msg, 1);
 }
 
+int ccci_force_md_assert(int md_id, char buf[], unsigned int len)
+{
+	ccci_trigger_md_assert(md_id);
+	return 0;
+}
 
 // ccci_md_ctrl_cb: CCCI_CONTROL_RX callback function for MODEM
 // @buff: pointer to a CCCI buffer
@@ -1905,7 +2143,7 @@ void ccci_md_ctrl_cb(void *private)
 			//set_curr_md_state(md_id, MD_BOOT_STAGE_1);
 			ctl_b->md_boot_stage = MD_BOOT_STAGE_1;
 
-			md_boot_up_additional_operation(md_id);
+			//md_boot_up_additional_operation(md_id);
 
 			ccci_system_message(md_id, CCCI_MD_MSG_BOOT_UP, 0);
 		}
@@ -2272,8 +2510,13 @@ int ccci_md_ctrl_init(int md_id)
 	//md get AP battery voltage by send system rx msg
 	register_ccci_sys_call_back(md_id, MD_GET_BATTERY_INFO, md_get_battery_info);
 
+	//md set sim type by send system rx msg
+	register_ccci_sys_call_back(md_id, MD_SIM_TYPE, md_set_sim_type);
+
 	// register IPO-H call back
 	register_ccci_kern_func_by_md_id(md_id, ID_IPO_H_RESTORE_CB, ccci_ipo_h_restore);
+
+	register_ccci_kern_func_by_md_id(md_id, ID_FORCE_MD_ASSERT, ccci_force_md_assert);
 
 	//Clear all share memory to zero
 	memset((void*)ctlb->smem_table->ccci_smem_vir, 0, ctlb->smem_table->ccci_smem_size);
@@ -2294,7 +2537,6 @@ int ccci_md_ctrl_common_init(void)
 	//boot_register_md_func(boot_md_show, boot_md_store);
 
 	register_ccci_attr_func("boot", boot_md_show, boot_md_store);
-
 	return 0;
 }
 
@@ -2307,7 +2549,6 @@ void ccci_md_ctrl_exit(int md_id)
 	
 	if (ctlb == NULL)
 		return;
-	
 	wake_lock_destroy(&ctlb->trm_wake_lock);
 	del_timer(&ctlb->md_boot_up_check_timer);
 	del_timer(&ctlb->md_boot_up_check_timer);

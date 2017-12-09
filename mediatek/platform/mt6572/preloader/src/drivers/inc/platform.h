@@ -1,3 +1,39 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ *
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #ifndef PLATFORM_H
 #define PLATFORM_H
@@ -22,11 +58,7 @@
 /*=======================================================================*/
 #define CFG_HW_WATCHDOG                 (1)
 #define CFG_BOOT_ARGUMENT               (1)
-#if !defined(CFG_MEM_PRESERVED_MODE)
 #define CFG_RAM_CONSOLE                 (1)
-#else
-#define CFG_RAM_CONSOLE                 (0)
-#endif
 #define CFG_MDJTAG_SWITCH               (0)
 #define CFG_MDMETA_DETECT               (0)
 #define CFG_MDWDT_DISABLE               (0)
@@ -99,7 +131,6 @@
 #define FEATURE_DOWNLOAD_BOUNDARY_CHECK
 #endif
 
-
 #ifdef MTK_UART_USB_SWITCH
 #define CFG_USB_UART_SWITCH         (1)
 #endif
@@ -168,7 +199,7 @@
 #define CFG_DRAM_ADDR                   (0x80000000)
 
 #define CFG_USE_HEADER_MEMADDR          (0xFFFFFFFF)
-#define CFG_DA_RAM_ADDR                 (CFG_DRAM_ADDR + 0x001E0000)
+#define CFG_DA_RAM_ADDR                 (CFG_DRAM_ADDR + 0x01E00000)
 #define CFG_UBOOT_MEMADDR               (CFG_DRAM_ADDR + 0x00020000)
 #define CFG_AP_ROM_MEMADDR              (CFG_DRAM_ADDR + 0x02200000)
 #define CFG_MD_2G_ROM_MEMADDR           (CFG_DRAM_ADDR)
@@ -204,7 +235,13 @@
 #define COMMON_BUFFER_ADDR              (CFG_DRAM_ADDR + 0x00090000)
 #define NAND_BUFFER_START               (CFG_DRAM_ADDR + 0x000A0000)
 #define SEC_REGION_ADDR                 (CFG_DRAM_ADDR + 0x000B0000)
+#if defined(CFG_MEM_PRESERVED_MODE)
+// use SRAM as log buffer, we must init emi, only can use 4KB
+//0x01003000 is used as bss_emi_init section (bss)
+#define LOG_BUFFER_START                (0x01002000)
+#else
 #define LOG_BUFFER_START                (CFG_DRAM_ADDR + 0x000C0000)
+#endif
 
 #ifdef MTK_EMMC_SUPPORT
 //seems do not use in preloader, emmc pmt declare array in partition_mt.c
@@ -249,6 +286,9 @@ typedef enum {
     BR_WDT,
     BR_WDT_BY_PASS_PWK,
     BR_TOOL_BY_PASS_PWK,
+#ifdef RTC_2SEC_REBOOT_ENABLE
+    BR_2SEC_REBOOT,
+#endif
     BR_UNKNOWN
 } boot_reason_t;
 
@@ -350,6 +390,7 @@ extern void bootup_slave_cpu(void);
 extern void OtherCoreHandler(void);
 
 extern void jump(u32 addr, u32 arg1, u32 arg2);
+unsigned int mtk_wdt_is_mem_preserved(void);
 
 extern boot_mode_t g_boot_mode;
 extern boot_dev_t  g_boot_dev;
@@ -363,8 +404,12 @@ extern char Image$$PLL_INIT$$Base;
 #if defined(CFG_SRAM_PRELOADER_MODE)
 //mem_baseaddr is defined in link_sram_descriptor.ld
 extern char mem_baseaddr;
-//extern char baseaddr;
 #endif //#if defined(CFG_SRAM_PRELOADER_MODE)
+
+#if defined(CFG_MEM_PRESERVED_MODE)
+//bss_init_emi_baseaddr is defined in link_mem_descriptio.ld
+extern char bss_init_emi_baseaddr;
+#endif //#if defined(CFG_MEM_PRESERVED_MODE)
 
 #endif /* PLATFORM_H */
 

@@ -1,3 +1,11 @@
+/******************************************************************************
+ * mt65xx_leds.c
+ * 
+ * Copyright 2010 MediaTek Co.,Ltd.
+ * 
+ * DESCRIPTION:
+ *
+ ******************************************************************************/
 
 //#include <common.h>
 //#include <platform/mt.h>
@@ -18,17 +26,27 @@
 //extern void mt_power_off (U32 pwm_no);
 //extern S32 mt_set_pwm_disable ( U32 pwm_no );
 extern void mt_pwm_disable(U32 pwm_no, BOOL pmic_pad);
+extern int strcmp(const char *cs, const char *ct);
 
+/****************************************************************************
+ * DEBUG MACROS
+ ***************************************************************************/
 int debug_enable = 0;
 #define LEDS_DEBUG(format, args...) do{ \
 		if(debug_enable) \
 		{\
-	//		printf(format,##args);\
+			printf(format,##args);\
 		}\
 	}while(0)
 #define LEDS_INFO LEDS_DEBUG 	
+/****************************************************************************
+ * structures
+ ***************************************************************************/
 static int g_lastlevel[MT65XX_LED_TYPE_TOTAL] = {-1, -1, -1, -1, -1, -1, -1};
 int backlight_PWM_div = CLK_DIV1;
+/****************************************************************************
+ * function prototypes
+ ***************************************************************************/
 
 /* import functions */
 // FIXME: should extern from pmu driver
@@ -40,11 +58,17 @@ int backlight_PWM_div = CLK_DIV1;
 static int brightness_set_pwm(int pwm_num, enum led_brightness level,struct PWM_config *config_data);
 static int led_set_pwm(int pwm_num, enum led_brightness level);
 static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightness level);
-static int brightness_set_gpio(int gpio_num, enum led_brightness level);
+//static int brightness_set_gpio(int gpio_num, enum led_brightness level);
 static int mt65xx_led_set_cust(struct cust_mt65xx_led *cust, int level);
 
+/****************************************************************************
+ * global variables
+ ***************************************************************************/
 static unsigned int limit = 255;
 
+/****************************************************************************
+ * internal functions
+ ***************************************************************************/
 
 static int brightness_mapto64(int level)
 {
@@ -66,35 +90,6 @@ unsigned int brightness_mapping(unsigned int level)
        
 	return mapped_level;
 }
-#if 0
-void upmu_set_rg_drv_2m_ck_pdn(u32 val)
-{
-}
-void upmu_set_rg_isink0_ck_pdn(u32 val)
-{
-}
-void upmu_set_rg_isink0_ck_sel(u32 val)
-{
-}
-void upmu_set_rg_isink1_ck_pdn(u32 val)
-{
-}
-void upmu_set_rg_isink1_ck_sel(u32 val)
-{
-}
-void upmu_set_rg_isink2_ck_pdn(u32 val)
-{
-}
-void upmu_set_rg_isink2_ck_sel(u32 val)
-{
-}
-void upmu_set_rg_isink3_ck_pdn(u32 val)
-{
-}
-void upmu_set_rg_isink3_ck_sel(u32 val)
-{
-}
-#endif
 
 static int brightness_set_pwm(int pwm_num, enum led_brightness level,struct PWM_config *config_data)
 {
@@ -189,19 +184,12 @@ static int led_set_pwm(int pwm_num, enum led_brightness level)
 	return 0;
 }
 
-
-/* Add by zhuqiang for PR496743. 20130731 Begin. */
-#ifdef HZ_YARISS_SUPPORT
-
 static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightness level)
 {
-
- // porting p36 by zhuqiang for PR486082 2013.7.9 start
 #define PMIC_BACKLIGHT_LEVEL    74
 
 	int tmp_level = level;
-	static bool backlight_init_flag = false;
-	static bool led_init_flag[4] = {false, false, false, false};
+	//static bool backlight_init_flag = false;
 	static bool first_time = true;
         static unsigned char duty_mapping[PMIC_BACKLIGHT_LEVEL] = {
                 0,	1,	2,	3,	4,	5,	6,	7,	8,	9,	10,	11,	
@@ -210,9 +198,9 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightne
                 20,     21,     22,     23,     24,     25,     26,     27,     28,     29,     30,     31,     
                 21,     22,     23,     24,     25,     26,     27,     28,     29,     30,     31,     24,     
                 25,     26,     27,     28,     29,     30,     31,     25,     26,     27,     28,     29,     
-                30,     31,     
+                30,     31,  
 
-        };
+    };
         static unsigned char current_mapping[PMIC_BACKLIGHT_LEVEL] = {
                 0,	0,	0,	0,	0,	0,	0,	0,	0,	0,	0,	0,
                 0,      0,      0,      0,      0,      0,      0,      0,      0,      0,      0,      0,      
@@ -220,16 +208,14 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightne
                 1,      1,      1,      1,      1,      1,      1,      1,      1,      1,      1,      1,      
                 2,      2,      2,      2,      2,      2,      2,      2,      2,      2,      2,      3,      
                 3,      3,      3,      3,      3,      3,      3,      4,      4,      4,      4,      4,      
-                4,      4,      
-        };
+                4,      4, 
+    };
 
-   // porting p36 by zhuqiang for PR486082 2013.7.9 end
-    
 	printf("[LEDS]LK: PMIC Type: %d, Level: %d\n", pmic_type, level);
 
 	if (pmic_type == MT65XX_LED_PMIC_LCD_ISINK)
 	{
-		if(backlight_init_flag == false)
+		//if(backlight_init_flag == false)
 		{
             upmu_set_rg_drv_2m_ck_pdn(0x0); // Disable power down
             upmu_set_rg_drv_32k_ck_pdn(0x0); // Disable power down (backlight no need?)    
@@ -239,9 +225,7 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightne
             upmu_set_rg_isink0_ck_pdn(0x0); // Disable power down    
             upmu_set_rg_isink0_ck_sel(0x1); // Freq = 1Mhz for Backlight
 			upmu_set_isink_ch0_mode(ISINK_PWM_MODE);
-            // Modify by zhuqiang for backlight control. 20130427. Begin.
-            upmu_set_isink_ch0_step(0x4); // 24mA
-            // Modify by zhuqiang for backlight control. 20130427. End.
+            upmu_set_isink_ch0_step(0x5); // 24mA
             upmu_set_isink_sfstr0_en(0x0); // Disable soft start
 			upmu_set_rg_isink0_double_en(0x1); // Enable double current
 			upmu_set_isink_phase_dly_tc(0x0); // TC = 0.5us
@@ -251,42 +235,30 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightne
             upmu_set_rg_isink1_ck_pdn(0x0); // Disable power down   
             upmu_set_rg_isink1_ck_sel(0x1); // Freq = 1Mhz for Backlight
 			upmu_set_isink_ch1_mode(ISINK_PWM_MODE);
-            // Modify by zhuqiang for backlight control. 20130427. Begin.
-            upmu_set_isink_ch1_step(0x4); // 24mA
-            // Modify by zhuqiang for backlight control. 20130427. End.
+            upmu_set_isink_ch1_step(0x5); // 24mA
             upmu_set_isink_sfstr1_en(0x0); // Disable soft start
-			// porting p36 by zhuqiang for PR486082 2013.7.9 start
-			upmu_set_rg_isink1_double_en(0x1); // Enable double current
-			// porting p36 by zhuqiang for PR486082 2013.7.9 end
+                        upmu_set_rg_isink1_double_en(0x1); // Enable double current
 			upmu_set_isink_phase1_dly_en(0x1); // Enable phase delay
             upmu_set_isink_chop1_en(0x1); // Enable CHOP clk         
             // ISINK2
             upmu_set_rg_isink2_ck_pdn(0x0); // Disable power down   
             upmu_set_rg_isink2_ck_sel(0x1); // Freq = 1Mhz for Backlight
 			upmu_set_isink_ch2_mode(ISINK_PWM_MODE);
-            // Modify by zhuqiang for backlight control. 20130427. Begin.
-            upmu_set_isink_ch2_step(0x4); // 24mA
-            // Modify by zhuqiang for backlight control. 20130427. End.
+            upmu_set_isink_ch2_step(0x5); // 24mA
             upmu_set_isink_sfstr2_en(0x0); // Disable soft start
-			// porting p36 by zhuqiang for PR486082 2013.7.9 start
-			upmu_set_rg_isink2_double_en(0x1); // Enable double current 
-			// porting p36 by zhuqiang for PR486082 2013.7.9 end
+                        upmu_set_rg_isink2_double_en(0x1); // Enable double current
 			upmu_set_isink_phase2_dly_en(0x1); // Enable phase delay
             upmu_set_isink_chop2_en(0x1); // Enable CHOP clk   
-            // ISINK3
-            upmu_set_rg_isink3_ck_pdn(0x0); // Disable power down   
+	    // ISINK3
+            upmu_set_rg_isink3_ck_pdn(0x0); // Disable power down
             upmu_set_rg_isink3_ck_sel(0x1); // Freq = 1Mhz for Backlight
-			upmu_set_isink_ch3_mode(ISINK_PWM_MODE);
-            // Modify by zhuqiang for backlight control. 20130427. Begin.
-            upmu_set_isink_ch3_step(0x4); // 24mA
-            // Modify by zhuqiang for backlight control. 20130427. End.
+	    upmu_set_isink_ch3_mode(ISINK_PWM_MODE);
+            //upmu_set_isink_ch3_step(0x5); // 24mA
             upmu_set_isink_sfstr3_en(0x0); // Disable soft start
-			// porting p36 by zhuqiang for PR486082 2013.7.9 start
-			upmu_set_rg_isink3_double_en(0x1); // Enable double current
-			// porting p36 by zhuqiang for PR486082 2013.7.9 end
-			upmu_set_isink_phase3_dly_en(0x1); // Enable phase delay
-            upmu_set_isink_chop3_en(0x1); // Enable CHOP clk                
-			backlight_init_flag = true;
+	    upmu_set_rg_isink3_double_en(0x0); // Disable double current //fangjie modify, because pixi3-4 isink3 only connect one led.
+	    upmu_set_isink_phase3_dly_en(0x1); // Enable phase delay
+            upmu_set_isink_chop3_en(0x1); // Enable CHOP clk
+            //backlight_init_flag = true;
 		}
 		
 		if (level) 
@@ -305,43 +277,40 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightne
             }
 #endif      
 
-   // porting p36 by zhuqiang for PR486082 2013.7.9 start
-                        if(level == limit)
-                        {
+            if(level == limit)
+            {
 				level = PMIC_BACKLIGHT_LEVEL;
-                        }
-                        else
-                        {
+            }
+            else
+            {
 				level = ((level * PMIC_BACKLIGHT_LEVEL) / 255) + 1;
-                        }
-   // porting p36 by zhuqiang for PR486082 2013.7.9 end
-						
-                        printf("[LEDS]LK: Level Mapping = %d \n", level);
-                        printf("[LEDS]LK: ISINK DIM Duty = %d \n", duty_mapping[level-1]);
-                        printf("[LEDS]LK: ISINK Current = %d \n", current_mapping[level-1]);
-                        upmu_set_isink_dim0_duty(duty_mapping[level-1]);
-                        upmu_set_isink_dim1_duty(duty_mapping[level-1]);
-                        upmu_set_isink_dim2_duty(duty_mapping[level-1]);
-                        upmu_set_isink_dim3_duty(duty_mapping[level-1]);
-                        upmu_set_isink_ch0_step(current_mapping[level-1]);
-                        upmu_set_isink_ch1_step(current_mapping[level-1]);
-                        upmu_set_isink_ch2_step(current_mapping[level-1]);
-                        upmu_set_isink_ch3_step(current_mapping[level-1]);
-                        upmu_set_isink_dim0_fsel(0x2); // 20Khz
-                        upmu_set_isink_dim1_fsel(0x2); // 20Khz
-                        upmu_set_isink_dim2_fsel(0x2); // 20Khz
-                        upmu_set_isink_dim3_fsel(0x2); // 20Khz            
-                        upmu_set_isink_ch0_en(0x1); // Turn on ISINK Channel 0
-                        upmu_set_isink_ch1_en(0x1); // Turn on ISINK Channel 1
-                        upmu_set_isink_ch2_en(0x1); // Turn on ISINK Channel 2
-                        upmu_set_isink_ch3_en(0x1); // Turn on ISINK Channel 3
+            }
+            printf("[LEDS]LK: Level Mapping = %d \n", level);
+            printf("[LEDS]LK: ISINK DIM Duty = %d \n", duty_mapping[level-1]);
+            printf("[LEDS]LK: ISINK Current = %d \n", current_mapping[level-1]);
+            upmu_set_isink_dim0_duty(duty_mapping[level-1]);
+            upmu_set_isink_dim1_duty(duty_mapping[level-1]);
+            upmu_set_isink_dim2_duty(duty_mapping[level-1]);
+	    upmu_set_isink_dim3_duty(duty_mapping[level-1]);
+	    upmu_set_isink_ch0_step(current_mapping[level-1]);
+            upmu_set_isink_ch1_step(current_mapping[level-1]);
+            upmu_set_isink_ch2_step(current_mapping[level-1]);
+	    upmu_set_isink_ch3_step(current_mapping[level-1]);
+	    upmu_set_isink_dim0_fsel(0x2); // 20Khz
+            upmu_set_isink_dim1_fsel(0x2); // 20Khz
+            upmu_set_isink_dim2_fsel(0x2); // 20Khz
+	    upmu_set_isink_dim3_fsel(0x2); // 20Khz
+	    upmu_set_isink_ch0_en(0x1); // Turn on ISINK Channel 0
+            upmu_set_isink_ch1_en(0x1); // Turn on ISINK Channel 1
+            upmu_set_isink_ch2_en(0x1); // Turn on ISINK Channel 2
+            upmu_set_isink_ch3_en(0x1); // Turn on ISINK Channel 3
 		}
 		else 
 		{
             upmu_set_isink_ch0_en(0x0); // Turn off ISINK Channel 0
             upmu_set_isink_ch1_en(0x0); // Turn off ISINK Channel 1
             upmu_set_isink_ch2_en(0x0); // Turn off ISINK Channel 2
-            upmu_set_isink_ch3_en(0x0); // Turn off ISINK Channel 3
+	    upmu_set_isink_ch3_en(0x0); // Turn off ISINK Channel 3
 		}
         
 		return 0;
@@ -354,8 +323,6 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightne
 			first_time = false;
 		}
 
-		if(led_init_flag[0] == false)
-		{       
             upmu_set_rg_isink0_ck_pdn(0x0); // Disable power down    
             upmu_set_rg_isink0_ck_sel(0x0); // Freq = 32KHz for Indicator            
             upmu_set_isink_dim0_duty(15); // 16 / 32, no use for register mode
@@ -367,8 +334,6 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightne
 			upmu_set_rg_isink0_double_en(0x0); // Disable double current
 			upmu_set_isink_phase0_dly_en(0x0); // Disable phase delay
             upmu_set_isink_chop0_en(0x0); // Disable CHOP clk
-			led_init_flag[0] = true;
-		}
 		
 		if (level) 
 		{
@@ -391,8 +356,6 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightne
 			first_time = false;
 		}
 
-		if(led_init_flag[1] == false)
-		{       
             upmu_set_rg_isink1_ck_pdn(0x0); // Disable power down    
             upmu_set_rg_isink1_ck_sel(0x0); // Freq = 32KHz for Indicator            
             upmu_set_isink_dim1_duty(15); // 16 / 32, no use for register mode
@@ -404,8 +367,7 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightne
 			upmu_set_rg_isink1_double_en(0x0); // Disable double current
 			upmu_set_isink_phase1_dly_en(0x0); // Disable phase delay
             upmu_set_isink_chop1_en(0x0); // Disable CHOP clk
-			led_init_flag[1] = true;
-		}
+
 		
 		if (level) 
 		{
@@ -428,8 +390,6 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightne
 			first_time = false;
 		}
 
-		if(led_init_flag[2] == false)
-		{       
             upmu_set_rg_isink2_ck_pdn(0x0); // Disable power down    
             upmu_set_rg_isink2_ck_sel(0x0); // Freq = 32KHz for Indicator            
             upmu_set_isink_dim2_duty(15); // 16 / 32, no use for register mode
@@ -441,8 +401,7 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightne
 			upmu_set_rg_isink2_double_en(0x0); // Disable double current
 			upmu_set_isink_phase2_dly_en(0x0); // Disable phase delay
             upmu_set_isink_chop2_en(0x0); // Disable CHOP clk
-			led_init_flag[2] = true;
-		}
+
 		
 		if (level) 
 		{
@@ -465,8 +424,6 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightne
 			first_time = false;
 		}
 
-		if(led_init_flag[3] == false)
-		{       
             upmu_set_rg_isink3_ck_pdn(0x0); // Disable power down    
             upmu_set_rg_isink3_ck_sel(0x0); // Freq = 32KHz for Indicator            
             upmu_set_isink_dim3_duty(15); // 16 / 32, no use for register mode
@@ -478,8 +435,6 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightne
 			upmu_set_rg_isink3_double_en(0x0); // Disable double current
 			upmu_set_isink_phase3_dly_en(0x0); // Disable phase delay
             upmu_set_isink_chop3_en(0x0); // Disable CHOP clk
-			led_init_flag[3] = true;
-		}
 		
 		if (level) 
 		{
@@ -497,317 +452,7 @@ static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightne
 	return -1;
 }
 
-#else
-/* Add by zhuqiang for PR496743. 20130731 end. */
-
-static int brightness_set_pmic(enum mt65xx_led_pmic pmic_type, enum led_brightness level)
-{
-
- // porting p36 by zhuqiang for PR486082 2013.7.9 start
-#define PMIC_BACKLIGHT_LEVEL    74
-
-	int tmp_level = level;
-	static bool backlight_init_flag = false;
-	static bool led_init_flag[4] = {false, false, false, false};
-	static bool first_time = true;
-        static unsigned char duty_mapping[PMIC_BACKLIGHT_LEVEL] = {
-                0,	1,	2,	3,	4,	5,	6,	7,	8,	9,	10,	11,	
-                12,     13,     14,     15,     16,     17,     18,     19,     20,     21,     22,     23,     
-                24,     25,     26,     27,     28,     29,     30,     31,     16,     17,     18,     19,     
-                20,     21,     22,     23,     24,     25,     26,     27,     28,     29,     30,     31,     
-                21,     22,     23,     24,     25,     26,     27,     28,     29,     30,     31,     24,     
-                25,     26,     27,     28,     29,     30,     31,     25,     26,     27,     28,     29,     
-                30,     31,     
-
-        };
-        static unsigned char current_mapping[PMIC_BACKLIGHT_LEVEL] = {
-                0,	0,	0,	0,	0,	0,	0,	0,	0,	0,	0,	0,
-                0,      0,      0,      0,      0,      0,      0,      0,      0,      0,      0,      0,      
-                0,      0,      0,      0,      0,      0,      0,      0,      1,      1,      1,      1,      
-                1,      1,      1,      1,      1,      1,      1,      1,      1,      1,      1,      1,      
-                2,      2,      2,      2,      2,      2,      2,      2,      2,      2,      2,      3,      
-                3,      3,      3,      3,      3,      3,      3,      4,      4,      4,      4,      4,      
-                4,      4,      
-        };
-
-   // porting p36 by zhuqiang for PR486082 2013.7.9 end
-    
-	printf("[LEDS]LK: PMIC Type: %d, Level: %d\n", pmic_type, level);
-
-	if (pmic_type == MT65XX_LED_PMIC_LCD_ISINK)
-	{
-		if(backlight_init_flag == false)
-		{
-            upmu_set_rg_drv_2m_ck_pdn(0x0); // Disable power down
-            upmu_set_rg_drv_32k_ck_pdn(0x0); // Disable power down (backlight no need?)    
-
-            // For backlight: Current: 24mA, PWM frequency: 20K, Duty: 20~100, Soft start: off, Phase shift: on
-            // ISINK0
-            upmu_set_rg_isink0_ck_pdn(0x0); // Disable power down    
-            upmu_set_rg_isink0_ck_sel(0x1); // Freq = 1Mhz for Backlight
-			upmu_set_isink_ch0_mode(ISINK_PWM_MODE);
-            // Modify by zhuqiang for backlight control. 20130427. Begin.
-            upmu_set_isink_ch0_step(0x4); // 24mA
-            // Modify by zhuqiang for backlight control. 20130427. End.
-            upmu_set_isink_sfstr0_en(0x0); // Disable soft start
-			upmu_set_rg_isink0_double_en(0x1); // Enable double current
-			upmu_set_isink_phase_dly_tc(0x0); // TC = 0.5us
-			upmu_set_isink_phase0_dly_en(0x1); // Enable phase delay
-            upmu_set_isink_chop0_en(0x1); // Enable CHOP clk
-            // ISINK1
-            upmu_set_rg_isink1_ck_pdn(0x0); // Disable power down   
-            upmu_set_rg_isink1_ck_sel(0x1); // Freq = 1Mhz for Backlight
-			upmu_set_isink_ch1_mode(ISINK_PWM_MODE);
-            // Modify by zhuqiang for backlight control. 20130427. Begin.
-            upmu_set_isink_ch1_step(0x4); // 24mA
-            // Modify by zhuqiang for backlight control. 20130427. End.
-            upmu_set_isink_sfstr1_en(0x0); // Disable soft start
-			// porting p36 by zhuqiang for PR486082 2013.7.9 start
-			upmu_set_rg_isink1_double_en(0x1); // Enable double current
-			// porting p36 by zhuqiang for PR486082 2013.7.9 end
-			upmu_set_isink_phase1_dly_en(0x1); // Enable phase delay
-            upmu_set_isink_chop1_en(0x1); // Enable CHOP clk         
-            // ISINK2
-            upmu_set_rg_isink2_ck_pdn(0x0); // Disable power down   
-            upmu_set_rg_isink2_ck_sel(0x1); // Freq = 1Mhz for Backlight
-			upmu_set_isink_ch2_mode(ISINK_PWM_MODE);
-            // Modify by zhuqiang for backlight control. 20130427. Begin.
-            upmu_set_isink_ch2_step(0x4); // 24mA
-            // Modify by zhuqiang for backlight control. 20130427. End.
-            upmu_set_isink_sfstr2_en(0x0); // Disable soft start
-			// porting p36 by zhuqiang for PR486082 2013.7.9 start
-			upmu_set_rg_isink2_double_en(0x1); // Enable double current 
-			// porting p36 by zhuqiang for PR486082 2013.7.9 end
-			upmu_set_isink_phase2_dly_en(0x1); // Enable phase delay
-            upmu_set_isink_chop2_en(0x1); // Enable CHOP clk   
-            // ISINK3
-            upmu_set_rg_isink3_ck_pdn(0x0); // Disable power down   
-            upmu_set_rg_isink3_ck_sel(0x1); // Freq = 1Mhz for Backlight
-			upmu_set_isink_ch3_mode(ISINK_PWM_MODE);
-            // Modify by zhuqiang for backlight control. 20130427. Begin.
-            upmu_set_isink_ch3_step(0x4); // 24mA
-            // Modify by zhuqiang for backlight control. 20130427. End.
-            upmu_set_isink_sfstr3_en(0x0); // Disable soft start
-			// porting p36 by zhuqiang for PR486082 2013.7.9 start
-			upmu_set_rg_isink3_double_en(0x1); // Enable double current
-			// porting p36 by zhuqiang for PR486082 2013.7.9 end
-			upmu_set_isink_phase3_dly_en(0x1); // Enable phase delay
-            upmu_set_isink_chop3_en(0x1); // Enable CHOP clk                
-			backlight_init_flag = true;
-		}
-		
-		if (level) 
-		{
-			level = brightness_mapping(tmp_level);
-			if(level == ERROR_BL_LEVEL)
-				level = limit;
-#if 0            
-            if(((level << 5) / limit) < 1)
-            {
-                level = 0;
-            }
-            else
-            {
-                level = ((level << 5) / limit) - 1;
-            }
-#endif      
-
-   // porting p36 by zhuqiang for PR486082 2013.7.9 start
-                        if(level == limit)
-                        {
-				level = PMIC_BACKLIGHT_LEVEL;
-                        }
-                        else
-                        {
-				level = ((level * PMIC_BACKLIGHT_LEVEL) / 255) + 1;
-                        }
-   // porting p36 by zhuqiang for PR486082 2013.7.9 end
-						
-                        printf("[LEDS]LK: Level Mapping = %d \n", level);
-                        printf("[LEDS]LK: ISINK DIM Duty = %d \n", duty_mapping[level-1]);
-                        printf("[LEDS]LK: ISINK Current = %d \n", current_mapping[level-1]);
-                        upmu_set_isink_dim0_duty(duty_mapping[level-1]);
-                        upmu_set_isink_dim1_duty(duty_mapping[level-1]);
-                        upmu_set_isink_dim2_duty(duty_mapping[level-1]);
-                        upmu_set_isink_dim3_duty(duty_mapping[level-1]);
-                        upmu_set_isink_ch0_step(current_mapping[level-1]);
-                        upmu_set_isink_ch1_step(current_mapping[level-1]);
-                        upmu_set_isink_ch2_step(current_mapping[level-1]);
-                        upmu_set_isink_ch3_step(current_mapping[level-1]);
-                        upmu_set_isink_dim0_fsel(0x2); // 20Khz
-                        upmu_set_isink_dim1_fsel(0x2); // 20Khz
-                        upmu_set_isink_dim2_fsel(0x2); // 20Khz
-                        upmu_set_isink_dim3_fsel(0x2); // 20Khz            
-                        upmu_set_isink_ch0_en(0x1); // Turn on ISINK Channel 0
-                        upmu_set_isink_ch1_en(0x1); // Turn on ISINK Channel 1
-                        upmu_set_isink_ch2_en(0x1); // Turn on ISINK Channel 2
-                        upmu_set_isink_ch3_en(0x1); // Turn on ISINK Channel 3
-		}
-		else 
-		{
-            upmu_set_isink_ch0_en(0x0); // Turn off ISINK Channel 0
-            upmu_set_isink_ch1_en(0x0); // Turn off ISINK Channel 1
-            upmu_set_isink_ch2_en(0x0); // Turn off ISINK Channel 2
-            upmu_set_isink_ch3_en(0x0); // Turn off ISINK Channel 3
-		}
-        
-		return 0;
-	}
-	else if(pmic_type == MT65XX_LED_PMIC_NLED_ISINK0)
-	{
-		if(first_time == true)
-		{
-            upmu_set_isink_ch0_en(0x0); // Turn off ISINK Channel 0
-			first_time = false;
-		}
-
-		if(led_init_flag[0] == false)
-		{       
-            upmu_set_rg_isink0_ck_pdn(0x0); // Disable power down    
-            upmu_set_rg_isink0_ck_sel(0x0); // Freq = 32KHz for Indicator            
-            upmu_set_isink_dim0_duty(15); // 16 / 32, no use for register mode
-			upmu_set_isink_ch0_mode(ISINK_REGISTER_MODE);
-            upmu_set_isink_dim0_fsel(0x0); // 1KHz, no use for register mode
-            upmu_set_isink_ch0_step(0x0); // 4mA
-            upmu_set_isink_sfstr0_tc(0x0); // 0.5us
-            upmu_set_isink_sfstr0_en(0x0); // Disable soft start
-			upmu_set_rg_isink0_double_en(0x0); // Disable double current
-			upmu_set_isink_phase0_dly_en(0x0); // Disable phase delay
-            upmu_set_isink_chop0_en(0x0); // Disable CHOP clk
-			led_init_flag[0] = true;
-		}
-		
-		if (level) 
-		{
-            upmu_set_rg_drv_2m_ck_pdn(0x0); // Disable power down (indicator no need?)     
-            upmu_set_rg_drv_32k_ck_pdn(0x0); // Disable power down            
-            upmu_set_isink_ch0_en(0x1); // Turn on ISINK Channel 0
-			
-		}
-		else 
-		{
-            upmu_set_isink_ch0_en(0x0); // Turn off ISINK Channel 0
-		}
-		return 0;
-	}
-	else if(pmic_type == MT65XX_LED_PMIC_NLED_ISINK1)
-	{
-		if(first_time == true)
-		{
-            upmu_set_isink_ch1_en(0x0); // Turn off ISINK Channel 1
-			first_time = false;
-		}
-
-		if(led_init_flag[1] == false)
-		{       
-            upmu_set_rg_isink1_ck_pdn(0x0); // Disable power down    
-            upmu_set_rg_isink1_ck_sel(0x0); // Freq = 32KHz for Indicator            
-            upmu_set_isink_dim1_duty(15); // 16 / 32, no use for register mode
-			upmu_set_isink_ch1_mode(ISINK_REGISTER_MODE);
-            upmu_set_isink_dim1_fsel(0x0); // 1KHz, no use for register mode
-            upmu_set_isink_ch1_step(0x0); // 4mA
-            upmu_set_isink_sfstr1_tc(0x0); // 0.5us
-            upmu_set_isink_sfstr1_en(0x0); // Disable soft start
-			upmu_set_rg_isink1_double_en(0x0); // Disable double current
-			upmu_set_isink_phase1_dly_en(0x0); // Disable phase delay
-            upmu_set_isink_chop1_en(0x0); // Disable CHOP clk
-			led_init_flag[1] = true;
-		}
-		
-		if (level) 
-		{
-            upmu_set_rg_drv_2m_ck_pdn(0x0); // Disable power down (indicator no need?)     
-            upmu_set_rg_drv_32k_ck_pdn(0x0); // Disable power down            
-            upmu_set_isink_ch1_en(0x1); // Turn on ISINK Channel 1
-			
-		}
-		else 
-		{
-            upmu_set_isink_ch1_en(0x0); // Turn off ISINK Channel 1
-		}
-		return 0;
-	}
-	else if(pmic_type == MT65XX_LED_PMIC_NLED_ISINK2)
-	{
-		if(first_time == true)
-		{
-            upmu_set_isink_ch2_en(0x0); // Turn off ISINK Channel 2
-			first_time = false;
-		}
-
-		if(led_init_flag[2] == false)
-		{       
-            upmu_set_rg_isink2_ck_pdn(0x0); // Disable power down    
-            upmu_set_rg_isink2_ck_sel(0x0); // Freq = 32KHz for Indicator            
-            upmu_set_isink_dim2_duty(15); // 16 / 32, no use for register mode
-			upmu_set_isink_ch2_mode(ISINK_REGISTER_MODE);
-            upmu_set_isink_dim2_fsel(0x0); // 1KHz, no use for register mode
-            upmu_set_isink_ch2_step(0x0); // 4mA
-            upmu_set_isink_sfstr2_tc(0x0); // 0.5us
-            upmu_set_isink_sfstr2_en(0x0); // Disable soft start
-			upmu_set_rg_isink2_double_en(0x0); // Disable double current
-			upmu_set_isink_phase2_dly_en(0x0); // Disable phase delay
-            upmu_set_isink_chop2_en(0x0); // Disable CHOP clk
-			led_init_flag[2] = true;
-		}
-		
-		if (level) 
-		{
-            upmu_set_rg_drv_2m_ck_pdn(0x0); // Disable power down (indicator no need?)     
-            upmu_set_rg_drv_32k_ck_pdn(0x0); // Disable power down            
-            upmu_set_isink_ch2_en(0x1); // Turn on ISINK Channel 2
-			
-		}
-		else 
-		{
-            upmu_set_isink_ch2_en(0x0); // Turn off ISINK Channel 2
-		}
-		return 0;
-	}
-    else if(pmic_type == MT65XX_LED_PMIC_NLED_ISINK3)
-	{
-		if(first_time == true)
-		{
-            upmu_set_isink_ch3_en(0x0); // Turn off ISINK Channel 3
-			first_time = false;
-		}
-
-		if(led_init_flag[3] == false)
-		{       
-            upmu_set_rg_isink3_ck_pdn(0x0); // Disable power down    
-            upmu_set_rg_isink3_ck_sel(0x0); // Freq = 32KHz for Indicator            
-            upmu_set_isink_dim3_duty(15); // 16 / 32, no use for register mode
-			upmu_set_isink_ch3_mode(ISINK_REGISTER_MODE);
-            upmu_set_isink_dim3_fsel(0x0); // 1KHz, no use for register mode
-            upmu_set_isink_ch3_step(0x0); // 4mA
-            upmu_set_isink_sfstr3_tc(0x0); // 0.5us
-            upmu_set_isink_sfstr3_en(0x0); // Disable soft start
-			upmu_set_rg_isink3_double_en(0x0); // Disable double current
-			upmu_set_isink_phase3_dly_en(0x0); // Disable phase delay
-            upmu_set_isink_chop3_en(0x0); // Disable CHOP clk
-			led_init_flag[3] = true;
-		}
-		
-		if (level) 
-		{
-            upmu_set_rg_drv_2m_ck_pdn(0x0); // Disable power down (indicator no need?)     
-            upmu_set_rg_drv_32k_ck_pdn(0x0); // Disable power down            
-            upmu_set_isink_ch3_en(0x1); // Turn on ISINK Channel 3
-			
-		}
-		else 
-		{
-            upmu_set_isink_ch3_en(0x0); // Turn off ISINK Channel 3
-		}
-		return 0;
-	}
-	return -1;
-}
-
-#endif
-
- // Modified by zhuqiang for PR526887 2013.9.20 begin
-
+#if 0
 static int brightness_set_gpio(int gpio_num, enum led_brightness level)
 {
 //	LEDS_INFO("LED GPIO#%d:%d\n", gpio_num, level);
@@ -821,7 +466,7 @@ static int brightness_set_gpio(int gpio_num, enum led_brightness level)
 
 	return 0;
 }
- // Modified by zhuqiang for PR526887 2013.9.20 end
+#endif
 
 static int mt65xx_led_set_cust(struct cust_mt65xx_led *cust, int level)
 {
@@ -851,8 +496,8 @@ static int mt65xx_led_set_cust(struct cust_mt65xx_led *cust, int level)
 
 					//printf("[LEDS]LK: mt65xx_led_set_cust: mode=%d, level=%d \n\r", cust->mode, level);
 
-				    return brightness_set_pwm(cust->data, level, &cust->config_data);
-				}
+			    return brightness_set_pwm(cust->data, level, &cust->config_data);
+			}
 			}
 			else
 			{
@@ -860,7 +505,7 @@ static int mt65xx_led_set_cust(struct cust_mt65xx_led *cust, int level)
 			}
 		
 		case MT65XX_LED_MODE_GPIO:
-			return brightness_set_gpio(cust->data, level); // Modified by zhuqiang for PR526887 2013.9.20 begin
+			return ((cust_brightness_set)(cust->data))(level);
 		case MT65XX_LED_MODE_PMIC:
 			return brightness_set_pmic(cust->data, level);
 		case MT65XX_LED_MODE_CUST_LCM:
@@ -874,6 +519,9 @@ static int mt65xx_led_set_cust(struct cust_mt65xx_led *cust, int level)
 	return -1;
 }
 
+/****************************************************************************
+ * external functions
+ ***************************************************************************/
 int mt65xx_leds_brightness_set(enum mt65xx_led_type type, enum led_brightness level)
 {
 	struct cust_mt65xx_led *cust_led_list = get_cust_led_list();
@@ -883,10 +531,10 @@ int mt65xx_leds_brightness_set(enum mt65xx_led_type type, enum led_brightness le
 
 	if (level > LED_FULL)
 		level = LED_FULL;
-	else if (level < 0)
-		level = 0;
+//	else if (level < 0)  //level cannot < 0
+//		level = 0;
 
-	if (g_lastlevel[type] != level) {
+	if (g_lastlevel[type] != (int)level) {
 		g_lastlevel[type] = level;
 		printf("[LEDS]LK: %s level is %d \n\r", cust_led_list[type].name, level);
 		return mt65xx_led_set_cust(&cust_led_list[type], level);

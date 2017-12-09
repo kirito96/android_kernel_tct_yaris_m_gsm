@@ -2,12 +2,10 @@
 #define ANDROID_AUDIO_LOOPBACK_CONTROLLER_H
 
 #include "AudioType.h"
-
 #include "AudioVolumeFactory.h"
 #include "AudioAnalogControlFactory.h"
 #include "AudioDigitalControlFactory.h"
-#include "AudioResourceManager.h"
-#include "AudioMTKHardware.h"
+#include "AudioResourceManagerInterface.h"
 
 namespace android
 {
@@ -22,20 +20,21 @@ class AudioLoopbackController
         status_t OpenAudioLoopbackControlFlow(const audio_devices_t input_device, const audio_devices_t output_device);
         status_t OpenAudioLoopbackControlFlow(const audio_devices_t input_device, const audio_devices_t output_device, uint32 ul_samplerate, uint32 dl_samplerate);
         status_t CloseAudioLoopbackControlFlow();
-		void SetHardwarePointer(void *paudioHardware);
-		status_t SetApBTCodec(bool enable_codec);
-#if defined(BTCVSD_LOOPBACK_WITH_CODEC)
-		class AudioMTKLoopbackThread : public Thread
-		{
-			public:
-					AudioMTKLoopbackThread();
-					virtual ~AudioMTKLoopbackThread();
-					virtual status_t	readyToRun();
-					virtual void		onFirstRef();
-			private:
-					String8 mName;
-					virtual bool threadLoop();
-		};
+        status_t SetApBTCodec(bool enable_codec);
+		  bool IsAPBTLoopbackWithCodec(void); //0902
+//#if defined(BTCVSD_LOOPBACK_WITH_CODEC)
+#if 1 //0902
+        class AudioMTKLoopbackThread : public Thread
+        {
+            public:
+                AudioMTKLoopbackThread();
+                virtual ~AudioMTKLoopbackThread();
+                virtual status_t    readyToRun();
+                virtual void        onFirstRef();
+            private:
+                String8 mName;
+                virtual bool threadLoop();
+        };
 #endif
 
     protected:
@@ -56,15 +55,16 @@ class AudioLoopbackController
 
     private:
         static AudioLoopbackController *mAudioLoopbackController; // singleton
-		AudioMTKHardware *mAudioHardware;
-		int mFd2;
-		bool mBtLoopbackWithCodec;
-		bool mBtLoopbackWithoutCodec;
-#if defined(BTCVSD_LOOPBACK_WITH_CODEC)
-      sp<AudioMTKLoopbackThread>  mBTCVSDLoopbackThread;
+
+        int mFd2;
+        bool mBtLoopbackWithCodec;
+        bool mBtLoopbackWithoutCodec;
+//#if defined(BTCVSD_LOOPBACK_WITH_CODEC)
+#if 1 //0902
+        sp<AudioMTKLoopbackThread>  mBTCVSDLoopbackThread;
 #endif
-      //for BT SW BT CVSD loopback test
-      bool mUseBtCodec;
+        //for BT SW BT CVSD loopback test
+        bool mUseBtCodec;
 };
 
 } // end namespace android

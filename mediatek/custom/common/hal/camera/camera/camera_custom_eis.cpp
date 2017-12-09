@@ -1,5 +1,3 @@
-
-
 #include "camera_custom_eis.h"
 
 void get_EIS_CustomizeData(EIS_Customize_PARA_STRUCT *a_pDataOut)

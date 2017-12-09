@@ -1,13 +1,31 @@
+/*! \file
+    \brief brief description
+
+    Detailed descriptions here.
+
+*/
 
 
 
+/*******************************************************************************
+*                         C O M P I L E R   F L A G S
+********************************************************************************
+*/
 
+/*******************************************************************************
+*                                 M A C R O S
+********************************************************************************
+*/
 #ifdef DFT_TAG
 #undef DFT_TAG
 #endif
 #define DFT_TAG         "[WMT-DEV]"
 
 
+/*******************************************************************************
+*                    E X T E R N A L   R E F E R E N C E S
+********************************************************************************
+*/
 
 #include "osal_typedef.h"
 #include "osal.h"
@@ -20,6 +38,8 @@
 #include "stp_core.h"
 #include "stp_exp.h"
 #include "bgw_desense.h"
+#include <mach/mtk_wcn_cmb_stub.h>
+#include "wmt_idc.h"
 
 #if CONSYS_WMT_REG_SUSPEND_CB_ENABLE
 #include <linux/device.h>
@@ -30,7 +50,7 @@
 #define MTK_WMT_DATE     "2013/01/20"
 #define WMT_DEV_MAJOR 190 // never used number
 #define WMT_DEV_NUM 1
-
+#define WMT_DEV_INIT_TO_MS (2 * 1000)
 
 #if CFG_WMT_DBG_SUPPORT
 #define WMT_DBG_PROCNAME "driver/wmt_dbg"
@@ -51,6 +71,8 @@ static atomic_t gWmtRefCnt = ATOMIC_INIT(0);
 /* WMT driver information */
 static UINT8 gLpbkBuf[1024] = {0};
 static UINT32 gLpbkBufLog; // George LPBK debug
+static INT32 gWmtInitDone = 0;
+static wait_queue_head_t gWmtInitWq;
 
 P_WMT_PATCH_INFO pPatchInfo = NULL;
 UINT32 pAtchNum = 0;
@@ -89,6 +111,7 @@ static struct platform_driver mtk_wmt_dev_drv =
 };
 #endif
 static INT32 wmt_dbg_psm_ctrl(INT32 par1, INT32 par2, INT32 par3);
+static INT32 wmt_dbg_quick_sleep_ctrl(INT32 par1, INT32 par2, INT32 par3);
 static INT32 wmt_dbg_dsns_ctrl(INT32 par1, INT32 par2, INT32 par3);
 static INT32 wmt_dbg_hwver_get(INT32 par1, INT32 par2, INT32 par3);
 static INT32 wmt_dbg_inband_rst(INT32 par1, INT32 par2, INT32 par3);
@@ -116,13 +139,19 @@ static INT32 wmt_dbg_internal_lpbk_test(INT32 par1, INT32 par2, INT32 par3);
 #endif
 static INT32 wmt_dbg_fwinfor_from_emi(INT32 par1, INT32 par2, INT32 par3);
 static INT32 wmt_dbg_set_mcu_clock(INT32 par1, INT32 par2, INT32 par3);
-static INT32 wmt_dbg_read_emi_infor(INT32 par1, INT32 par2, INT32 par3);
 static INT32 wmt_dbg_poll_cpupcr(INT32 par1, INT32 par2, INT32 par3);
 #if CONSYS_ENALBE_SET_JTAG
 static INT32 wmt_dbg_jtag_flag_ctrl(INT32 par1, INT32 par2, INT32 par3);
 #endif
+#if CFG_WMT_LTE_COEX_HANDLING
+static INT32 wmt_dbg_lte_coex_test(INT32 par1, INT32 par2, INT32 par3);
+#endif
 #endif
 
+/*******************************************************************************
+*                          F U N C T I O N S
+********************************************************************************
+*/
 
 #if CONSYS_WMT_REG_SUSPEND_CB_ENABLE
 static int mtk_wmt_suspend(struct platform_device *pdev, pm_message_t state)
@@ -130,21 +159,56 @@ static int mtk_wmt_suspend(struct platform_device *pdev, pm_message_t state)
 	WMT_INFO_FUNC("++\n");
 	wmt_lib_consys_osc_en_ctrl(1);
 	WMT_INFO_FUNC("--\n");
+	return 0;
 }
 static int mtk_wmt_resume(struct platform_device *pdev)
 {
 	WMT_INFO_FUNC("++\n");
 	wmt_lib_consys_osc_en_ctrl(0);
 	WMT_INFO_FUNC("--\n");
+	return 0;
 }
 #endif
+
+
+#ifdef CONFIG_EARLYSUSPEND
+UINT32 g_early_suspend_flag = 0;
+
+static void wmt_dev_early_suspend(struct early_suspend *h)
+{
+    g_early_suspend_flag = 1;
+    WMT_INFO_FUNC("@@@@@@@@@@wmt enter early suspend@@@@@@@@@@@@@@\n");
+}
+
+static void wmt_dev_late_resume(struct early_suspend *h)
+{
+    g_early_suspend_flag = 0;
+    WMT_INFO_FUNC("@@@@@@@@@@wmt enter late resume@@@@@@@@@@@@@@\n");
+}
+
+struct early_suspend wmt_early_suspend_handler = {
+    .suspend = wmt_dev_early_suspend,
+    .resume = wmt_dev_late_resume,
+};
+
+#else
+UINT32 g_early_suspend_flag = 1;
+#endif
+
+MTK_WCN_BOOL wmt_dev_get_early_suspend_state(void)
+{
+    MTK_WCN_BOOL bRet = (0 == g_early_suspend_flag) ? MTK_WCN_BOOL_FALSE : MTK_WCN_BOOL_TRUE;
+    //WMT_INFO_FUNC("bRet:%d\n", bRet);
+    return 	bRet;
+}
+
 
 #if CFG_WMT_DBG_SUPPORT
 
 const static WMT_DEV_DBG_FUNC wmt_dev_dbg_func[] =
 {
     [0] = wmt_dbg_psm_ctrl,
-    [1] = wmt_dbg_psm_ctrl,
+    [1] = wmt_dbg_quick_sleep_ctrl,
     [2] = wmt_dbg_dsns_ctrl,
     [3] = wmt_dbg_hwver_get,
     [4] = wmt_dbg_assert_test,
@@ -169,6 +233,9 @@ const static WMT_DEV_DBG_FUNC wmt_dev_dbg_func[] =
     [0x17] = wmt_dbg_set_mcu_clock,
     [0x18] = wmt_dbg_poll_cpupcr,
     [0x19] = wmt_dbg_jtag_flag_ctrl,
+#if CFG_WMT_LTE_COEX_HANDLING
+	[0x20] = wmt_dbg_lte_coex_test,
+#endif
 };
 
 INT32 wmt_dbg_psm_ctrl(INT32 par1, INT32 par2, INT32 par3)
@@ -186,6 +253,17 @@ INT32 wmt_dbg_psm_ctrl(INT32 par1, INT32 par2, INT32 par3)
         wmt_lib_ps_ctrl(1);
         WMT_INFO_FUNC("enable PSM, idle to sleep time = %d ms\n", par2);
     }
+#else
+    WMT_INFO_FUNC("WMT PS not supported\n");
+#endif    
+    return 0;
+}
+
+INT32 wmt_dbg_quick_sleep_ctrl(INT32 par1, INT32 par2, INT32 par3)
+{
+#if CFG_WMT_PS_SUPPORT
+	UINT32 en_flag = par2;
+	wmt_lib_quick_sleep_ctrl(en_flag);
 #else
     WMT_INFO_FUNC("WMT PS not supported\n");
 #endif    
@@ -244,7 +322,7 @@ INT32 wmt_dbg_assert_test(INT32 par1, INT32 par2, INT32 par3)
         do{
             WMT_INFO_FUNC("Send Assert Command per 8 secs!!\n");
             wmt_dbg_cmd_test_api(0);
-            osal_msleep(sec * 1000);
+            osal_sleep_ms(sec * 1000);
         }while(--times);
     }
     return 0;
@@ -562,7 +640,7 @@ INT32 wmt_dbg_fwinfor_from_emi(INT32 par1, INT32 par2, INT32 par3)
     if(offset == 1){        
         do {
             i = 0;
-            pAddr = (UINT32 *) wmt_plat_get_emi_ctrl_state_base_add(0x24);
+            pAddr = (UINT32 *) wmt_plat_get_emi_virt_add(0x24);
 
             cur_idx_pagedtrace = *pAddr;
             
@@ -864,28 +942,6 @@ INT32 wmt_dbg_internal_lpbk_test(INT32 par1, INT32 par2, INT32 par3)
 }
 #endif
 
-static INT32 wmt_dbg_read_emi_infor(INT32 par1, INT32 par2, INT32 par3)
-{
-	INT32 i = 0;
-	UINT32 len = par3;
-	
-	if(len > osal_sizeof(gEmiBuf))
-	{
-		len = osal_sizeof(gEmiBuf) - 1;
-	}
-	osal_memset(&gEmiBuf[0],0,sizeof(gEmiBuf));
-	WMT_INFO_FUNC("index[%d],len[%d]\n",par2,len);
-	wmt_lib_read_emi_info(par2, &gEmiBuf[0], len);
-
-	for(i = 0;i < len;i++)
-	{
-		if(i%16 == 0)
-			printk("\n");
-		printk("%02x ",gEmiBuf[i]);
-	}
-
-	return 0;
-}
 
 static INT32 wmt_dbg_set_mcu_clock(INT32 par1, INT32 par2, INT32 par3)
 {
@@ -949,6 +1005,164 @@ static INT32 wmt_dbg_jtag_flag_ctrl(INT32 par1, INT32 par2, INT32 par3)
 	return 0;
 }
 #endif
+
+#if CFG_WMT_LTE_COEX_HANDLING
+static INT32 wmt_dbg_lte_to_wmt_test(UINT32 opcode,UINT32 msg_len)
+{
+	ipc_ilm_t ilm;
+	local_para_struct *p_buf_str;
+	INT32 i =0;
+	INT32 iRet = -1;
+	WMT_INFO_FUNC("opcode(0x%02x),msg_len(%d)\n",opcode,msg_len);
+	p_buf_str = osal_malloc (osal_sizeof (local_para_struct) + msg_len);
+	if (NULL == p_buf_str)
+	{
+		WMT_ERR_FUNC("kmalloc for local para ptr structure failed.\n");
+		return -1;
+	}
+	p_buf_str->msg_len = msg_len;
+	for (i = 0; i < msg_len; i++)
+		p_buf_str->data[i] = i;
+		
+	ilm.local_para_ptr = p_buf_str;
+	ilm.msg_id = opcode;
+
+	iRet = wmt_lib_handle_idc_msg(&ilm);
+	osal_free(p_buf_str);
+	return iRet;
+	
+}
+static INT32 wmt_dbg_lte_coex_test(INT32 par1, INT32 par2, INT32 par3)
+{
+	UINT8 local_buffer[512] = {0};
+	UINT32 handle_len;
+	INT32 iRet = -1;
+	
+	static UINT8 wmt_to_lte_test_evt1[] = {0x02,0x16,0x0d,0x00,
+		0x00,0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,
+		0xa,0xb};
+	static UINT8 wmt_to_lte_test_evt2[] = {0x02,0x16,0x09,0x00,
+		0x01,0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07};
+	static UINT8 wmt_to_lte_test_evt3[] = {0x02,0x16,0x02,0x00,
+		0x02,0xff};
+	static UINT8 wmt_to_lte_test_evt4[] = {0x02,0x16,0x0d,0x00,
+		0x03,0x00,0x01,0x02,0x03,0x04,0x05,0x06,0x07,0x08,0x09,
+		0xa,0xb};
+
+	if(par2 == 1)
+	{
+		handle_len = wmt_idc_msg_to_lte_handing_for_test(
+			&wmt_to_lte_test_evt1[0],osal_sizeof(wmt_to_lte_test_evt1));
+		if(handle_len != osal_sizeof(wmt_to_lte_test_evt1))
+		{
+			WMT_ERR_FUNC("par2=1,wmt send to lte msg fail:handle_len(%d),buff_len(%d)\n",
+				handle_len,osal_sizeof(wmt_to_lte_test_evt1));
+		}else
+		{
+			WMT_INFO_FUNC("par2=1,wmt send to lte msg OK! send_len(%d)\n",handle_len);
+		}
+	}
+	if(par2 == 2)
+	{
+		osal_memcpy(&local_buffer[0],&wmt_to_lte_test_evt1[0],
+			osal_sizeof(wmt_to_lte_test_evt1));
+		osal_memcpy(&local_buffer[osal_sizeof(wmt_to_lte_test_evt1)],
+			&wmt_to_lte_test_evt2[0],osal_sizeof(wmt_to_lte_test_evt2));
+
+		handle_len = wmt_idc_msg_to_lte_handing_for_test(
+			&local_buffer[0],osal_sizeof(wmt_to_lte_test_evt1) + osal_sizeof(wmt_to_lte_test_evt2));
+		if(handle_len != osal_sizeof(wmt_to_lte_test_evt1) + osal_sizeof(wmt_to_lte_test_evt2))
+		{
+			WMT_ERR_FUNC("par2=2,wmt send to lte msg fail:handle_len(%d),buff_len(%d)\n",
+				handle_len,osal_sizeof(wmt_to_lte_test_evt1) + osal_sizeof(wmt_to_lte_test_evt2));
+		}else
+		{
+			WMT_INFO_FUNC("par2=1,wmt send to lte msg OK! send_len(%d)\n",handle_len);
+		}
+	}
+	if(par2 == 3)
+	{
+		osal_memcpy(&local_buffer[0],&wmt_to_lte_test_evt1[0],
+			osal_sizeof(wmt_to_lte_test_evt1));
+		osal_memcpy(&local_buffer[osal_sizeof(wmt_to_lte_test_evt1)],
+			&wmt_to_lte_test_evt2[0],osal_sizeof(wmt_to_lte_test_evt2));
+		osal_memcpy(&local_buffer[osal_sizeof(wmt_to_lte_test_evt1) + osal_sizeof(wmt_to_lte_test_evt2)],
+			&wmt_to_lte_test_evt3[0],osal_sizeof(wmt_to_lte_test_evt3));
+
+		handle_len = wmt_idc_msg_to_lte_handing_for_test(
+			&local_buffer[0],osal_sizeof(wmt_to_lte_test_evt1) + 
+			osal_sizeof(wmt_to_lte_test_evt2) + osal_sizeof(wmt_to_lte_test_evt3));
+		if(handle_len != osal_sizeof(wmt_to_lte_test_evt1) + osal_sizeof(wmt_to_lte_test_evt2) + osal_sizeof(wmt_to_lte_test_evt3))
+		{
+			WMT_ERR_FUNC("par2=3,wmt send to lte msg fail:handle_len(%d),buff_len(%d)\n",
+				handle_len,osal_sizeof(wmt_to_lte_test_evt1) + 
+				osal_sizeof(wmt_to_lte_test_evt2) +
+				osal_sizeof(wmt_to_lte_test_evt3));
+		}else
+		{
+			WMT_INFO_FUNC("par3=1,wmt send to lte msg OK! send_len(%d)\n",handle_len);
+		}
+	}
+	if(par2 == 4)
+	{
+		handle_len = wmt_idc_msg_to_lte_handing_for_test(
+			&wmt_to_lte_test_evt4[0],osal_sizeof(wmt_to_lte_test_evt4));
+		if(handle_len != osal_sizeof(wmt_to_lte_test_evt4))
+		{
+			WMT_ERR_FUNC("par2=1,wmt send to lte msg fail:handle_len(%d),buff_len(%d)\n",
+				handle_len,osal_sizeof(wmt_to_lte_test_evt4));
+		}else
+		{
+			WMT_INFO_FUNC("par2=1,wmt send to lte msg OK! send_len(%d)\n",handle_len);
+		}
+	}
+	if(par2 == 5)
+	{
+		if(par3 >= 1024)
+		{
+			par3 = 1024;
+		}
+		iRet = wmt_dbg_lte_to_wmt_test(IPC_MSG_ID_EL1_LTE_DEFAULT_PARAM_IND,par3);
+		WMT_INFO_FUNC("IPC_MSG_ID_EL1_LTE_DEFAULT_PARAM_IND test result(%d)\n",iRet);
+	}
+	if(par2 == 6)
+	{
+		if(par3 >= 1024)
+		{
+			par3 = 1024;
+		}
+		iRet = wmt_dbg_lte_to_wmt_test(IPC_MSG_ID_EL1_LTE_OPER_FREQ_PARAM_IND,par3);
+		WMT_INFO_FUNC("IPC_MSG_ID_EL1_LTE_OPER_FREQ_PARAM_IND test result(%d)\n",iRet);
+	}
+	if(par2 == 7)
+	{
+		if(par3 >= 1024)
+		{
+			par3 = 1024;
+		}
+		iRet = wmt_dbg_lte_to_wmt_test(IPC_MSG_ID_EL1_WIFI_MAX_PWR_IND,par3);
+		WMT_INFO_FUNC("IPC_MSG_ID_EL1_WIFI_MAX_PWR_IND test result(%d)\n",iRet);
+	}
+	if(par2 == 8)
+	{
+		if(par3 >= 1024)
+		{
+			par3 = 1024;
+		}
+		iRet = wmt_dbg_lte_to_wmt_test(IPC_MSG_ID_EL1_LTE_TX_IND,par3);
+		WMT_INFO_FUNC("IPC_MSG_ID_EL1_LTE_TX_IND test result(%d)\n",iRet);
+	}
+	if(par2 == 9)
+	{
+		if(par3 > 0)
+			wmt_core_set_flag_for_test(1);
+		else
+			wmt_core_set_flag_for_test(0);
+	}
+	return 0;
+}
+#endif
+
 static int wmt_dev_dbg_write(struct file *file, const char *buffer, unsigned long count, void *data){
     
     CHAR buf[256];
@@ -1467,7 +1681,7 @@ LONG wmt_dev_tm_temp_query(void)
        if(temp_table[index] >= TEMP_THRESHOLD)
        {
             query_cond = 1;
-            WMT_INFO_FUNC("high temperature (current temp = %d), we must keep querying temp temperature..\n", temp_table[index]);
+            WMT_INFO_FUNC("temperature table is still intial value, we should query temp temperature..\n");
        }            
     }
 
@@ -1683,6 +1897,7 @@ WMT_unlocked_ioctl (
 #define WMT_IOCTL_WMT_TELL_CHIPID     	_IOW(WMT_IOC_MAGIC, 23, int)
 #define WMT_IOCTL_WMT_COREDUMP_CTRL     _IOW(WMT_IOC_MAGIC, 24, int)
 #define WMT_IOCTL_SEND_BGW_DS_CMD		_IOW(WMT_IOC_MAGIC,25,char*)
+#define WMT_IOCTL_ADIE_LPBK_TEST		_IOWR(WMT_IOC_MAGIC,26,char*)
 
 
     INT32 iRet = 0;
@@ -1848,6 +2063,51 @@ WMT_unlocked_ioctl (
         }while(0);
 
         break;
+
+        case WMT_IOCTL_ADIE_LPBK_TEST:
+		do {
+            P_OSAL_OP pOp;
+            MTK_WCN_BOOL bRet;
+            P_OSAL_SIGNAL pSignal = NULL;
+
+            pOp = wmt_lib_get_free_op();
+            if (!pOp) {
+                WMT_WARN_FUNC("get_free_lxop fail \n");
+                iRet = -EFAULT;
+                break;
+            }
+			
+            pSignal = &pOp->signal;
+            pOp->op.opId = WMT_OPID_ADIE_LPBK_TEST;
+			pOp->op.au4OpData[0] = 0;
+            pOp->op.au4OpData[1] = (UINT32)&gLpbkBuf[0];   
+            pSignal->timeoutValue = MAX_EACH_WMT_CMD;
+            WMT_INFO_FUNC("OPID(%d) start\n",pOp->op.opId);
+            if (DISABLE_PSM_MONITOR()) {
+                WMT_ERR_FUNC("wake up failed\n");
+                wmt_lib_put_op_to_free_queue(pOp);
+                return -1;
+            }
+            
+            bRet = wmt_lib_put_act_op(pOp);
+            ENABLE_PSM_MONITOR();
+            if (MTK_WCN_BOOL_FALSE == bRet) {
+                WMT_WARN_FUNC("OPID(%d) fail\n",pOp->op.opId);
+                iRet = -1;
+                break;
+            }
+            else {
+                WMT_INFO_FUNC("OPID(%d) length(%d) ok\n",
+                    pOp->op.opId, pOp->op.au4OpData[0]);
+                iRet = pOp->op.au4OpData[0] ;
+				if (copy_to_user((void *)arg + sizeof(ULONG), gLpbkBuf, iRet)) {
+                    iRet = -EFAULT;
+                    break;
+                }
+            }
+        }while(0);
+
+        break;
         
         case 10:
         {
@@ -1950,7 +2210,12 @@ WMT_unlocked_ioctl (
 			}
 		}
 		break;
-
+		case WMT_IOCTL_WMT_QUERY_CHIPID:
+		{
+			iRet = mtk_wcn_wmt_chipid_query();
+			WMT_INFO_FUNC("chipid = 0x%x\n",iRet);
+		}
+		break;
 		case WMT_IOCTL_SEND_BGW_DS_CMD:
 		do {
             P_OSAL_OP pOp;
@@ -2009,11 +2274,20 @@ WMT_unlocked_ioctl (
 
 static int WMT_open(struct inode *inode, struct file *file)
 {
+	LONG ret;
+	
     WMT_INFO_FUNC("major %d minor %d (pid %d)\n",
         imajor(inode),
         iminor(inode),
         current->pid
         );
+	ret = wait_event_timeout(gWmtInitWq,gWmtInitDone != 0,msecs_to_jiffies(WMT_DEV_INIT_TO_MS));
+	if(!ret)
+	{
+		WMT_WARN_FUNC("wait_event_timeout (%d)ms,(%d)jiffies,return -EIO\n",
+			WMT_DEV_INIT_TO_MS,msecs_to_jiffies(WMT_DEV_INIT_TO_MS));
+		return -EIO;
+	}
 
     if (atomic_inc_return(&gWmtRefCnt) == 1) {
         WMT_INFO_FUNC("1st call \n");
@@ -2037,9 +2311,6 @@ static int WMT_close(struct inode *inode, struct file *file)
     return 0;
 }
 
-ssize_t (*read) (struct file *, char __user *, size_t, loff_t *);
-ssize_t (*write) (struct file *, const char __user *, size_t, loff_t *);
-long (*unlocked_ioctl) (struct file *, unsigned int, unsigned long);
 
 struct file_operations gWmtFops = {
     .open = WMT_open,
@@ -2071,7 +2342,9 @@ static int WMT_init(void)
     WMT_INFO_FUNC("WMT Version= %s DATE=%s\n" , MTK_WMT_VERSION, MTK_WMT_DATE);
     /* Prepare a UCHAR device */
     /*static allocate chrdev*/
-
+	gWmtInitDone = 0;
+	init_waitqueue_head((wait_queue_head_t *)&gWmtInitWq);
+	
     stp_drv_init();
 
     ret = register_chrdev_region(devID, WMT_DEV_NUM, WMT_DRIVER_NAME);
@@ -2144,7 +2417,16 @@ static int WMT_init(void)
 		WMT_ERR_FUNC("WMT platform driver registered failed(%d)\n",ret);
 	}
 #endif
-    WMT_INFO_FUNC("success \n");
+    
+	gWmtInitDone = 1;
+	wake_up(&gWmtInitWq);
+
+#ifdef CONFIG_EARLYSUSPEND
+    register_early_suspend(&wmt_early_suspend_handler);
+    WMT_INFO_FUNC("register_early_suspend finished\n");
+#endif
+
+	WMT_INFO_FUNC("success \n");
     return 0;
 
 error:
@@ -2169,6 +2451,11 @@ error:
 static void WMT_exit (void)
 {
     dev_t dev = MKDEV(gWmtMajor, 0);
+
+#ifdef CONFIG_EARLYSUSPEND
+    unregister_early_suspend(&wmt_early_suspend_handler);
+    WMT_INFO_FUNC("unregister_early_suspend finished\n");
+#endif
 	
 #if CONSYS_WMT_REG_SUSPEND_CB_ENABLE
 	platform_driver_unregister(&mtk_wmt_dev_drv);
@@ -2199,9 +2486,26 @@ static void WMT_exit (void)
 
     WMT_INFO_FUNC("done\n");
 }
+#ifdef MTK_WCN_REMOVE_KERNEL_MODULE
 
+int mtk_wcn_soc_common_drv_init(void)
+{
+	return WMT_init();
+
+}
+
+void mtk_wcn_soc_common_drv_exit (void)
+{
+	return WMT_exit();
+}
+
+
+EXPORT_SYMBOL(mtk_wcn_soc_common_drv_init);
+EXPORT_SYMBOL(mtk_wcn_soc_common_drv_exit);
+#else
 module_init(WMT_init);
 module_exit(WMT_exit);
+#endif
 //MODULE_LICENSE("Proprietary");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("MediaTek Inc WCN");

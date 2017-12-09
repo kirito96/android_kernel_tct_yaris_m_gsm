@@ -18,10 +18,21 @@
 #include <utils/Vector.h>
 #include <utils/String16.h>
 
+extern "C" {
+#include "bli_exp.h"
+}
+
+#define INCALL_RINGBUFFERE_SIZE (0x20000)  // 128k BufferSizw
 #define AUDIO_RECORD_DROP_MS (120) // at max 200
 
 namespace android
 {
+
+struct AdditionalInfo_STRUCT
+{
+    bool bHasAdditionalInfo;
+    struct timespec timestamp_info;     //predict time from hardware
+};
 
 class AudioMTkRecordThread;
 
@@ -62,36 +73,52 @@ class AudioMTKStreamInManager
         * @return status_t*/
         virtual void SetInputMute(bool bEnable);
 
+        /**
+        * this function is get record drop time
+        * @return status_t*/
+        uint32 GetRecordDropTime();
+        void BackupRecordDropTime(uint32 droptime);
+
         status_t I2SAdcInSet(AudioDigtalI2S *AdcI2SIn, AudioStreamAttribute *AttributeClient);
-        status_t Set2ndI2SIn(AudioDigtalI2S *m2ndI2SIn, unsigned int mSampleRate, unsigned char i2s_in_pad_sel, bool bIsSlaveMode);
-        status_t Enable2ndI2SIn(bool bEnable);
 
         // check if same mem interface has been used
         bool checkMemInUse(AudioMTKStreamInClient *Client);
+
+        // check if same mem source interface has been used
+        bool checkSourceInUse(AudioMTKStreamInClient *Client);
 
         status_t AcquireMemBufferLock(AudioDigitalType::Digital_Block MemBlock, bool bEnable);
 
         status_t StartStreamInThread(uint32 mMemDataType);
 
-        uint32_t CopyBufferToClient(uint32 mMemDataType, void *buffer , uint32 copy_size);
+        uint32_t CopyBufferToClient(uint32 mMemDataType, void *buffer , uint32 copy_size, AdditionalInfo_STRUCT AddInfo);
         uint32_t CopyBufferToClientIncall(RingBuf ul_ring_buf);
 
         status_t StartModemRecord(AudioMTKStreamInClient *Client);
         status_t StopModemRecord();
 
-        status_t ApplyVolume(void* Buffer , uint32 BufferSize);
+        status_t ApplyVolume(void *Buffer , uint32 BufferSize);
 
-#ifdef MTK_DIGITAL_MIC_SUPPORT
-		static const uint32 MemVULSamplerate  = 32000;
-#else
-        static const uint32 MemVULSamplerate  = 48000;
-#endif
+        timespec GetSystemTime(bool print = 0);
+        unsigned long long ProcessTimeCheck(struct timespec StartTime, struct timespec EndTime);
+        unsigned long long mMaxProcessTime;
+
+        static const uint32 MemVULSamplerate_DMIC  = 32000;
+        static const uint32 MemVULSamplerate_AMIC  = 48000;
+
         static const uint32 MemDAISamplerate   = 8000 ;
         static const uint32 MemAWBSamplerate = 48000;
 
         static const uint32 MemVULBufferSize  = 0x2000;
         static const uint32 MemDAIBufferSize   = 0x1000 ;
         static const uint32 MemAWBBufferSize = 0x2000;
+
+        //#ifdef MTK_DIGITAL_MIC_SUPPORT    //due to hardware limitation.
+        // BLI_SRC
+        BLI_HANDLE *mBliHandlerDMIC;
+        char       *mBliOutputBufferDMIC;
+        static const uint32 BliOutBufferSizeDMIC  = 0x3000; //32k->48k, MemVULBufferSize*1.5
+        //#endif
 
         class AudioMTkRecordThread : public Thread
         {
@@ -106,13 +133,22 @@ class AudioMTKStreamInManager
                 void WritePcmDumpData();
                 void ClosePcmDumpFile();
                 void DropRecordData();
-				#ifdef BT_SW_CVSD
-				void btsco_cvsd_RX_main();
-				#endif
+
+                static int DumpFileNum;
+
+                struct timespec mEnterTime;
+                struct timespec mFinishtime;
+                bool mStart;
+                unsigned long long readperiodtime;
+
+                void btsco_cvsd_RX_main();
+#if defined(__MSBC_CODEC_SUPPORT__)
+                void btsco_mSBC_RX_main();
+#endif
 
             private:
                 int mFd;
-					 int mFd2;
+                int mFd2;
                 int mMemType;
                 String8 mName;
                 virtual bool threadLoop();
@@ -121,43 +157,50 @@ class AudioMTKStreamInManager
                 AudioMTKStreamInManager *mManager;
                 unsigned char tempdata;
                 uint32 mRecordDropms;
+                String8 DumpFileName;
 
                 FILE *mPAdcPCMDumpFile;
                 FILE *mPI2SPCMDumpFile;
-                FILE *mPDAIInPCMDumpFile; //ccc add
-                
-				#ifdef BT_SW_CVSD
-				AudioBTCVSDControlInterface *mAudioBTCVSDControl;
-				#endif
+                FILE *mPDAIInPCMDumpFile;
+
+                AudioBTCVSDControl *mAudioBTCVSDControl;
         };
 
     private:
         AudioMTKStreamInManager();
         ~AudioMTKStreamInManager();
-
+        uint32 getMemVULSamplerate(void);
         static AudioMTKStreamInManager *UniqueStreamInManagerInstance;
         AudioMTKStreamInManager(const AudioMTKStreamInManager &);             // intentionally undefined
         AudioMTKStreamInManager &operator=(const AudioMTKStreamInManager &);  // intentionally undefined
-#ifdef ENABLE_SUPPORT_FM_MIC_CONFLICT
-        bool checkFmMicConflict(AudioMTKStreamInClient *Client, bool status);
-#endif
 
-		void PreLoadHDRecParams(void);
+        void PreLoadHDRecParams(void);
+
+        uint32_t BesRecordProcess(AudioMTKStreamInClient *Client, void *buffer , uint32 copy_size, AdditionalInfo_STRUCT AddInfo);
+
         AudioDigitalControlInterface *mAudioDigital;
-        AudioAnalogControlInterface *mAudioAnalog;
         AudioResourceManagerInterface *mAudioResourceManager;
         uint32_t mMode;
         uint32_t mClientNumber ;
+        uint32_t mBackUpRecordDropTime;
 
         KeyedVector<uint32_t, AudioMTKStreamInClient *> mAudioInput; // vector to save current recording client
 
         AudioDigtalI2S mAdcI2SIn;
-        AudioDigtalI2S m2ndI2S;
         AudioDigitalPCM mModPcm_1;  // slave only ocm
         AudioDigitalPCM mModPcm_2;  // slave,master  pcm
         AudioDigitalDAIBT mDaiBt;
+        AudioMrgIf mMrgIf;
+        RingBuf mIncallRingBuffer;
         bool mMicMute;
         bool mMuteTransition;
+
+        BLI_HANDLE *mBliHandlerDAIBT;
+        char       *mBliOutputBufferDAIBT;
+        uint32 BliOutBufferSizeDAIBT;
+
+
+        AudioBTCVSDControl *mAudioBTCVSDControl;
 
         sp<AudioMTkRecordThread>  mAWBThread;
         char *mAWBbuffer;

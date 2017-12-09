@@ -1,10 +1,3 @@
-#ifdef BUILD_UBOOT
-#define ENABLE_DPI1_INTERRUPT        0
-#define ENABLE_DPI1_REFRESH_RATE_LOG 0
-
-#include <asm/arch/disp_drv_platform.h>
-#else
-
 #define ENABLE_DPI1_INTERRUPT        0
 #define ENABLE_DPI1_REFRESH_RATE_LOG 0
 
@@ -47,7 +40,6 @@ static bool dpi_vsync = false;
 static bool wait_dpi_vsync = false;
 static struct hrtimer hrtimer_vsync_dpi;
 #include <linux/module.h>
-#endif
 
 #include <mach/sync_write.h>
 #ifdef OUTREG32

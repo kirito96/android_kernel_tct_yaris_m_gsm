@@ -1,39 +1,22 @@
-/*20130429 fix FR436979 by sunjiaojiao for temperature protect
-When temperature of the battery cell < 0 degree, stop charging
-When temperature of the battery cell >45 degree, stop charging
-*/
-/*20130429 fix FR436965 by sunjiaojiao for cut-off current*/
 #ifndef _CUST_BAT_H_
 #define _CUST_BAT_H_
 
 /* stop charging while in talking mode */
 #define STOP_CHARGING_IN_TAKLING
 #define TALKING_RECHARGE_VOLTAGE 3800
+#define TALKING_SYNC_TIME		   60
 
 /* Battery Temperature Protection */
-#ifdef SH_TEMP_RISING_SUPPORT
+#define MTK_TEMPERATURE_RECHARGE_SUPPORT
 #define MAX_CHARGE_TEMPERATURE  55
-#define MIN_CHARGE_TEMPERATURE 0
-#define RECHARGE_HIGH_TEMPERATURE 50
-#define RECHARGE_LOW_TEMPERATURE 2
-#define NOCHARGE_HIGH_TEMPERATURE 58
-#define NOCHARGE_LOW_TEMPERATURE -18
-#else
-#define MAX_CHARGE_TEMPERATURE  45//20130429 fix FR436979 by sunjiaojiao
-#define MIN_CHARGE_TEMPERATURE  0
-#define RECHARGE_HIGH_TEMPERATURE 43
-#define RECHARGE_LOW_TEMPERATURE 2
-#define NOCHARGE_HIGH_TEMPERATURE 58
-#define NOCHARGE_LOW_TEMPERATURE -18
-#endif
-
 /*20130709 Fix PR486009 start*/
-#define BATTERY_TEMPERATURE_42 42
-#define BATTERY_TEMPERATURE_40 40
 #define BATTERY_TEMPERATURE_50 50
-#define BATTERY_TEMPERATURE_55 55
+#define BATTERY_TEMPERATURE_45 45
+#define BATTERY_TEMPERATURE_40 40
 /*20130709 Fix PR486009 end*/
-//#define MIN_CHARGE_TEMPERATURE  0
+#define MAX_CHARGE_TEMPERATURE_MINUS_X_DEGREE	47
+#define MIN_CHARGE_TEMPERATURE  0
+#define MIN_CHARGE_TEMPERATURE_PLUS_X_DEGREE	6
 #define ERR_CHARGE_TEMPERATURE  0xFF
 
 /* Linear Charging Threshold */
@@ -48,13 +31,17 @@ When temperature of the battery cell >45 degree, stop charging
 #define USB_CHARGER_CURRENT_UNCONFIGURED	CHARGE_CURRENT_70_00_MA	// 70mA
 #define USB_CHARGER_CURRENT_CONFIGURED		CHARGE_CURRENT_500_00_MA	// 500mA
 
+#if defined(Z16_DK_PROJ)
+#define USB_CHARGER_CURRENT					CHARGE_CURRENT_450_00_MA	//500mA
+#define AC_CHARGER_CURRENT					CHARGE_CURRENT_450_00_MA
+#else
 #define USB_CHARGER_CURRENT					CHARGE_CURRENT_500_00_MA	//500mA
 #define AC_CHARGER_CURRENT					CHARGE_CURRENT_650_00_MA
-/*20130709 Fix PR486009 start*/
+#endif
 #define AC_CHARGER_CURRENT_450				CHARGE_CURRENT_450_00_MA    
 #define AC_CHARGER_CURRENT_300				CHARGE_CURRENT_300_00_MA   
 /*20130709 Fix PR486009 end*/
-#define NON_STD_AC_CHARGER_CURRENT			CHARGE_CURRENT_500_00_MA
+#define NON_STD_AC_CHARGER_CURRENT			CHARGE_CURRENT_650_00_MA
 #define CHARGING_HOST_CHARGER_CURRENT       CHARGE_CURRENT_650_00_MA
 #define APPLE_0_5A_CHARGER_CURRENT          CHARGE_CURRENT_500_00_MA
 #define APPLE_1_0A_CHARGER_CURRENT          CHARGE_CURRENT_650_00_MA
@@ -69,7 +56,7 @@ When temperature of the battery cell >45 degree, stop charging
 /*Fix FR485978 end*/
 
 /* charger error check */
-//#define BAT_LOW_TEMP_PROTECT_ENABLE         // stop charging if temp < MIN_CHARGE_TEMPERATURE
+//#define BAT_TEMP_PROTECT_ENABLE         // stop charging if temp < MIN_CHARGE_TEMPERATURE
 #define V_CHARGER_ENABLE 0				// 1:ON , 0:OFF	
 #define V_CHARGER_MAX 6500				// 6.5 V
 #define V_CHARGER_MIN 4400				// 4.4 V
@@ -78,6 +65,7 @@ When temperature of the battery cell >45 degree, stop charging
 #define ONEHUNDRED_PERCENT_TRACKING_TIME	10	// 10 second
 #define NPERCENT_TRACKING_TIME	   			20	// 20 second
 #define SYNC_TO_REAL_TRACKING_TIME  		60	// 60 second
+#define V_0PERCENT_TRACKING							3450 //3450mV
 
 /* Battery Notify */
 #define BATTERY_NOTIFY_CASE_0001_VCHARGER
@@ -90,11 +78,11 @@ When temperature of the battery cell >45 degree, stop charging
 //#define MTK_JEITA_STANDARD_SUPPORT
 #define CUST_SOC_JEITA_SYNC_TIME 30
 #define JEITA_RECHARGE_VOLTAGE  4110	// for linear charging
-#define JIITA_TEMP_ABOVE_POS_60_CV_VOLTAGE		BATTERY_VOLT_04_100000_V
-#define JIITA_TEMP_POS_45_TO_POS_60_CV_VOLTAGE	BATTERY_VOLT_04_100000_V
-#define JIITA_TEMP_POS_10_TO_POS_45_CV_VOLTAGE	BATTERY_VOLT_04_200000_V
-#define JIITA_TEMP_POS_0_TO_POS_10_CV_VOLTAGE	BATTERY_VOLT_04_100000_V
-#define JIITA_TEMP_NEG_10_TO_POS_0_CV_VOLTAGE	BATTERY_VOLT_03_900000_V
+#define JEITA_TEMP_ABOVE_POS_60_CV_VOLTAGE		BATTERY_VOLT_04_100000_V
+#define JEITA_TEMP_POS_45_TO_POS_60_CV_VOLTAGE	BATTERY_VOLT_04_100000_V
+#define JEITA_TEMP_POS_10_TO_POS_45_CV_VOLTAGE	BATTERY_VOLT_04_200000_V
+#define JEITA_TEMP_POS_0_TO_POS_10_CV_VOLTAGE	BATTERY_VOLT_04_100000_V
+#define JEITA_TEMP_NEG_10_TO_POS_0_CV_VOLTAGE	BATTERY_VOLT_03_900000_V
 #define JEITA_TEMP_BELOW_NEG_10_CV_VOLTAGE		BATTERY_VOLT_03_900000_V
 
 /* For JEITA Linear Charging only */
@@ -118,7 +106,17 @@ When temperature of the battery cell >45 degree, stop charging
 #endif
 
 #ifdef MTK_FAN5405_SUPPORT
-#define FAN5405_BUSNUM 6
+#define FAN5405_BUSNUM 1
+#endif
+
+#ifdef MTK_BQ24158_SUPPORT
+#define BQ24158_BUSNUM 1
+#endif
+
+/* Pump Express support (fast charging) */
+#ifdef MTK_PUMP_EXPRESS_SUPPORT
+#define TA_START_VCHR_TUNUNG_VOLTAGE	3700	// for isink blink issue
+#define TA_CHARGING_CURRENT			    CHARGE_CURRENT_1500_00_MA
 #endif
 
 #endif /* _CUST_BAT_H_ */ 

@@ -1,3 +1,24 @@
+/* alps/ALPS_SW/TRUNK/MAIN/alps/kernel/drivers/hwmon/mt6516/hwmsen_dev.c
+ *
+ * (C) Copyright 2009 
+ * MediaTek <www.MediaTek.com>
+ *
+ * Sensor devices
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+ */
 #include <linux/interrupt.h>
 #include <linux/miscdevice.h>
 #include <linux/platform_device.h>
@@ -17,6 +38,8 @@
 #include <linux/wakelock.h>
 //add for fix resume issue end
 
+#include <cust_alsps.h>
+
 #define SENSOR_INVALID_VALUE -1
 #define MAX_CHOOSE_G_NUM 5
 #define MAX_CHOOSE_M_NUM 5
@@ -24,6 +47,24 @@
 static void hwmsen_early_suspend(struct early_suspend *h);
 static void hwmsen_late_resume(struct early_suspend *h);
 static void update_workqueue_polling_rate(int newDelay);
+
+static struct workqueue_struct * sensor_workqueue = NULL;
+
+//BEGIN: fangjie add for sensor compatible design. 20140626
+#if  1 //#ifdef SYS_COMPATIBLE
+struct class *compatible_class;
+struct device *compatible_cmd_dev;
+static struct device *compatible_lightsensor;  
+static int lightsensorflag=0; // 0 is no LightSensor,1 mean have LightSensor;
+						//Because LightSenor and P-sensor is 2in1, so if lightsensorflag=1 means physical Alsps.
+static struct device *compatible_gsensor;  
+static int gsensorflag=0; //0:2-axis Gensor(MXC6255X), 1:3-axis Gsensor
+#endif
+//END: fangjie add for sensor compatible design. 20140626
+
+/******************************************************************************
+ * structure / enumeration / macro / definition
+ *****************************************************************************/
 
 struct sensor_delay 
 {
@@ -39,31 +80,23 @@ struct hwmsen_context { /*sensor context*/
 	
 	struct hwmsen_object    obj;
 };
-// FR 437100 llf 20130427
 int gsensor_init_status = -1;
-int tp_pls_status=-1;
-static int lightsensorflag=0;//0 is no lsensor,1 mean have Lsensor;// add by llf
 
-#ifdef SYS_COMPATIBLE
-struct class *compatible_class;
-struct device *compatible_cmd_dev;
-#endif
+//BEGIN: add by fangjie, for CTP simulate P-sensor
+int tp_vendor_id_ps=-1; 
+//END: add by fangjie, for CTP simulate P-sensor
 
 #if defined(MTK_AUTO_DETECT_ACCELEROMETER)
 static char gsensor_name[25];
 static struct sensor_init_info* gsensor_init_list[MAX_CHOOSE_G_NUM]= {0}; //modified
 #endif
-/*************wwl add psensor get calibration data when calling    start*****************/
-
-#if defined(MTK_AUTO_DETECT_ALSPS)
-static char psensor_name[25];
-static struct sensor_init_info* psensor_init_list[MAX_CHOOSE_G_NUM]= {0}; //modified
-#endif
-/*************wwl add psensor get calibration data when calling    end*****************/
-
 #if defined(MTK_AUTO_DETECT_MAGNETOMETER)
 static char msensor_name[25];
 static struct sensor_init_info* msensor_init_list[MAX_CHOOSE_G_NUM]= {0}; //modified
+#endif
+#if defined(MTK_AUTO_DETECT_ALSPS)
+static char alsps_name[25];
+static struct sensor_init_info* alsps_init_list[MAX_CHOOSE_G_NUM]= {0}; //modified
 #endif
 
 /*----------------------------------------------------------------------------*/
@@ -106,6 +139,9 @@ struct hwmdev_object {
 
 static bool enable_again = false;
 static struct hwmdev_object *hwm_obj = NULL;
+/******************************************************************************
+ * static variables
+ *****************************************************************************/
 
 static struct hwmsen_data obj_data ={
 	.lock =__MUTEX_INITIALIZER(obj_data.lock), 
@@ -117,6 +153,9 @@ static struct dev_context dev_cxt = {
 
 
 
+/******************************************************************************
+ * Local functions
+ *****************************************************************************/
 static void hwmsen_work_func(struct work_struct *work)
 {
 
@@ -150,7 +189,7 @@ static void hwmsen_work_func(struct work_struct *work)
 	time.tv_sec = time.tv_nsec = 0;    
 	time = get_monotonic_coarse(); 
 	nt = time.tv_sec*1000000000LL+time.tv_nsec;
-	mutex_lock(&obj_data.lock);
+	//mutex_lock(&obj_data.lock);
 	for(idx = 0; idx < MAX_ANDROID_SENSOR_NUM; idx++)
 	{
 		cxt = obj->dc->cxt[idx];
@@ -165,11 +204,14 @@ static void hwmsen_work_func(struct work_struct *work)
 		{
 			if(obj_data.data_updata[idx] == 1)
 			{
+				mutex_lock(&obj_data.lock);
 				event_type |= (1 << idx);
 				obj_data.data_updata[idx] = 0;
+				mutex_unlock(&obj_data.lock);
 			}
 			continue;
 		}
+		
 		
 		//added to surpport set delay to specified sensor
 		if(cxt->delayCount > 0)
@@ -188,12 +230,8 @@ static void hwmsen_work_func(struct work_struct *work)
 		  }
 		}
 		
-        //add wake lock to make sure data can be read before system suspend
-        wake_lock(&(obj->read_data_wake_lock));
 		err = cxt->obj.sensor_operate(cxt->obj.self,SENSOR_GET_DATA, NULL, 0, 
 			&sensor_data, sizeof(hwm_sensor_data), &out_size);
-        wake_unlock(&(obj->read_data_wake_lock));
-      
 		
 		if(err)
 		{
@@ -207,12 +245,14 @@ static void hwmsen_work_func(struct work_struct *work)
 			{
 				// data changed, update the data
 				if(sensor_data.values[0] != obj_data.sensors_data[idx].values[0])
-				{					
+				{
+					mutex_lock(&obj_data.lock);
 					obj_data.sensors_data[idx].values[0] = sensor_data.values[0];
 					obj_data.sensors_data[idx].value_divide = sensor_data.value_divide;
 					obj_data.sensors_data[idx].status = sensor_data.status;
 					obj_data.sensors_data[idx].time = nt;
 					event_type |= (1 << idx);
+					mutex_unlock(&obj_data.lock);
 					//HWM_LOG("get %d sensor, values: %d!\n", idx, sensor_data.values[0]);
 				}
 			}
@@ -226,8 +266,10 @@ static void hwmsen_work_func(struct work_struct *work)
 				    if( 0 == sensor_data.values[0] && 0==sensor_data.values[1] 
 						&& 0 == sensor_data.values[2])
 				    {
+				    	
 				       continue;
 				    }
+					mutex_lock(&obj_data.lock);
 					obj_data.sensors_data[idx].values[0] = sensor_data.values[0];
 					obj_data.sensors_data[idx].values[1] = sensor_data.values[1];
 					obj_data.sensors_data[idx].values[2] = sensor_data.values[2];
@@ -235,15 +277,16 @@ static void hwmsen_work_func(struct work_struct *work)
 					obj_data.sensors_data[idx].status = sensor_data.status;
 					obj_data.sensors_data[idx].time = nt;
 					event_type |= (1 << idx);
+					mutex_unlock(&obj_data.lock);
 					//HWM_LOG("get %d sensor, values: %d, %d, %d!\n", idx, 
 						//sensor_data.values[0], sensor_data.values[1], sensor_data.values[2]);
 				}
-			}			
+			}
 		}			
 	}
 
 	//
-	mutex_unlock(&obj_data.lock);
+	//mutex_unlock(&obj_data.lock);
 
 	if(enable_again == true)
 	{
@@ -297,19 +340,13 @@ static void hwmsen_work_func(struct work_struct *work)
 
 	if(obj->dc->polling_running == 1)
 	{
-	    if(1 == atomic_read(&hwm_obj->early_suspend))
-	    {
-	       // slow down polling rate at early suspend  let system have chance to sleep
-	       mod_timer(&obj->timer, jiffies + (HZ/2));
-		   HWM_LOG("hwm_dev early suspend work polling\n");
-	    }
-		else
-		{
-		  mod_timer(&obj->timer, jiffies + atomic_read(&obj->delay)/(1000/HZ)); 
-		}
+		mod_timer(&obj->timer, jiffies + atomic_read(&obj->delay)/(1000/HZ)); 
 	}
 }
 
+/******************************************************************************
+ * export functions
+ *****************************************************************************/
 int hwmsen_get_interrupt_data(int sensor, hwm_sensor_data *data) 
 {
 	//HWM_LOG("++++++++++++++++++++++++++++hwmsen_get_interrupt_data function sensor = %d\n",sensor);
@@ -378,7 +415,7 @@ static void hwmsen_poll(unsigned long data)
 	struct hwmdev_object *obj = (struct hwmdev_object *)data;
 	if(obj != NULL)
 	{
-		schedule_work(&obj->report);
+		queue_work(sensor_workqueue, &obj->report);
 	}
 }
 /*----------------------------------------------------------------------------*/
@@ -399,6 +436,7 @@ static struct hwmdev_object *hwmsen_alloc_object(void)
 	obj->active_sensor = 0;
 	atomic_set(&obj->delay, 200); /*5Hz*/// set work queue delay time 200ms
 	atomic_set(&obj->wake, 0);
+	sensor_workqueue = create_singlethread_workqueue("sensor_polling");
 	INIT_WORK(&obj->report, hwmsen_work_func);
 	init_timer(&obj->timer);
 	obj->timer.expires	= jiffies + atomic_read(&obj->delay)/(1000/HZ);
@@ -499,15 +537,28 @@ static int hwmsen_enable(struct hwmdev_object *obj, int sensor, int enable)
 	
 	if(enable == 1)
 	{
+//{@for mt6582 blocking issue work around		
+		if(sensor == 7){
+			HWM_LOG("P-sensor disable LDO low power\n");
+			pmic_ldo_suspend_enable(0);
+			}
+//@}
 		enable_again = true;
 		obj->active_data_sensor |= sensor_type;
 		if((obj->active_sensor & sensor_type) == 0)	// no no-data active
 		{		
 			if (cxt->obj.sensor_operate(cxt->obj.self, SENSOR_ENABLE, &enable,sizeof(int), NULL, 0, NULL) != 0)
 			{
-				HWM_ERR("activate sensor(%d) err = %d\n", sensor, err);
-				err = -EINVAL;
-				goto exit;
+				if (cxt->obj.sensor_operate(cxt->obj.self, SENSOR_ENABLE, &enable,sizeof(int), NULL, 0, NULL) != 0)
+				{
+					if (cxt->obj.sensor_operate(cxt->obj.self, SENSOR_ENABLE, &enable,sizeof(int), NULL, 0, NULL) != 0)
+					{
+						HWM_ERR("activate sensor(%d) 3 times err = %d\n", sensor, err);
+						err = -EINVAL;
+						goto exit;
+					}
+				}
+				
 			}
 
 			atomic_set(&cxt->enable, 1);			
@@ -526,6 +577,13 @@ static int hwmsen_enable(struct hwmdev_object *obj, int sensor, int enable)
 	}
 	else
 	{
+//{@for mt6582 blocking issue work around
+		if(sensor == 7){
+			HWM_LOG("P-sensor enable LDO low power\n");
+			pmic_ldo_suspend_enable(1);
+
+			}
+//@}
 		obj->active_data_sensor &= ~sensor_type;
 		if((obj->active_sensor & sensor_type) == 0)	// no no-data active
 		{
@@ -670,18 +728,61 @@ static ssize_t hwmsen_show_hwmdev(struct device* dev,
     //struct hwmdev_object *devobj = (struct hwmdev_object*)dev_get_drvdata(dev);
     int len = 0;
 	printk("sensor test: hwmsen_show_hwmdev function!\n");
+/*
+    if (!devobj || !devobj->dc) {
+        HWM_ERR("null pointer: %p, %p", devobj, (!devobj) ? (NULL) : (devobj->dc));
+        return 0;
+    }
+    for (idx = 0; idx < C_MAX_HWMSEN_NUM; idx++) 
+        len += snprintf(buf+len, PAGE_SIZE-len, "    %d", idx);
+    len += snprintf(buf+len, PAGE_SIZE-len, "\n");
+    for (idx = 0; idx < C_MAX_HWMSEN_NUM; idx++)
+        len += snprintf(buf+len, PAGE_SIZE-len, "    %d", atomic_read(&devobj->dc->cxt[idx].enable));
+    len += snprintf(buf+len, PAGE_SIZE-len, "\n");
+    */
     return len;
 }
 /*----------------------------------------------------------------------------*/
 static ssize_t hwmsen_store_active(struct device* dev, struct device_attribute *attr,
                                   const char *buf, size_t count)
 {
+/*
+	printk("sensor test: hwmsen_store_active function!\n");
+    struct hwmdev_object *devobj = (struct hwmdev_object*)dev_get_drvdata(dev);
+    int sensor, enable, err, idx;
+
+    if (!devobj || !devobj->dc) {
+        HWM_ERR("null pointer!!\n");
+        return count;
+    }
+
+    if (!strncmp(buf, "all-start", 9)) {
+        for (idx = 0; idx < C_MAX_HWMSEN_NUM; idx++)
+            hwmsen_enable(devobj, idx, 1);
+    } else if (!strncmp(buf, "all-stop", 8)) {
+        for (idx = 0; idx < C_MAX_HWMSEN_NUM; idx++)
+            hwmsen_enable(devobj, idx, 0);    
+    } else if (2 == sscanf(buf, "%d %d", &sensor, &enable)) {
+        if ((err = hwmsen_enable(devobj, sensor, enable)))
+            HWM_ERR("sensor enable failed: %d\n", err);
+    } 
+*/
     return count;
 }
 /*----------------------------------------------------------------------------*/
 static ssize_t hwmsen_show_delay(struct device* dev, 
                                  struct device_attribute *attr, char *buf) 
 {
+/*
+    struct hwmdev_object *devobj = (struct hwmdev_object*)dev_get_drvdata(dev);
+printk("sensor test: hwmsen_show_delay function!\n");
+    if (!devobj || !devobj->dc) {
+        HWM_ERR("null pointer!!\n");
+        return 0;
+    }
+    
+    return snprintf(buf, PAGE_SIZE, "%d\n", atomic_read(&devobj->delay));    
+*/
 
 	return 0;
 
@@ -690,28 +791,63 @@ static ssize_t hwmsen_show_delay(struct device* dev,
 static ssize_t hwmsen_store_delay(struct device* dev, struct device_attribute *attr,
                                   const char *buf, size_t count)
 {
+/*
+    struct hwmdev_object *devobj = (struct hwmdev_object*)dev_get_drvdata(dev);
+    int delay;
+printk("sensor test: hwmsen_show_delay function!\n");
+    if (!devobj || !devobj->dc) {
+        HWM_ERR("null pointer!!\n");
+        return count;
+    }
+
+    if (1 != sscanf(buf, "%d", &delay)) {
+        HWM_ERR("invalid format!!\n");
+        return count;
+    }
+
+    atomic_set(&devobj->delay, delay);
+   */
     return count;
 }                                 
 /*----------------------------------------------------------------------------*/
 static ssize_t hwmsen_show_wake(struct device* dev, 
                                  struct device_attribute *attr, char *buf) 
 {
-
-    printk("sensor test: hwmsen_show_wake function!\n");
+/*
+	printk("sensor test: hwmsen_show_wake function!\n");
     struct hwmdev_object *devobj = (struct hwmdev_object*)dev_get_drvdata(dev);
 
     if (!devobj || !devobj->dc) {
         HWM_ERR("null pointer!!\n");
         return 0;
     }
-    printk("The Psensor is %s \n",psensor_name);
-    return snprintf(buf, PAGE_SIZE, "%d\n", lightsensorflag);    
-   //Lightsensor flag,Let the APP know the Psensor is CTP type or physical type// add by llf
+    return snprintf(buf, PAGE_SIZE, "%d\n", atomic_read(&devobj->wake));    
+    */
+    return 0;
 }
 /*----------------------------------------------------------------------------*/
 static ssize_t hwmsen_store_wake(struct device* dev, struct device_attribute *attr,
                                   const char *buf, size_t count)
 {
+/*
+    struct hwmdev_object *devobj = (struct hwmdev_object*)dev_get_drvdata(dev);
+    int wake, err;
+printk("sensor test: hwmsen_store_wake function!\n");
+    if (!devobj || !devobj->dc) {
+        HWM_ERR("null pointer!!\n");
+        return count;
+    }
+
+    if (1 != sscanf(buf, "%d", &wake)) {
+        HWM_ERR("invalid format!!\n");
+        return count;
+    }
+
+    if ((err = hwmsen_wakeup(devobj))) {
+        HWM_ERR("wakeup sensor fail, %d\n", err);
+        return count;
+    }
+   */ 
     return count;
 }  
 
@@ -746,11 +882,20 @@ static ssize_t hwmsen_store_trace(struct device* dev,
 	return count;
 }                                                      
 /*----------------------------------------------------------------------------*/
+static ssize_t hwmsen_show_sensordevnum(struct device *dev, 
+                                  struct device_attribute *attr, char *buf)
+{
+	char *devname = NULL;
+		devname = dev_name(&hwm_obj->idev->dev);
+
+	return snprintf(buf, PAGE_SIZE, "%s\n", devname+5);
+}
 DEVICE_ATTR(hwmdev,     S_IWUSR | S_IRUGO, hwmsen_show_hwmdev, NULL);
 DEVICE_ATTR(active,     S_IWUSR | S_IRUGO, hwmsen_show_hwmdev, hwmsen_store_active);
 DEVICE_ATTR(delay,      S_IWUSR | S_IRUGO, hwmsen_show_delay,  hwmsen_store_delay);
 DEVICE_ATTR(wake,       S_IWUSR | S_IRUGO, hwmsen_show_wake,   hwmsen_store_wake);
 DEVICE_ATTR(trace,      S_IWUSR | S_IRUGO, hwmsen_show_trace,  hwmsen_store_trace);
+DEVICE_ATTR(hwmsensordevnum,      S_IWUSR | S_IRUGO, hwmsen_show_sensordevnum,  NULL);
 /*----------------------------------------------------------------------------*/
 static struct device_attribute *hwmsen_attr_list[] =
 {
@@ -759,6 +904,7 @@ static struct device_attribute *hwmsen_attr_list[] =
 	&dev_attr_delay,
 	&dev_attr_wake,
 	&dev_attr_trace,
+	&dev_attr_hwmsensordevnum,
 };
 
 
@@ -784,6 +930,51 @@ static int hwmsen_create_attr(struct device *dev)
 
 	return err;
 }
+
+/*----------------------------------------------------------------------------*/
+//BEGIN: Add the dev node for upper App to differentiate physical ALSPS or simulated p-sensor, fangjie
+static ssize_t hwmsen_show_lightsensor(struct device *dev, 
+                                  struct device_attribute *attr, char *buf)
+{	
+    printk("sensor test: hwmsen_show_lightsensor function!\n");
+
+    if (!dev ) {
+        HWM_ERR("null pointer!!\n");
+        return 0;
+    }
+    //printk("The Lightsensor is %s \n",alsps_name);
+    return snprintf(buf, PAGE_SIZE, "%d\n", lightsensorflag);    
+}
+static ssize_t hwmsen_store_lightsensor(struct device* dev, 
+                                   struct device_attribute *attr, const char *buf, size_t count)
+{
+	return count;
+}   
+DEVICE_ATTR(lightsensor,     S_IWUSR | S_IRUGO, hwmsen_show_lightsensor, hwmsen_store_lightsensor);
+//END: Add the dev node for upper App to differentiate physical ALSPS or simulated p-sensor, fangjie
+
+
+/*----------------------------------------------------------------------------*/
+//BEGIN: MXC6255X is 2-axis Gsenor(not FACE_DOWN and FACT_UP). other Gsensor is 3-axis. fangjie
+static ssize_t hwmsen_show_gsensor(struct device *dev, 
+                                  struct device_attribute *attr, char *buf)
+{	
+    printk("sensor test: hwmsen_show_gsensor function!\n");
+    if (!dev ) {
+        HWM_ERR("null pointer!!\n");
+        return 0;
+    }
+    printk("The Gsensor is %s \n",gsensor_name);
+    return snprintf(buf, PAGE_SIZE, "%d\n", gsensorflag);    //0:2-axis Gensor(MXC6255X), 1:3-axis Gsensor
+}
+static ssize_t hwmsen_store_gsensor(struct device* dev, 
+                                   struct device_attribute *attr, const char *buf, size_t count)
+{
+	return count;
+}   
+DEVICE_ATTR(gsensor,     S_IWUSR | S_IRUGO, hwmsen_show_gsensor, hwmsen_store_gsensor);
+//BEGIN: MXC6255X is 2-axis Gsenor(not FACE_DOWN and FACT_UP). other Gsensor is 3-axis. fangjie
+
 /*----------------------------------------------------------------------------*/
 static int hwmsen_delete_attr(struct device *dev)
 {
@@ -804,69 +995,6 @@ static int hwmsen_delete_attr(struct device *dev)
 
 	return err;
 }
-
-#ifdef SYS_COMPATIBLE
-/*----------------------------------------------------------------------------*/
-static ssize_t hwmsen_show_lightsensor(struct device *dev, 
-                                  struct device_attribute *attr, char *buf)
-{	
-    printk("sensor test: hwmsen_show_lightsensor function!\n");
-
-    if (!dev ) {
-        HWM_ERR("null pointer!!\n");
-        return 0;
-    }
-    printk("The Lightsensor is %s \n",psensor_name);
-    return snprintf(buf, PAGE_SIZE, "%d\n", lightsensorflag);    
-   //Lightsensor flag,Let the APP know the Psensor is CTP type or physical type// add by llf
-}
-/*----------------------------------------------------------------------------*/
-static ssize_t hwmsen_store_lightsensor(struct device* dev, 
-                                   struct device_attribute *attr, const char *buf, size_t count)
-{
-	/*
-	struct i2c_client *client = to_i2c_client(dev);
-	struct hwmdev_object *obj = i2c_get_clientdata(client);    
-	int trc;
-	HWM_FUN(f);
-
-	if (1 == sscanf(buf, "0x%x\n", &trc))
-	{
-		atomic_set(&obj->trace, trc);
-	}
-	else
-	{
-		HWM_ERR("set trace level fail!!\n");
-	}
-	*/
-	return count;
-}   
-/*----------------------------------------------------------------------------*/
-DEVICE_ATTR(lightsensor,     S_IWUSR | S_IRUGO, hwmsen_show_lightsensor, hwmsen_store_lightsensor);
-/*----------------------------------------------------------------------------*/
-static ssize_t hwmsen_show_psensor(struct device *dev, 
-                                  struct device_attribute *attr, char *buf)
-{
-    printk("sensor test: hwmsen_show_psensor function!\n");
-
-    if (!dev) {
-        HWM_ERR("null pointer!!\n");
-        return 0;
-    }
-    printk("The Psensor is %s \n",psensor_name);
-    return snprintf(buf, PAGE_SIZE, "%d\n", lightsensorflag);    
-   //Lightsensor flag,Let the APP know the Psensor is CTP type or physical type// add by llf
-}
-/*----------------------------------------------------------------------------*/
-static ssize_t hwmsen_store_psensor(struct device* dev, 
-                                   struct device_attribute *attr, const char *buf, size_t count)
-{
-	return count;
-}                                                      
-/*----------------------------------------------------------------------------*/
-DEVICE_ATTR(psensor,     S_IWUSR | S_IRUGO, hwmsen_show_psensor, hwmsen_store_psensor);
-
-#endif
 
 /*----------------------------------------------------------------*/
 static int init_static_data(void)
@@ -1086,6 +1214,27 @@ static long hwmsen_unlocked_ioctl(struct file *fp, unsigned int cmd, unsigned lo
 
 	return 0;        
 }
+
+//BEGIN: fangjie add for sensor compatible design. 20140626
+#if 1 //#ifdef SYS_COMPATIBLE
+struct device *hwmsen_get_compatible_dev()
+{
+	if(!compatible_cmd_dev){
+		if(!compatible_class){
+			compatible_class = class_create(THIS_MODULE, "compatible");
+			if (IS_ERR(compatible_class))
+				HWM_ERR("Failed to create class(compatible)!\n");
+		}
+		compatible_cmd_dev = device_create(compatible_class,NULL, 0, NULL, "compatible_device");	
+		if (IS_ERR(compatible_cmd_dev))
+			HWM_ERR("Failed to create device(compatible_cmd_dev)!\n");	
+	}
+	return compatible_cmd_dev;	
+}
+EXPORT_SYMBOL_GPL(hwmsen_get_compatible_dev);
+#endif
+//END: fangjie add for sensor compatible design. 20140626
+
 /*----------------------------------------------------------------------------*/
 static struct file_operations hwmsen_fops = {
 //	.owner  = THIS_MODULE,
@@ -1155,23 +1304,24 @@ static int hwmsen_probe(struct platform_device *pdev)
 	wake_lock_init(&(hwm_obj->read_data_wake_lock),WAKE_LOCK_SUSPEND,"read_data_wake_lock");
 	// add for fix resume bug end
 
-	//add for compatible sensor by llf
-#ifdef SYS_COMPATIBLE
-	compatible_class = class_create(THIS_MODULE, "compatible");
-	if (IS_ERR(compatible_class))
-		pr_err("Failed to create class(compatible)!\n");
-	compatible_cmd_dev = device_create(compatible_class,NULL, 0, NULL, "compatible_device");	
-	if (IS_ERR(compatible_cmd_dev))
-		pr_err("Failed to create device(compatible_cmd_dev)!\n");
-	//lightsensor
-	if (device_create_file(compatible_cmd_dev, &dev_attr_lightsensor) < 0)
+	//BEGIN: Add the dev node for upper App to differentiate physical ALSPS or simulated p-sensor, fangjie
+	compatible_lightsensor=hwmsen_get_compatible_dev();
+	if (device_create_file(compatible_lightsensor, &dev_attr_lightsensor) < 0)
+	{
 		pr_err("Failed to create device file(%s)!\n", dev_attr_lightsensor.attr.name);
-	//psensor
-	if (device_create_file(compatible_cmd_dev, &dev_attr_psensor) < 0)
-		pr_err("Failed to create device file(%s)!\n", dev_attr_psensor.attr.name);
+	}
+	dev_set_drvdata(compatible_lightsensor, NULL);
+	//END: Add the dev node for upper App to differentiate physical ALSPS or simulated p-sensor, fangjie
 
-#endif	
-	//add for compatible sensor by llf end
+	//BEGIN: MXC6255X is 2-axis Gsenor(not FACE_DOWN and FACT_UP). other Gsensor is 3-axis. fangjie
+	compatible_gsensor=hwmsen_get_compatible_dev();
+	if (device_create_file(compatible_gsensor, &dev_attr_gsensor) < 0)
+	{
+		pr_err("Failed to create device file(%s)!\n", dev_attr_gsensor.attr.name);
+	}
+	dev_set_drvdata(compatible_gsensor, NULL);
+	//END: MXC6255X is 2-axis Gsenor(not FACE_DOWN and FACT_UP). other Gsensor is 3-axis. fangjie
+
 	return 0;
 
 	exit_hwmsen_create_attr_failed:
@@ -1186,25 +1336,6 @@ static int hwmsen_probe(struct platform_device *pdev)
 	exit_alloc_data_failed:
 	return err;
 }
-/*----------------------------------------------------------------------------*/
-#ifdef SYS_COMPATIBLE
-struct device *hwmsen_get_compatible_dev()
-{
-	if(!compatible_cmd_dev){
-		if(!compatible_class){
-			compatible_class = class_create(THIS_MODULE, "compatible");
-			if (IS_ERR(compatible_class))
-				pr_err("Failed to create class(compatible)!\n");
-		}
-		compatible_cmd_dev = device_create(compatible_class,NULL, 0, NULL, "compatible_device");	
-		if (IS_ERR(compatible_cmd_dev))
-			pr_err("Failed to create device(compatible_cmd_dev)!\n");	
-	}
-	return compatible_cmd_dev;
-	
-}
-EXPORT_SYMBOL_GPL(hwmsen_get_compatible_dev);
-#endif
 /*----------------------------------------------------------------------------*/
 static int hwmsen_remove(struct platform_device *pdev)
 {
@@ -1342,106 +1473,10 @@ int hwmsen_msensor_add(struct sensor_init_info* obj)
 EXPORT_SYMBOL_GPL(hwmsen_msensor_add);
 
 #endif
-/*************wwl add psensor get calibration data when calling    start*****************/
-
-#if defined(MTK_AUTO_DETECT_ALSPS)
-
-int hwmsen_psensor_remove(struct platform_device *pdev)
-{
-    int err =0;
-	int i=0;
-	for(i = 0; i < MAX_CHOOSE_G_NUM; i++)
-	{
-	   if(0 ==  strcmp(psensor_name,psensor_init_list[i]->name))
-	   {
-	      if(NULL == psensor_init_list[i]->uninit)
-	      {
-	        HWM_LOG(" hwmsen_psensor_remove null pointer \n");
-	        return -1;
-	      }
-	      psensor_init_list[i]->uninit();
-	   }
-	}
-    return 0;
-}
-
-static int psensor_probe(struct platform_device *pdev) 
-{
-    int i =0;
-	int err=0;
-	char tpsensor[25]="tmd2772_tp";
-	printk("wwl2 psensor probe\n");
-	HWM_LOG(" psensor_probe +\n");
-	for(i = 0; i < MAX_CHOOSE_G_NUM; i++)
-	{
-		printk("wwl2 psensor probe\n");
-	  if(NULL != psensor_init_list[i])
-	  {
-	  	printk("wwl3 psensor name %s",psensor_init_list[i]->name);
-	    err = psensor_init_list[i]->init();
-		if(0 == err)
-		{
-		   strcpy(psensor_name,psensor_init_list[i]->name);
-		   HWM_LOG(" psensor %s probe ok\n", psensor_name);
-		   if(strcmp(psensor_name,tpsensor)!=0)
-		   {
-		   	lightsensorflag=1;// add by llf
-		   }
-		   break;
-		}
-	  }
-	}
-	return 0;
-}
-
-
-static struct platform_driver psensor_driver = {
-	.probe      = psensor_probe,
-	.remove     = hwmsen_psensor_remove,    
-	.driver     = 
-	{
-		.name  = "als_ps",
-//		.owner = THIS_MODULE,
-	}
-};
-
-int hwmsen_alsps_add(struct sensor_init_info* obj) 
-{
-    int err=0;
-	int i =0;
-	
-	HWM_FUN(f);
-
-	for(i =0; i < MAX_CHOOSE_G_NUM; i++ )
-	{
-	    if(NULL == psensor_init_list[i])
-	    {
-	      psensor_init_list[i] = kzalloc(sizeof(struct sensor_init_info), GFP_KERNEL);
-		  if(NULL == psensor_init_list[i])
-		  {
-		     HWM_ERR("kzalloc error");
-		     return -1;
-		  }
-		  obj->platform_diver_addr = &psensor_driver;
-	      psensor_init_list[i] = obj;
-		  
-		  break;
-	    }
-	}
-		
-	return err;
-}
-EXPORT_SYMBOL_GPL(hwmsen_alsps_add);
-
-#endif
-/*************wwl add psensor get calibration data when calling    end*****************/
-
-
 #if defined(MTK_AUTO_DETECT_ACCELEROMETER)//
 
 int hwmsen_gsensor_remove(struct platform_device *pdev)
 {
-    //int err =0;
 	int i=0;
 	for(i = 0; i < MAX_CHOOSE_G_NUM; i++)
 	{
@@ -1460,28 +1495,28 @@ int hwmsen_gsensor_remove(struct platform_device *pdev)
 
 static int gsensor_probe(struct platform_device *pdev) 
 {
-    int i =0;
+	int i =0;
 	int err=0;
-	HWM_LOG(" gsensor_probe +\n");
-
-	//
-	//
+	char gsensor[25]="mxc6255x"; //fangjie add , because MXC6255X is 2-axis Gsenor(not FACE_DOWN and FACT_UP). other Gsensor is 3-axis.
+	HWM_LOG(" gsensor_probe +\n");	
 	for(i = 0; i < MAX_CHOOSE_G_NUM; i++)
 	{
 	  HWM_LOG(" i=%d\n",i);
 	  if(0 != gsensor_init_list[i])
 	  {
 	    HWM_LOG(" !!!!!!!!\n");
-	    if(0 != gsensor_init_list[i])// FR 437100 llf 20130427
+	    err = gsensor_init_list[i]->init();
+		if(gsensor_init_status==0)
 		{
-			HWM_LOG(" !!!Gsensor_datected!!!!\n");
-			err = gsensor_init_list[i]->init();
-			if(gsensor_init_status==0)
-			{
-				strcpy(gsensor_name,gsensor_init_list[i]->name);
-				HWM_LOG(" gsensor %s probe ok\n", gsensor_name);
-				break;
-			}
+		   strcpy(gsensor_name,gsensor_init_list[i]->name);
+		   HWM_LOG(" gsensor %s probe ok\n", gsensor_name);
+		   //BEGIN:  MXC6255X is 2-axis Gsenor(not FACE_DOWN and FACT_UP). other Gsensor is 3-axis.
+		   if(strcmp(gsensor_name,gsensor)!=0)
+		   {
+		   	gsensorflag=1; //0:2-axis Gensor(MXC6255X), 1:3-axis Gsensor
+		   }
+		   //END: MXC6255X is 2-axis Gsenor(not FACE_DOWN and FACT_UP). other Gsensor is 3-axis.
+	   	   break;
 		}
 	  }
 	}
@@ -1534,6 +1569,131 @@ EXPORT_SYMBOL_GPL(hwmsen_gsensor_add);
 
 #endif
 
+#if defined(MTK_AUTO_DETECT_ALSPS)
+
+int hwmsen_alsps_sensor_remove(struct platform_device *pdev)
+{
+    int err =0;
+	int i=0;
+	for(i = 0; i < MAX_CHOOSE_G_NUM; i++)
+	{
+	   if(0 ==  strcmp(alsps_name,alsps_init_list[i]->name))
+	   {
+	      if(NULL == alsps_init_list[i]->uninit)
+	      {
+	        HWM_LOG(" hwmsen_alsps_sensor_remove null pointer \n");
+	        return -1;
+	      }
+	      alsps_init_list[i]->uninit();
+	   }
+	}
+    return 0;
+}
+
+static int alsps_sensor_probe(struct platform_device *pdev) 
+{
+    int i =0;
+	int err=0;
+	char tpsensor[25]="ctp_simulate_alsps"; //add by fangjie for compatible physical P-sensor and simulated P-sensor.
+	HWM_LOG(" als_ps sensor_probe +\n");
+	for(i = 0; i < MAX_CHOOSE_G_NUM; i++)
+	{
+	  if(NULL != alsps_init_list[i])
+	  {
+	    err = alsps_init_list[i]->init();
+		if(0 == err)
+		{
+		   strcpy(alsps_name,alsps_init_list[i]->name);
+		   HWM_LOG(" alsps sensor %s probe ok\n", alsps_name);
+		   //BEGIN: add by fangjie , when p-sensor type is ctp_simulate_alsps, there is no LightSensor
+		   if(strcmp(alsps_name,tpsensor)!=0)
+		   {
+		   	lightsensorflag=1; //Because LightSenor and P-sensor is 2in1, so if lightsensorflag=1 means physical Alsps exist.
+		   }
+		   //END: add by fangjie , when p-sensor type is ctp_simulate_alsps, there is no LightSensor
+		   break;
+		}
+	  }
+	}
+	return 0;
+}
+
+
+static struct platform_driver alsps_sensor_driver = {
+	.probe      = alsps_sensor_probe,
+	.remove     = hwmsen_alsps_sensor_remove,    
+	.driver     = 
+	{
+		.name  = "als_ps",
+	}
+};
+
+int hwmsen_alsps_sensor_add(struct sensor_init_info* obj) 
+{
+    int err=0;
+	int i =0;
+
+	HWM_FUN(f);
+	for(i=0; i<MAX_CHOOSE_G_NUM;i++)
+	{
+		//if(strcmp(obj->name,"stk3x1x") == 0)
+		if(strcmp(obj->name,"ctp_simulate_alsps") == 0)
+		{
+			if(NULL == alsps_init_list[1])
+			{
+			      alsps_init_list[1] = kzalloc(sizeof(struct sensor_init_info), GFP_KERNEL);
+				  if(NULL == alsps_init_list[1])
+				  {
+				     HWM_ERR("kzalloc error");
+				     return -1;
+				  }
+				  obj->platform_diver_addr = &alsps_sensor_driver;
+			      alsps_init_list[1] = obj;
+				  
+				  break;
+			}
+		}
+		if(strcmp(obj->name,"tmd2772") == 0)
+		{
+			if(NULL == alsps_init_list[0])
+			{
+			      alsps_init_list[0] = kzalloc(sizeof(struct sensor_init_info), GFP_KERNEL);
+				  if(NULL == alsps_init_list[0])
+				  {
+				     HWM_ERR("kzalloc error");
+				     return -1;
+				  }
+				  obj->platform_diver_addr = &alsps_sensor_driver;
+			      alsps_init_list[0] = obj;
+				  
+				  break;
+			}
+		}		
+	}
+/*
+	for(i =0; i < MAX_CHOOSE_G_NUM; i++ )
+	{
+	    if(NULL == alsps_init_list[i])
+	    {
+	      alsps_init_list[i] = kzalloc(sizeof(struct sensor_init_info), GFP_KERNEL);
+		  if(NULL == alsps_init_list[i])
+		  {
+		     HWM_ERR("kzalloc error");
+		     return -1;
+		  }
+		  obj->platform_diver_addr = &alsps_sensor_driver;
+	      alsps_init_list[i] = obj;
+		  
+		  break;
+	    }
+	}
+*/		
+	return err;
+}
+EXPORT_SYMBOL_GPL(hwmsen_alsps_sensor_add);
+
+#endif
+
 /*----------------------------------------------------------------------------*/
 static int __init hwmsen_init(void) 
 {
@@ -1548,7 +1708,7 @@ static int __init hwmsen_init(void)
 #if defined(MTK_AUTO_DETECT_ACCELEROMETER)
     if(platform_driver_register(&gsensor_driver))
 	{
-		HWM_ERR("failed to register gsensor driver");
+		HWM_ERR("failed to register gensor driver");
 		return -ENODEV;
 	}
 #endif
@@ -1556,21 +1716,19 @@ static int __init hwmsen_init(void)
 #if defined(MTK_AUTO_DETECT_MAGNETOMETER)
 		if(platform_driver_register(&msensor_driver))
 		{
-			HWM_ERR("failed to register msensor driver");
+			HWM_ERR("failed to register mensor driver");
 			return -ENODEV;
 		}
 #endif
-
-/*************wwl add psensor get calibration data when calling    start*****************/
 
 #if defined(MTK_AUTO_DETECT_ALSPS)
-		if(platform_driver_register(&psensor_driver))
-		{
-			HWM_ERR("failed to register psensor driver");
-			return -ENODEV;
-		}
+			if(platform_driver_register(&alsps_sensor_driver))
+			{
+				HWM_ERR("failed to register alsps_sensor_driver driver");
+				return -ENODEV;
+			}
 #endif
-/*************wwl add psensor get calibration data when calling    end*****************/
+
 
 	return 0;
 }

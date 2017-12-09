@@ -1,4 +1,3 @@
-
 #ifndef _MTK_CUSTOM_PROJECT_HAL_IMGSENSOR_SRC_CONFIGFTBLCOMMONYUV_H_
 #define _MTK_CUSTOM_PROJECT_HAL_IMGSENSOR_SRC_CONFIGFTBLCOMMONYUV_H_
 #if 1
@@ -6,6 +5,9 @@
 #define SENSOR_DRVNAME_COMMON_YUV   "common.yuv"
 
 
+/*******************************************************************************
+ *
+ ******************************************************************************/
 FTABLE_DEFINITION(SENSOR_DRVNAME_COMMON_YUV)
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 FTABLE_SCENE_INDEP()
@@ -143,29 +145,46 @@ FTABLE_SCENE_INDEP()
     //==========================================================================
 #if 1
     //  Video Snapshot
+#if (1 == VSS_SUPPORTED)
     FTABLE_CONFIG_AS_TYPE_OF_USER(
         KEY_AS_(MtkCameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED), 
         SCENE_AS_DEFAULT_SCENE(
             ITEM_AS_DEFAULT_(MtkCameraParameters::TRUE), 
         ), 
     )
+#else
+    FTABLE_CONFIG_AS_TYPE_OF_USER(
+        KEY_AS_(MtkCameraParameters::KEY_VIDEO_SNAPSHOT_SUPPORTED), 
+        SCENE_AS_DEFAULT_SCENE(
+            ITEM_AS_DEFAULT_(MtkCameraParameters::FALSE), 
+        ), 
+    )
+#endif
 #endif
     //==========================================================================
 #if 1
     //  Video Stabilization (EIS)
+#if (1 == EIS_SUPPORTED)    
     FTABLE_CONFIG_AS_TYPE_OF_DEFAULT_SUPPORTED(
         KEY_AS_(MtkCameraParameters::KEY_VIDEO_STABILIZATION), 
         SCENE_AS_DEFAULT_SCENE(
             ITEM_AS_DEFAULT_(MtkCameraParameters::FALSE), 
-            ITEM_AS_SUPPORTED_(
-            #if 0
-                MtkCameraParameters::FALSE
-            #else
-                MtkCameraParameters::TRUE
-            #endif
+            ITEM_AS_SUPPORTED_(           
+                MtkCameraParameters::TRUE            
             )
         ), 
     )
+#else
+    FTABLE_CONFIG_AS_TYPE_OF_DEFAULT_SUPPORTED(
+        KEY_AS_(MtkCameraParameters::KEY_VIDEO_STABILIZATION), 
+        SCENE_AS_DEFAULT_SCENE(
+            ITEM_AS_DEFAULT_(MtkCameraParameters::FALSE), 
+            ITEM_AS_SUPPORTED_(            
+                MtkCameraParameters::FALSE
+            )
+        ), 
+    )
+#endif
 #endif
     //==========================================================================
 #if 1
@@ -214,6 +233,9 @@ FTABLE_SCENE_INDEP()
     //==========================================================================
 END_FTABLE_SCENE_INDEP()
 //------------------------------------------------------------------------------
+/*******************************************************************************
+ *
+ ******************************************************************************/
 //++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 FTABLE_SCENE_DEP()
     //==========================================================================
@@ -344,6 +366,9 @@ END_FTABLE_SCENE_DEP()
 END_FTABLE_DEFINITION()
 
 
+/*******************************************************************************
+ *
+ ******************************************************************************/
 #endif
 #endif //_MTK_CUSTOM_PROJECT_HAL_IMGSENSOR_SRC_CONFIGFTBLCOMMONYUV_H_
 

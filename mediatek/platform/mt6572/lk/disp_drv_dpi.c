@@ -1,4 +1,39 @@
+/*****************************************************************************
+*  Copyright Statement:
+*  --------------------
+*  This software is protected by Copyright and the information contained
+*  herein is confidential. The software may not be copied and the information
+*  contained herein may not be used or disclosed except with the written
+*  permission of MediaTek Inc. (C) 2008
+*
+*  BY OPENING THIS FILE, BUYER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+*  THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+*  RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO BUYER ON
+*  AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+*  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+*  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+*  NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+*  SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+*  SUPPLIED WITH THE MEDIATEK SOFTWARE, AND BUYER AGREES TO LOOK ONLY TO SUCH
+*  THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. MEDIATEK SHALL ALSO
+*  NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE RELEASES MADE TO BUYER'S
+*  SPECIFICATION OR TO CONFORM TO A PARTICULAR STANDARD OR OPEN FORUM.
+*
+*  BUYER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND CUMULATIVE
+*  LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+*  AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+*  OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY BUYER TO
+*  MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+*
+*  THE TRANSACTION CONTEMPLATED HEREUNDER SHALL BE CONSTRUED IN ACCORDANCE
+*  WITH THE LAWS OF THE STATE OF CALIFORNIA, USA, EXCLUDING ITS CONFLICT OF
+*  LAWS PRINCIPLES.  ANY DISPUTES, CONTROVERSIES OR CLAIMS ARISING THEREOF AND
+*  RELATED THERETO SHALL BE SETTLED BY ARBITRATION IN SAN FRANCISCO, CA, UNDER
+*  THE RULES OF THE INTERNATIONAL CHAMBER OF COMMERCE (ICC).
+*
+*****************************************************************************/
 //#ifdef BUILD_LK
+#include <string.h>
 #include <platform/disp_drv_platform.h>
 #include <platform/ddp_path.h>
 
@@ -9,8 +44,6 @@
 
 extern LCM_DRIVER *lcm_drv;
 extern LCM_PARAMS *lcm_params;
-
-#define ALIGN_TO(x, n)  	(((x) + ((n) - 1)) & ~((n) - 1))
 
 static DPI_FB_FORMAT dpiTmpBufFormat = DPI_FB_FORMAT_RGB888;
 static LCD_FB_FORMAT lcdTmpBufFormat = LCD_FB_FORMAT_RGB888;
@@ -89,10 +122,8 @@ static void init_intermediate_buffers(UINT32 fbPhysAddr)
    {
       TempBuffer *b = &s_tmpBuffers[i];
       
-      #ifdef BUILD_LK
-         // clean the intermediate buffers as black to prevent from noise display
-         memset(tmpFbStartPA, 0, tmpFbSizeInBytes);
-      #endif
+      // clean the intermediate buffers as black to prevent from noise display
+      memset((unsigned char*)tmpFbStartPA, 0, tmpFbSizeInBytes);
       b->pitchInBytes = tmpFbPitchInBytes;
       b->pa = tmpFbStartPA;
       ASSERT((tmpFbStartPA & 0x7) == 0);  // check if 8-byte-aligned
@@ -151,7 +182,6 @@ static void init_lcd(void)
 static void init_dpi(BOOL isDpiPoweredOn)
 {
    const LCM_DPI_PARAMS *dpi = &(lcm_params->dpi);
-   UINT32 i;
    
    DPI_CHECK_RET(DPI_Init(isDpiPoweredOn));
    DPI_CHECK_RET(DPI_ConfigHsync((DPI_POLARITY)dpi->hsync_pol,
@@ -199,8 +229,10 @@ static DISP_STATUS dpi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
        printf("%s, %d\n", __func__, __LINE__);
 
       {
-         struct disp_path_config_struct config = {0};
-         
+         struct disp_path_config_struct config;
+
+         memset((void *)&config, 0, sizeof(struct disp_path_config_struct));
+
          printf("%s, %d\n", __func__, __LINE__);
          config.srcModule = DISP_MODULE_OVL;
          
@@ -208,7 +240,7 @@ static DISP_STATUS dpi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
          {
             config.inFormat = RDMA_INPUT_FORMAT_RGB565;
             config.addr = fbPA; 
-            config.pitch = DISP_GetScreenWidth()*2;
+            config.pitch = (ALIGN_TO(DISP_GetScreenWidth(),32))*2;
             config.srcROI.x = 0;config.srcROI.y = 0;
             config.srcROI.height= DISP_GetScreenHeight();config.srcROI.width= DISP_GetScreenWidth();
          }
@@ -219,8 +251,8 @@ static DISP_STATUS dpi_init(UINT32 fbVA, UINT32 fbPA, BOOL isLcmInited)
             config.bgROI.width = DISP_GetScreenWidth();
             config.bgROI.height = DISP_GetScreenHeight();
             config.bgColor = 0x0;  // background color
-            
-            config.pitch = DISP_GetScreenWidth()*2;
+
+            config.pitch = (ALIGN_TO(DISP_GetScreenWidth(),32))*2;
             config.srcROI.x = 0;config.srcROI.y = 0;
             config.srcROI.height= DISP_GetScreenHeight();config.srcROI.width= DISP_GetScreenWidth();
             config.ovl_config.source = OVL_LAYER_SOURCE_MEM; 

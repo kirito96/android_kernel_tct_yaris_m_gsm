@@ -34,21 +34,4 @@ typedef struct {
     EXT_VAL_REGS    mode[10];          /*0x00C0 ~ 0x010F: 80 bytes*/  
 } GPIOEXT_REGS;
 
-/*---------------------------------------------------------------------------*/
-int mt_set_gpio_dir_ext(unsigned long pin, unsigned long dir);
-int mt_get_gpio_dir_ext(unsigned long pin);
-int mt_set_gpio_pull_enable_ext(unsigned long pin, unsigned long enable);
-int mt_get_gpio_pull_enable_ext(unsigned long pin);
-int mt_set_gpio_ies_ext(unsigned long pin, unsigned long enable);
-int mt_get_gpio_ies_ext(unsigned long pin);
-int mt_set_gpio_pull_select_ext(unsigned long pin, unsigned long select);
-int mt_get_gpio_pull_select_ext(unsigned long pin);
-int mt_set_gpio_inversion_ext(unsigned long pin, unsigned long enable);
-int mt_get_gpio_inversion_ext(unsigned long pin);
-int mt_set_gpio_out_ext(unsigned long pin, unsigned long output);
-int mt_get_gpio_out_ext(unsigned long pin);
-int mt_get_gpio_in_ext(unsigned long pin);
-int mt_set_gpio_mode_ext(unsigned long pin, unsigned long mode);
-int mt_get_gpio_mode_ext(unsigned long pin);
-
 #endif //_MT_GPIO_EXT_H_

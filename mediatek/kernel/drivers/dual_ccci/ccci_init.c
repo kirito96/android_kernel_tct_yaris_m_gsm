@@ -1,13 +1,10 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <ccif.h>
-#include <ccci_cfg.h>
-#include <ccci_layer.h>
 #include <mach/irqs.h>
-#include <ccci_common.h>
-
-
+#include <ccif.h>
+#include <ccif.h>
+#include <ccci.h>
 
 unsigned long long lg_ch_rx_debug_enable[MAX_MD_NUM];
 unsigned long long lg_ch_tx_debug_enable[MAX_MD_NUM];
@@ -33,6 +30,12 @@ static int __init ccci_init(void)
 			set_md_enable(i, 0);
 		}
 	}
+
+#ifdef ENABLE_CCCI_DRV_BUILDIN
+CCCI_MSG("ccci_init: device_initcall_sync\n");
+#else  // MODULE
+CCCI_MSG("ccci_init: module_init\n");
+#endif
 
 	//3. Init ccci device table	
     ret = init_ccci_dev_node();
@@ -276,7 +279,13 @@ static void __exit ccci_exit(void)
 	ccci_helper_exit();
 }
 
+//  Build-in Modified - S
+#ifdef ENABLE_CCCI_DRV_BUILDIN
+device_initcall_sync(ccci_init);
+#else  // MODULE
 module_init(ccci_init);
+#endif
+//  Build-in Modified - E
 module_exit(ccci_exit);
 
 MODULE_DESCRIPTION("CCIF Driver");

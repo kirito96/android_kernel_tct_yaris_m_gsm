@@ -98,12 +98,6 @@ class AudioPlatformDevice
         */
         int getParameters(int command1 , int command2 , void *data);
 
-        uint32 GetDLFrequency(unsigned int frequency);
-        uint32 GetULFrequency(unsigned int frequency);
-        uint32 GetULFrequencyGroup(unsigned int frequency);
-        bool GetDownLinkStatus(void);
-        bool GetULinkStatus(void);
-
         /**
         * a function for fade out / fade in
         * @param sample rate
@@ -112,11 +106,18 @@ class AudioPlatformDevice
         status_t FadeOutDownlink(uint16_t sample_rate);
         status_t FadeInDownlink(uint16_t sample_rate);
         status_t SetDcCalibration(AudioAnalogType::DEVICE_TYPE DeviceType, int dc_cali_value);
-
+        status_t AnalogOpenForAddSPK(AudioAnalogType::DEVICE_TYPE DeviceType);
+        status_t AnalogCloseForSubSPK(AudioAnalogType::DEVICE_TYPE DeviceType);
     private:
+        uint32 GetDLFrequency(unsigned int frequency);
+        uint32 GetULFrequency(unsigned int frequency);
+        uint32 GetULFrequencyGroup(unsigned int frequency);
+        bool GetDownLinkStatus(void);
+        bool GetULinkStatus(void);
         status_t TopCtlChangeTrigger(void);
-		uint32 GetDLNewIFFrequency(unsigned int frequency);
-		uint32 GetULNewIFFrequency(unsigned int frequency);
+        status_t DCChangeTrigger(void);
+        uint32 GetDLNewIFFrequency(unsigned int frequency);
+        uint32 GetULNewIFFrequency(unsigned int frequency);
         /**
         * AnalogBlockAttribute to telling Device Type has mux and now mux selection
         * @see AudioAnalogType::DEVICE_MAX

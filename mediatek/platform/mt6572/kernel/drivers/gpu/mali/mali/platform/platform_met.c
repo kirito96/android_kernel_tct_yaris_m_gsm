@@ -3,6 +3,7 @@
 #include <linux/random.h>
 #include <linux/delay.h>
 #include <linux/fs.h>
+#include <linux/sched.h>
 #include "met_drv.h"
 #include "mt_gpufreq.h"
 

@@ -14,10 +14,16 @@ my $secro_ac = $ARGV[3];
 my $secro_out = $ARGV[4];
 my $sml_dir = "mediatek/custom/$custom_dir/security/sml_auth";
 my $secro_tool = "mediatek/build/tools/SecRo/SECRO_POST";
+my $secro_tool_legacy = "mediatek/build/tools/SecRo/SECRO_POST_LEGACY";
 my $MTK_ENABLE_MD1 = $ENV{"MTK_ENABLE_MD1"};
 my $MTK_ENABLE_MD2 = $ENV{"MTK_ENABLE_MD2"};
 my $MTK_PLATFORM = $ENV{"MTK_PLATFORM"};
-my $secro_ini = "mediatek/custom/out/$prj/modem/SECRO_WP.ini";
+my $MTK_ROOT_CUSTOM_OUT = $ENV{"MTK_ROOT_CUSTOM_OUT"};
+my $secro_ini = "$MTK_ROOT_CUSTOM_OUT/SECRO_WP.ini";
+if (${MTK_PLATFORM} eq "MT6575" || ${MTK_PLATFORM} eq "MT6577")
+{
+   $legacy_mode = "1";
+}
 
 print "******************************************************\n";
 print "*********************** SETTINGS *********************\n";
@@ -27,26 +33,28 @@ print " Custom Dir  =  $custom_dir\n";
 print " MTK_ENABLE_MD1 = $MTK_ENABLE_MD1\n";
 print " MTK_ENABLE_MD2 = $MTK_ENABLE_MD2\n";
 print " MTK_PLATFORM = $MTK_PLATFORM\n";
+print " MTK_ROOT_CUSTOM_OUT = $MTK_ROOT_CUSTOM_OUT\n";
 
 ##########################################################
 # SecRo Post Processing
 ##########################################################
 
 my $ac_region = "mediatek/custom/$custom_dir/secro/AC_REGION";
+#my $ac_region = "out/target/product/$prj/secro/AC_REGION";
 my $and_secro = "mediatek/custom/$custom_dir/secro/AND_SECURE_RO";
-my $md_secro = "mediatek/custom/out/$prj/modem/SECURE_RO";
-my $md2_secro = "mediatek/custom/out/$prj/modem/SECURE_RO_sys2";
+my $md_secro = "$MTK_ROOT_CUSTOM_OUT/modem/SECURE_RO";
+my $md2_secro = "$MTK_ROOT_CUSTOM_OUT/modem/SECURE_RO_sys2";
 
 if (${secro_ac} eq "yes")
 {
-	$md_secro = "mediatek/custom/out/$prj/modem/SECURE_RO";
+	$md_secro = "$MTK_ROOT_CUSTOM_OUT/modem/SECURE_RO";
 	if ( ! -e $md_secro )
 	{
 		print "this modem does not has modem specific SECRO image, use prj SECRO\n";
 		$md_secro = "mediatek/custom/$custom_dir/secro/SECURE_RO";
 	}
 
-        $md2_secro = "mediatek/custom/out/$prj/modem/SECURE_RO_sys2";
+        $md2_secro = "$MTK_ROOT_CUSTOM_OUT/modem/SECURE_RO_sys2";
         if ( ! -e $md2_secro )
         {
                 print "this modem2 does not has modem2 specific SECRO image, use prj SECRO\n";
@@ -90,7 +98,6 @@ if ( ! -e $md2_secro )
 }
 print " md2_secro = $md2_secro\n";
 
-
 open(SECRO_FH, ">$secro_ini") or die "open file error $secro_ini\n";
 
 print SECRO_FH "SECRO_CFG = $secro_cfg\n";
@@ -100,14 +107,14 @@ PrintDependency($secro_cfg);
 PrintDependency($and_secro);
 PrintDependency($ac_region);
 
-opendir(DIR, "mediatek/custom/out/$prj/modem");
+opendir(DIR, "$MTK_ROOT_CUSTOM_OUT/modem");
 @files = grep(/^SECURE_RO*/,readdir(DIR));
 
 my $count = 0;
 foreach my $file (@files)
 {
-	PrintDependency("mediatek/custom/out/$prj/modem/$file");
-	print SECRO_FH "SECRO[$count] = mediatek/custom/out/$prj/modem/$file\n";
+	PrintDependency("$MTK_ROOT_CUSTOM_OUT/modem/$file");
+	print SECRO_FH "SECRO[$count] = $MTK_ROOT_CUSTOM_OUT/modem/$file\n";
 	$count++;
 }
 
@@ -118,6 +125,7 @@ if($count>=10)
 
 while($count<=9)
 {
+	PrintDependency("mediatek/custom/common/secro/SECURE_RO");
 	print SECRO_FH "SECRO[$count] = mediatek/custom/common/secro/SECURE_RO\n";
 	$count++;
 }
@@ -129,8 +137,16 @@ system("chmod 777 $ac_region") == 0 or die "can't configure $ac_region as writab
 print "MTK_SEC_SECRO_AC_SUPPORT = $secro_ac\n";
 if (${secro_ac} eq "yes")
 {		
-	PrintDependency($secro_ini);
 	PrintDependency("$sml_dir/SML_ENCODE_KEY.ini");
 	PrintDependency($secro_tool);
-	system("./$secro_tool $secro_ini $sml_dir/SML_ENCODE_KEY.ini $secro_out") == 0 or die "SECRO POST Tool return error\n";
+	if (${legacy_mode} eq "1")
+	{
+	    system("./$secro_tool_legacy $secro_cfg $sml_dir/SML_ENCODE_KEY.ini $and_secro $md_secro $ac_region $secro_out") == 0 or die "SECRO POST Tool return error\n";
+	}
+	else
+	{
+	    system("./$secro_tool $secro_ini $sml_dir/SML_ENCODE_KEY.ini $secro_out") == 0 or die "SECRO POST Tool return error\n";
+	}
 }
+unlink($secro_ini);
+

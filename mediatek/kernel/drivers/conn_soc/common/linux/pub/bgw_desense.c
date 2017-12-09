@@ -1,3 +1,4 @@
+#include <linux/version.h>
 #include <linux/netlink.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -30,10 +31,20 @@ void bgw_destory_netlink_kernel()
 
 void send_command_to_daemon(const int command/*struct sk_buff *skb*/)
 {
+/*
+	struct iphdr *iph;
+	struct ethhdr *ehdr;
+	*/
 	struct nlmsghdr *nlh;
 	struct sk_buff *nl_skb;
 	int res;
 	MSG("here we will send command to native daemon\n");
+/*	if(skb == NULL)
+	{
+		ERR("invalid sk_buff\n");
+		return;
+	}
+*/
 	if(!g_nl_sk)
 	{
 		ERR("invalid socket\n");
@@ -59,7 +70,11 @@ void send_command_to_daemon(const int command/*struct sk_buff *skb*/)
 
 //	nlh = NLMSG_PUT(nl_skb, 0, 0, 0, NLMSG_SPACE(1500)-sizeof(struct nlmsghdr));
 	nlh = nlmsg_put(nl_skb, 0, 0, 0, MAX_NL_MSG_LEN, 0);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0))
 	NETLINK_CB(nl_skb).pid = 0;
+#else
+	NETLINK_CB(nl_skb).portid = 0;
+#endif
 //	memcpy(NLMSG_DATA(nlh), ACK, 5);
 	*(char *)NLMSG_DATA(nlh) = command;
 	res = netlink_unicast(g_nl_sk, nl_skb, pid, MSG_DONTWAIT);
@@ -123,7 +138,18 @@ static void nl_data_handler(struct sk_buff *__skb)
 
 int bgw_init_socket()
 {
+	
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,8,0))
+	struct netlink_kernel_cfg cfg;
+	memset(&cfg, 0, sizeof(cfg));
+	cfg.input = nl_data_handler;
+#endif
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0))
 	g_nl_sk = netlink_kernel_create(&init_net, NETLINK_TEST, 0, nl_data_handler, NULL, THIS_MODULE);
+#else
+	g_nl_sk = __netlink_kernel_create(&init_net, NETLINK_TEST, THIS_MODULE, &cfg);
+#endif
 	if(g_nl_sk == NULL)
 	{
 		ERR("netlink_kernel_create error\n");

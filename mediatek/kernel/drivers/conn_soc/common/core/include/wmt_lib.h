@@ -15,6 +15,7 @@
 #include <mach/mtk_wcn_cmb_stub.h>
 #include "stp_wmt.h"
 #include "wmt_plat.h"
+#include "wmt_idc.h"
 /*******************************************************************************
 *                         C O M P I L E R   F L A G S
 ********************************************************************************
@@ -288,11 +289,18 @@ extern VOID wmt_lib_set_patch_num(ULONG num);
 extern VOID wmt_lib_set_patch_info(P_WMT_PATCH_INFO pPatchinfo);
 extern INT32 wmt_lib_set_current_op(P_DEV_WMT pWmtDev, P_OSAL_OP pOp);
 extern P_OSAL_OP wmt_lib_get_current_op(P_DEV_WMT pWmtDev);
-extern INT32 wmt_lib_read_emi_info(UINT32 index,UINT8 *buf,UINT32 len);
 extern UINT8 *wmt_lib_get_fwinfor_from_emi(UINT8 section, UINT32 offset,UINT8 *buff,UINT32 len);
 extern INT32 wmt_lib_poll_cpupcr(UINT32 count,UINT16 sleep,UINT16 toAee);
 extern UINT8 *wmt_lib_get_cpupcr_xml_format(UINT32 *len);
 extern INT32 wmt_lib_register_thermal_ctrl_cb(thermal_query_ctrl_cb thermal_ctrl);
+extern UINT32 wmt_lib_set_host_assert_info(UINT32 type,UINT32 reason,UINT32 en);
+extern CHAR wmt_lib_co_clock_get(VOID);
+#if CFG_WMT_LTE_COEX_HANDLING
+extern MTK_WCN_BOOL wmt_lib_handle_idc_msg(ipc_ilm_t *idc_infor);
+#endif
+#if CFG_WMT_PS_SUPPORT
+extern UINT32 wmt_lib_quick_sleep_ctrl(UINT32 en);
+#endif
 #if CONSYS_ENALBE_SET_JTAG
 extern UINT32 wmt_lib_jtag_flag_set(UINT32 en);
 #endif

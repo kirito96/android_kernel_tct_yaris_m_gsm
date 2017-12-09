@@ -2,6 +2,9 @@
 #define _CFG_SETTING_IMGSENSOR_H_
 
 
+/*******************************************************************************
+* Image Sensor Orientation
+*******************************************************************************/
 SensorOrientation_T const&
 getSensorOrientation()
 {
@@ -14,12 +17,25 @@ getSensorOrientation()
 }
 
 
+/*******************************************************************************
+* Return fake orientation for front sensor or not
+*       MTRUE: return 90 for front sensor in degree 0, 
+*              return 270 for front sensor in degree 180.
+*       MFALSE: not return fake orientation.
+*******************************************************************************/
 MBOOL isRetFakeSubOrientation()  
 {
 	return MFALSE;
 }
 
 
+/*******************************************************************************
+* Sensor Input Data Bit Order
+*   Return:
+*       0   : raw data input [9:2]
+*       1   : raw data input [7:0]
+*       -1  : error
+*******************************************************************************/
 MINT32
 getSensorInputDataBitOrder(EDevId const eDevId)
 {
@@ -38,6 +54,13 @@ getSensorInputDataBitOrder(EDevId const eDevId)
 }
 
 
+/*******************************************************************************
+* Sensor Pixel Clock Inverse in PAD side.
+*   Return:
+*       0   : no inverse
+*       1   : inverse
+*       -1  : error
+*******************************************************************************/
 MINT32
 getSensorPadPclkInv(EDevId const eDevId)
 {
@@ -55,6 +78,13 @@ getSensorPadPclkInv(EDevId const eDevId)
     return  -1;
 }
 
+/*******************************************************************************
+* Sensor Placement Facing Direction
+*   Return:
+*       0   : Back side  
+*       1   : Front side (LCD side)
+*       -1  : error
+*******************************************************************************/
 MINT32  
 getSensorFacingDirection(EDevId const eDevId)
 {

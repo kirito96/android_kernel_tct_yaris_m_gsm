@@ -1,7 +1,57 @@
+/*
+ * Copyright (C) 2007 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+/*******************************************************************************
+ *
+ * Filename:
+ * ---------
+ *   AudDrv_Kernelc
+ *
+ * Project:
+ * --------
+ *   MT6583  Audio Driver Kernel Function
+ *
+ * Description:
+ * ------------
+ *   Audio register
+ *
+ * Author:
+ * -------
+ * Chipeng Chang
+ *
+ *------------------------------------------------------------------------------
+ * $Revision: #1 $
+ * $Modtime:$
+ * $Log:$
+ *
+ * 09 11 2013 kh.hung
+ * [ALPS00996254] MR2 migration for MT6572
+ * Support mSBC.
+ *
+ *
+ *******************************************************************************/
 
 
+/*****************************************************************************
+ *                     C O M P I L E R   F L A G S
+ *****************************************************************************/
 
 
+/*****************************************************************************
+ *                E X T E R N A L   R E F E R E N C E S
+ *****************************************************************************/
 #include "AudDrv_BTCVSD.h"
 #include "AudDrv_BTCVSD_ioctl.h"
 
@@ -38,6 +88,10 @@
 #include <asm/div64.h>
 #include <linux/aee.h>
 
+/*****************************************************************************
+*           DEFINE AND CONSTANT
+******************************************************************************
+*/
 
 #define AUDIO_BTSYS_PKV_PHYSICAL_BASE  (0x18000000)
 #define AUDIO_BTSYS_SRAM_BANK2_PHYSICAL_BASE  (0x18080000)
@@ -48,6 +102,9 @@
 
 #define MASK_ALL		  (0xFFFFFFFF)
 
+/*****************************************************************************
+*           V A R I A B L E     D E L A R A T I O N
+*******************************************************************************/
 
 static char       auddrv_btcvsd_name[]       = "AudioMTKBTCVSD";
 static u64        AudDrv_btcvsd_dmamask      = 0xffffffffUL;
@@ -78,6 +135,7 @@ static struct{
    CVSD_STATE uTXState;
    CVSD_STATE uRXState;
    kal_bool  fIsStructMemoryOnMED;
+   kal_bool  fWideBand;
 }btsco;
 
 static volatile kal_uint32 *bt_hw_REG_PACKET_W, *bt_hw_REG_PACKET_R, *bt_hw_REG_CONTROL;
@@ -202,6 +260,15 @@ static int AudDrv_btcvsd_Free_Buffer(struct file *fp, kal_uint8 isRX)
 }
 
 
+/*****************************************************************************
+ * FILE OPERATION FUNCTION
+ *  AudDrv_btcvsd_ioctl
+ *
+ * DESCRIPTION
+ *  IOCTL Msg handle
+ *
+ *****************************************************************************
+ */
 static long AudDrv_btcvsd_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 {
     int  ret = 0;
@@ -299,25 +366,15 @@ static long AudDrv_btcvsd_ioctl(struct file *fp, unsigned int cmd, unsigned long
 static void AudDrv_BTCVSD_DataTransfer(BT_SCO_DIRECT uDir, kal_uint8 *pSrc, kal_uint8 *pDst, kal_uint32 uBlockSize, kal_uint32 uBlockNum, CVSD_STATE uState)
 {
    kal_int32 i, j;
-   kal_uint32 u4SilencePattern = 0x55555555;
-   kal_uint16 u2SilencePattern = 0x5555;
+
    if(uBlockSize == 60 || uBlockSize == 120 || uBlockSize == 20)
    {
       kal_uint32 *pSrc32 = (kal_uint32*)pSrc;
       kal_uint32 *pDst32 = (kal_uint32*)pDst;
-      if((uState ==  BT_SCO_TXSTATE_ENDING)||(uState ==  BT_SCO_RXSTATE_ENDING))
+
+      for(i=0 ; i<(uBlockSize*uBlockNum/4) ; i++)
       {
-         for(i=0 ; i<(uBlockSize*uBlockNum/4) ; i++)
-         {
-            *pDst32++ = u4SilencePattern;
-         }
-      }
-      else
-      {
-         for(i=0 ; i<(uBlockSize*uBlockNum/4) ; i++)
-         {
-            *pDst32++ = *pSrc32++;
-         }
+         *pDst32++ = *pSrc32++;
       }
    }
    else
@@ -326,19 +383,9 @@ static void AudDrv_BTCVSD_DataTransfer(BT_SCO_DIRECT uDir, kal_uint8 *pSrc, kal_
       kal_uint16 *pDst16 = (kal_uint16*)pDst;
       for(j=0 ; j< uBlockNum ; j++)
       {
-         if((uState ==  BT_SCO_TXSTATE_ENDING)||(uState ==  BT_SCO_RXSTATE_ENDING))
+         for(i=0 ; i<(uBlockSize/2) ; i++)
          {
-            for(i=0 ; i<(uBlockSize/2) ; i++)
-            {
-               *pDst16++ = u2SilencePattern;
-            }
-         }
-         else
-         {
-            for(i=0 ; i<(uBlockSize/2) ; i++)
-            {
-               *pDst16++ = *pSrc16++;
-            }
+            *pDst16++ = *pSrc16++;
          }
          if(uDir == BT_SCO_DIRECT_BT2ARM)
          {
@@ -365,6 +412,20 @@ static void AudDrv_BTCVSD_ReadFromBT(BT_SCO_PACKET_LEN uLen, kal_uint32 uPacketL
 	//printk("AudDrv_BTCVSD_ReadFromBT()uPacketLength=%d,uPacketNumber=%d, btsco.uRXState=%d\n",uPacketLength, uPacketNumber,btsco.uRXState);
 	AudDrv_BTCVSD_DataTransfer(BT_SCO_DIRECT_BT2ARM, pSrc, btsco.pRX->TempPacketBuf, uPacketLength, uPacketNumber, btsco.uRXState);
 	//printk("AudDrv_BTCVSD_ReadFromBT()AudDrv_BTCVSD_DataTransfer DONE!!!,uControl=0x%x,uLen=%d \n",uControl,uLen);
+	
+	if(btsco.uRXState ==  BT_SCO_RXSTATE_ENDING)
+  {
+#if defined(__MSBC_CODEC_SUPPORT__)
+     if(btsco.fWideBand)
+     {
+        memset((void *)(btsco.pRX->TempPacketBuf),    0, uPacketLength*uPacketNumber*sizeof(kal_uint8));
+     }
+     else
+#endif
+     {
+        memset((void *)(btsco.pRX->TempPacketBuf), 0x55, uPacketLength*uPacketNumber*sizeof(kal_uint8));
+     }
+   }
 	
 	spin_lock_irqsave(&auddrv_BTCVSDRX_lock, flags);
 	for(i=0;i<uBlockSize;i++)
@@ -398,7 +459,16 @@ static void AudDrv_BTCVSD_WriteToBT(BT_SCO_PACKET_LEN uLen, kal_uint32 uPacketLe
 	{
 		if(btsco.pTX->fUnderflow)
 		{
-			memset((void *)(btsco.pTX->TempPacketBuf), 0x55, uPacketLength*uPacketNumber);
+#if defined(__MSBC_CODEC_SUPPORT__)
+			if(btsco.fWideBand)
+			{
+				memset((void *)(btsco.pTX->TempPacketBuf),    0, uPacketLength*uPacketNumber*sizeof(kal_uint8));
+			}
+			else
+#endif
+			{
+				memset((void *)(btsco.pTX->TempPacketBuf), 0x55, uPacketLength*uPacketNumber*sizeof(kal_uint8));
+			}
 		}
 		else
 		{
@@ -827,6 +897,11 @@ static ssize_t AudDrv_btcvsd_read(struct file *fp,  char __user *data, size_t co
 }
 
 
+/**************************************************************************
+ * STRUCT
+ *  File Operations and misc device
+ *
+ **************************************************************************/
 
 static struct file_operations AudDrv_btcvsd_fops = {
    .owner   = THIS_MODULE,
@@ -846,6 +921,14 @@ static struct miscdevice AudDrv_btcvsd_device = {
    .fops = &AudDrv_btcvsd_fops,
 };
 
+/***************************************************************************
+ * FUNCTION
+ *  AudDrv_btcvsd_mod_init / AudDrv_btcvsd_mod_exit
+ *
+ * DESCRIPTION
+ *  Module init and de-init (only be called when system boot up)
+ *
+ **************************************************************************/
 
 static struct platform_driver AudDrv_btcvsd = {
    .probe	 = AudDrv_btcvsd_probe,

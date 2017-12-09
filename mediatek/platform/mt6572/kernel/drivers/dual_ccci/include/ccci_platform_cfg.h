@@ -1,6 +1,12 @@
 #ifndef __CCCI_PLATFORM_CFG_H__
 #define __CCCI_PLATFORM_CFG_H__
-
+#include <linux/version.h>
+#include <mach/irqs.h>
+#include <mach/mt_irq.h>
+#include <mach/mt_reg_base.h>
+#include <mach/mt_typedefs.h>
+#include <mach/mt_boot.h>
+#include <mach/sync_write.h>
 //-------------ccci driver configure------------------------//
 #define MD1_DEV_MAJOR		(184)
 #define MD2_DEV_MAJOR		(169)
@@ -94,5 +100,87 @@
 #define  ENABLE_DRAM_API						//awlays enable for bring up
 
 
+
+/*******************AP CCIF register define**********************/
+#define AP_CCIF0_BASE			(AP_CCIF_BASE)
+#define CCIF_CON(addr)			((addr) + 0x0100)
+#define CCIF_BUSY(addr)			((addr) + 0x0104)
+#define CCIF_START(addr)		((addr) + 0x0108)
+#define CCIF_TCHNUM(addr)		((addr) + 0x010C)
+#define CCIF_RCHNUM(addr)		((addr) + 0x0110)
+#define CCIF_ACK(addr)			((addr) + 0x0134)
+
+/* for CHDATA, the first half space belongs to AP and the remaining space belongs to MD */
+#define CCIF_TXCHDATA(addr) 	((addr) + 0x0200)
+#define CCIF_RXCHDATA(addr) 	((addr) + 0x0200 + 128)
+
+/* Modem CCIF */
+#define MD_CCIF0_BASE			(AP_CCIF_BASE)
+#define MD_CCIF_CON(base)			((base) + 0x0120)
+#define MD_CCIF_BUSY(base)			((base) + 0x0124)
+#define MD_CCIF_START(base)		((base) + 0x0128)
+#define MD_CCIF_TCHNUM(base)		((base) + 0x012C)
+#define MD_CCIF_RCHNUM(base)		((base) + 0x0130)
+#define MD_CCIF_ACK(base)		((base) + 0x114)
+
+/* define constant */
+#define CCIF_CON_SEQ 0x00 /* sequencial */
+#define CCIF_CON_ARB 0x01 /* arbitration */
+//#define CCIF_IRQ_CODE MT_AP_CCIF_IRQ_ID
+
+// CCIF HW specific macro definition
+#define CCIF_STD_V1_MAX_CH_NUM				(8)
+#define CCIF_STD_V1_RUN_TIME_DATA_OFFSET	(0x240)
+#define CCIF_STD_V1_RUM_TIME_MEM_MAX_LEN	(256-64)
+
+
+/*******************other register define**********************/
+//modem debug register and bit
+#define MD_DEBUG_MODE				(0xF0001050)
+#define MD_DBG_JTAG_BIT				1<<8
+
+#define INFRACFG_BASE			INFRA_SYS_CFG_AO_BASE
+//#define MCUSYS_CFGREG_BASE			(0xF0200000)
+
+/************************* define funtion macro **************/
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36))
+#define CCIF_MASK(irq) \
+        do {    \
+            mt65xx_irq_mask(irq);  \
+        } while (0)
+#define CCIF_UNMASK(irq) \
+        do {    \
+            mt65xx_irq_unmask(irq);  \
+        } while (0)
+
+#else
+#define CCIF_MASK(irq) \
+        do {    \
+            disable_irq(irq); \
+        } while (0)
+#define CCIF_UNMASK(irq) \
+        do {    \
+            enable_irq(irq); \
+        } while (0)
 #endif
+
+#define CCIF_CLEAR_PHY(pc)   do {	\
+            *CCIF_ACK(pc) = 0xFFFFFFFF; \
+        } while (0)
+
+
+//#define CCCI_WRITEL(addr,val) mt65xx_reg_sync_writel((val), (addr))
+//#define CCCI_WRITEW(addr,val) mt65xx_reg_sync_writew((val), (addr))
+//#define CCCI_WRITEB(addr,val) mt65xx_reg_sync_writeb((val), (addr))
+
+#define ccci_write32(a, v)			mt65xx_reg_sync_writel(v, a)
+#define ccci_write16(a, v)			mt65xx_reg_sync_writew(v, a)
+#define ccci_write8(a, v)			mt65xx_reg_sync_writeb(v, a)
+
+
+#define ccci_read32(a)				(*((volatile unsigned int*)a))
+#define ccci_read16(a)				(*((volatile unsigned short*)a))
+#define ccci_read8(a)				(*((volatile unsigned char*)a))
+
+#endif // __CCCI_PLATFORM_CFG_H__
 

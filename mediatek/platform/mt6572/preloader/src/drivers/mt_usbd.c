@@ -1,3 +1,39 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ *
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 /* ================================================================== */
 /* HEADER FILES                                                       */
@@ -5,11 +41,12 @@
 
 #include "typedefs.h"
 #include "platform.h"
-#include "mt6577_pdn_sw.h"
-#include "mt6577_pdn_hw.h"
 #include "mt_usbd.h"
 #include "mt_usbtty.h"
 
+/**************************************************************************
+*  USB DEBUG
+**************************************************************************/
 #define  MT6577_USB_DBG_LOG   0
 
 #if MT6577_USB_DBG_LOG
@@ -298,6 +335,8 @@ struct urb *urb, int max, int descriptor_type, int index)
 }
 
 
+/* Service standard usb requests, not all requests required for USBCV are
+supported here */
 
 static int ep0_standard_setup (struct urb *urb)
 {
@@ -872,7 +911,8 @@ static void mt_udc_ep0_handler (void)
     if (csr0 & EP0_SENTSTALL)
     {
         USB_LOG ("USB: [EP0] SENTSTALL\n");
-        /* needs implementation for exception handling here */
+        csr0 &= ~EP0_SENTSTALL;
+        __raw_writew (csr0, IECSR + CSR0);
         ep0_state = EP0_IDLE;
     }
 
@@ -1098,6 +1138,11 @@ void mt_udc_irq (u8 intrtx, u8 intrrx, u8 intrusb)
 
 }
 
+/* **************************************************************************
+*
+* Start of public functions.
+*
+* ************************************************************************** */
 
 /* Called to start packet transmission. */
 void mt_ep_write (struct mt_ep *endpoint)
@@ -1181,10 +1226,10 @@ static void udc_stall_ep (unsigned int ep_num, u8 dir)
 
     if (ep_num == 0)
     {
+        mt_udc_flush_fifo (ep_num, USB_DIR_OUT);
         csr = __raw_readw (IECSR + CSR0);
         csr |= EP0_SENDSTALL;
         __raw_writew (csr, IECSR + CSR0);
-        mt_udc_flush_fifo (ep_num, USB_DIR_OUT);
     }
     else
     {
@@ -1214,6 +1259,11 @@ static void udc_stall_ep (unsigned int ep_num, u8 dir)
     return;
 }
 
+/*
+* udc_setup_ep - setup endpoint
+*
+* Associate a physical endpoint with endpoint_instance and initialize FIFO
+*/
 void mt_setup_ep (struct mt_dev *device, unsigned int ep, struct mt_ep *endpoint)
 {
     u8 index;

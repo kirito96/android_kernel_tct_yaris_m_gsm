@@ -233,32 +233,19 @@ struct fm_gps_rtc_info {
     fm_s32             flag;           //rw flag
 };
 
-typedef enum {
-    FM_I2S_ON = 0,
-    FM_I2S_OFF
-} fm_i2s_state;
-
-typedef enum {
-    FM_I2S_MASTER = 0,
-    FM_I2S_SLAVE
-} fm_i2s_mode;
-
-typedef enum {
-    FM_I2S_32K = 0,
-    FM_I2S_44K,
-    FM_I2S_48K
-} fm_i2s_sample;
-
-struct fm_i2s_setting {
-    fm_s32 onoff;
-    fm_s32 mode;
-    fm_s32 sample;
-};
 typedef struct
 {
 	fm_s32 freq;
 	fm_s32 rssi;
 }fm_desense_check_t;
+
+typedef struct 
+{
+    uint16_t lower;             // lower band, Eg, 7600 -> 76.0Mhz
+    uint16_t upper;             // upper band, Eg, 10800 -> 108.0Mhz
+    int space;                  // 0x1: 50KHz, 0x2: 100Khz, 0x4: 200Khz
+    int cycle;                  // repeat times 
+}fm_full_cqi_log_t;
 
 typedef enum {
     FM_RX = 0,
@@ -318,6 +305,12 @@ struct fm_softmute_tune_t
 	fm_s32 rssi;              // RSSI of current channel
 	fm_u16 freq;				//current frequency
 	fm_bool valid;				    //current channel is valid(true) or not(false)
+};
+struct fm_search_threshold_t 
+{  
+	fm_s32 th_type;// 0, RSSI. 1,desense RSSI. 2,SMG.
+	fm_s32 th_val; //threshold value
+	fm_s32 reserve;
 };
 
 //init and deinit APIs
@@ -387,7 +380,8 @@ extern fm_s32 fm_restore_search(struct fm *fm);
 extern fm_s32 fm_dump_reg(void);
 extern fm_s32 fm_get_gps_rtc_info(struct fm_gps_rtc_info *src);
 extern fm_s32 fm_over_bt(struct fm *fm, fm_s32 flag);
-
+extern fm_s32 fm_set_search_th(struct fm *fm, struct fm_search_threshold_t parm);
+extern fm_s32 fm_get_aud_info(fm_audio_info_t *data);
 /*tx function*/
 extern fm_s32 fm_tx_support(struct fm *fm, fm_s32 *support);
 
@@ -396,8 +390,9 @@ extern fm_s32 fm_tune_tx(struct fm *fm, struct fm_tune_parm *parm);
 extern fm_s32 fm_powerdowntx(struct fm *fm);
 extern fm_s32 fm_rds_tx(struct fm *fm, struct fm_rds_tx_parm *parm);
 extern fm_s32 fm_rdstx_support(struct fm *fm, fm_s32 *support);
-extern fm_s32 fm_rdstx_enable(struct fm *fm, fm_s32 *support);
+extern fm_s32 fm_rdstx_enable(struct fm *fm, fm_s32 enable);
 extern fm_s32 fm_tx_scan(struct fm *fm, struct fm_tx_scan_parm *parm);
+fm_s32 fm_full_cqi_logger(fm_full_cqi_log_t *setting);
 
 #endif //__FM_MAIN_H__
 

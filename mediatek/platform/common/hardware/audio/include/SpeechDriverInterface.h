@@ -55,7 +55,7 @@ class SpeechDriverInterface
         virtual status_t PCM2WayRecordOff() = 0;
         virtual status_t PCM2WayOn(const bool wideband_on) = 0;
         virtual status_t PCM2WayOff() = 0;
-#if defined(MTK_DUAL_MIC_SUPPORT) || defined(MTK_AUDIO_HD_REC_SUPPORT) || defined(JRD_HDVOICE_CUST) /*modify for dual mic cust by yi.zheng.hz*/
+#if defined(MTK_DUAL_MIC_SUPPORT) || defined(MTK_AUDIO_HD_REC_SUPPORT)
         virtual status_t DualMicPCM2WayOn(const bool wideband_on, const bool record_only) = 0;
         virtual status_t DualMicPCM2WayOff() = 0;
 #endif
@@ -74,11 +74,13 @@ class SpeechDriverInterface
         virtual status_t SetAcousticLoopback(bool loopback_on) = 0;
         virtual status_t SetAcousticLoopbackBtCodec(bool enable_codec) = 0;
 
+        virtual status_t SetAcousticLoopbackDelayFrames(int32_t delay_frames) = 0;
 
         /**
          * volume control
          */
         virtual status_t SetDownlinkGain(int16_t gain) = 0;
+        virtual status_t SetEnh1DownlinkGain(int16_t gain) = 0;
         virtual status_t SetUplinkGain(int16_t gain) = 0;
         virtual status_t SetDownlinkMute(bool mute_on) = 0;
         virtual status_t SetUplinkMute(bool mute_on) = 0;
@@ -97,22 +99,24 @@ class SpeechDriverInterface
         virtual status_t SetSpeechEnhancement(bool enhance_on) = 0;
         virtual status_t SetSpeechEnhancementMask(const sph_enh_mask_struct_t &mask) = 0;
 
+        virtual status_t SetBtHeadsetNrecOn(const bool bt_headset_nrec_on) = 0;
+
 
         /**
          * speech enhancement parameters setting
          */
         virtual status_t SetNBSpeechParameters(const AUDIO_CUSTOM_PARAM_STRUCT *pSphParamNB) = 0;
-#if defined(MTK_DUAL_MIC_SUPPORT) || defined(JRD_HDVOICE_CUST) /*modify for dual mic cust by yi.zheng.hz*/
+#if defined(MTK_DUAL_MIC_SUPPORT)
         virtual status_t SetDualMicSpeechParameters(const AUDIO_CUSTOM_EXTRA_PARAM_STRUCT *pSphParamDualMic) = 0;
 #endif
 #if defined(MTK_WB_SPEECH_SUPPORT)
         virtual status_t SetWBSpeechParameters(const AUDIO_CUSTOM_WB_PARAM_STRUCT *pSphParamWB) = 0;
 #endif
-/*porting for ALPS00712639(For_JRDHZ72_WE_JB3_ALPS.JB3.MP.V1_P18)*/
-#if defined(MTK_VIBSPK_SUPPORT)
-       virtual status_t GetVibSpkParam(void* eVibSpkParam) = 0;
-       virtual status_t SetVibSpkParam(void* eVibSpkParam) = 0;
-#endif
+        //#if defined(MTK_VIBSPK_SUPPORT)
+        virtual status_t GetVibSpkParam(void *eVibSpkParam) = 0;
+        virtual status_t SetVibSpkParam(void *eVibSpkParam) = 0;
+        //#endif
+
 
         /**
          * check whether modem is ready.
@@ -125,22 +129,12 @@ class SpeechDriverInterface
          */
         virtual status_t ModemDumpSpeechParam() = 0;
 
-        /* Add by yeqing.yan Start */
-        virtual bool LAD_PCM4WayOn() =0;
-        virtual bool LAD_PCM4WayOff() =0;
-        virtual bool LAD_VoiceBufferPlay() =0;
-        virtual bool LAD_VoiceBufferClean() =0;
-        virtual bool LAD_VoiceBufferStop() =0;
-        virtual bool LAD_VoiceBufferRouteBegin() =0;
-        virtual bool LAD_VoiceBufferRouteEnd() =0;
-        virtual int32 LAD_GetPCM4WayState() =0;
-        /* Add by yeqing.yan End */
-
 
         /**
          * get AP side modem function status
          */
-        inline bool      GetApSideModemStatus(const modem_status_mask_t modem_status_mask) const {
+        inline bool      GetApSideModemStatus(const modem_status_mask_t modem_status_mask) const
+        {
             return ((mApSideModemStatus & modem_status_mask) > 0);
         }
 
@@ -150,12 +144,15 @@ class SpeechDriverInterface
          */
         void             WaitUntilSignaledOrTimeout(unsigned milisecond) { mMutex.lock(); mCondition.waitRelative(mMutex, milliseconds(milisecond)); mMutex.unlock(); }
         void             Signal() { mMutex.lock(); mCondition.signal(); mMutex.unlock();}
-
-
-
+#ifdef EVDO_DT_SUPPORT
+        virtual void SetWarningTone(int toneid) { return; }
+        virtual void StopWarningTone() {return;}
+#endif
     protected:
-        SpeechDriverInterface() {
+        SpeechDriverInterface()
+        {
             mDownlinkGain   = 0x8000;
+            mDownlinkenh1Gain = 0x8000;
             mUplinkGain     = 0;
             mSideToneGain   = 0;
             mUplinkMuteOn   = false;
@@ -167,6 +164,10 @@ class SpeechDriverInterface
 
             mRecordSampleRateType = RECORD_SAMPLE_RATE_08K;
             mRecordChannelType    = RECORD_CHANNEL_MONO;
+
+            mBtHeadsetNrecOn = true;
+
+            mAcousticLoopbackDelayFrames = 0;
         }
 
 
@@ -179,11 +180,13 @@ class SpeechDriverInterface
         /**
          * set/reset AP side modem function status
          */
-        inline void      SetApSideModemStatus(const modem_status_mask_t modem_status_mask) {
+        inline void      SetApSideModemStatus(const modem_status_mask_t modem_status_mask)
+        {
             ASSERT(GetApSideModemStatus(modem_status_mask) == false);
             mApSideModemStatus |= modem_status_mask;
         }
-        inline void      ResetApSideModemStatus(const modem_status_mask_t modem_status_mask) {
+        inline void      ResetApSideModemStatus(const modem_status_mask_t modem_status_mask)
+        {
             ASSERT(GetApSideModemStatus(modem_status_mask) == true);
             mApSideModemStatus &= (~modem_status_mask);
         }
@@ -201,6 +204,7 @@ class SpeechDriverInterface
         modem_index_t    mModemIndex;
 
         int16_t          mDownlinkGain;
+        int16_t          mDownlinkenh1Gain;
         int16_t          mUplinkGain;
         int16_t          mSideToneGain;
 
@@ -219,18 +223,21 @@ class SpeechDriverInterface
         record_sample_rate_t mRecordSampleRateType;
         record_channel_t     mRecordChannelType;
 
-		//for BT SW BT CVSD loopback test
-		bool mUseBtCodec;
+        //for BT SW BT CVSD loopback test
+        bool mUseBtCodec;
 
-        /* Add by yeqing.yan Start */
-        int32 mPCM4WayState;
-        /* Add by yeqing.yan End */
+        // BT Headset NREC
+        bool mBtHeadsetNrecOn;
+
+        // loopback delay frames (1 frame = 20 ms)
+        uint32_t mAcousticLoopbackDelayFrames;
 };
 
 
 void SpeechDriverInterface::CheckApSideModemStatusAllOffOrDie()
 {
-    if (mApSideModemStatus != 0) {
+    if (mApSideModemStatus != 0)
+    {
         ASSERT(GetApSideModemStatus(SPEECH_STATUS_MASK)   != true);
         ASSERT(GetApSideModemStatus(RECORD_STATUS_MASK)   != true);
         ASSERT(GetApSideModemStatus(BGS_STATUS_MASK)      != true);

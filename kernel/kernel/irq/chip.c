@@ -612,13 +612,9 @@ void handle_percpu_devid_irq(unsigned int irq, struct irq_desc *desc)
 	if (chip->irq_ack)
 		chip->irq_ack(&desc->irq_data);
 
-#ifndef CONFIG_MTK_SCHED_TRACERS
 	trace_irq_handler_entry(irq, action);
-#endif
 	res = action->handler(irq, dev_id);
-#ifndef CONFIG_MTK_SCHED_TRACERS
 	trace_irq_handler_exit(irq, action, res);
-#endif
 
 	if (chip->irq_eoi)
 		chip->irq_eoi(&desc->irq_data);

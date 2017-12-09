@@ -1,4 +1,3 @@
-
 #ifndef _CFG_ISP_TUNING_IDX_H_
 #define _CFG_ISP_TUNING_IDX_H_
 

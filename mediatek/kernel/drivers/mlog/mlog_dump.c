@@ -14,7 +14,7 @@
 
 
 extern wait_queue_head_t mlog_wait;
-extern void mlog_doopen();
+extern void mlog_doopen(void);
 extern int mlog_unread(void);
 extern int mlog_doread(char __user *buf, size_t len);
 extern int mlog_show_info(struct seq_file *m, void *v);

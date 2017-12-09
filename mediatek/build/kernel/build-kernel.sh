@@ -1,4 +1,6 @@
 #!/bin/sh
+
+
 source ../mediatek/build/shell.sh ../ kernel
 
 # Default settings

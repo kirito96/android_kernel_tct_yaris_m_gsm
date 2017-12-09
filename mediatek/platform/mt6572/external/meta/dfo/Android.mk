@@ -10,7 +10,11 @@ LOCAL_C_INCLUDES:= \
 	$(MTK_PATH_CUSTOM)/cgen/inc \
 	$(MTK_PATH_SOURCE)/external/nvram/libnvram \
 	$(TARGET_OUT_HEADERS)/dfo
-    
+
+ifneq ($(ALWAYSON_DFOSET), yes)
+LOCAL_CFLAGS +=-DNOT_SUPPORT_DFO
+endif
+
 LOCAL_MODULE:=libmeta_dfo
 LOCAL_PRELINK_MODULE:=false
 

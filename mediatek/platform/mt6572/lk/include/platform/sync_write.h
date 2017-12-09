@@ -6,6 +6,10 @@
             __asm__ __volatile__ ("dsb" : : : "memory"); \
         } while (0)
 
+#define mt_reg_sync_writel(v, a)    mt65xx_reg_sync_writel(v, a)
+#define mt_reg_sync_writew(v, a)    mt65xx_reg_sync_writew(v, a)
+#define mt_reg_sync_writeb(v, a)    mt65xx_reg_sync_writeb(v, a)
+
 #define mt65xx_reg_sync_writel(v, a) \
         do {    \
             *(volatile unsigned int *)(a) = (v);    \

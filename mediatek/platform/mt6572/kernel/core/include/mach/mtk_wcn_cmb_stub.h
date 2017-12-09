@@ -19,7 +19,8 @@
 *                                 M A C R O S
 ********************************************************************************
 */
-
+//#define MTK_WCN_CMB_AUD_IO_NAMING_STYLE_0 1 // Audio GPIO naming style for 73/75/77
+#define MTK_WCN_CMB_AUD_IO_NAMING_STYLE_1 1   // Audio GPIO naming style for 89/8135
 
 /*******************************************************************************
 *                    E X T E R N A L   R E F E R E N C E S
@@ -125,6 +126,8 @@ extern void mtk_wcn_cmb_stub_func_ctrl (unsigned int type, unsigned int on);
 extern signed long mtk_wcn_cmb_stub_query_ctrl(void);
 extern int board_sdio_ctrl (unsigned int sdio_port_num, unsigned int on);
 
+extern int mtk_wcn_wmt_chipid_query(void);
+extern void mtk_wcn_wmt_set_chipid(int chipid);
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************

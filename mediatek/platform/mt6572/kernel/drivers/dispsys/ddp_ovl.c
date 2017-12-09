@@ -2,7 +2,7 @@
 #include <linux/mm.h>
 #include <linux/mm_types.h>
 #include <linux/module.h>
-#include <linux/autoconf.h>
+#include <generated/autoconf.h>
 #include <linux/init.h>
 #include <linux/types.h>
 #include <linux/cdev.h>
@@ -29,6 +29,9 @@
 #include "ddp_reg.h"
 #include "ddp_ovl.h"
 #include "ddp_matrix_para.h"
+#include "ddp_hal.h"
+#include "ddp_drv.h"
+#include "ddp_debug.h"
 
 //#define DDP_ROTATION_SUPPORT    // 180 degree only
 
@@ -38,7 +41,29 @@ enum OVL_COLOR_SPACE {
     OVL_COLOR_SPACE_YUV,
 };
 
-int OVLStart() {
+#define OVL_COLOR_BASE 30
+enum OVL_INPUT_FORMAT {
+    OVL_INPUT_FORMAT_RGB888     = 0,
+    OVL_INPUT_FORMAT_RGB565     = 1,
+    OVL_INPUT_FORMAT_ARGB8888   = 2,
+    OVL_INPUT_FORMAT_PARGB8888  = 3,
+    OVL_INPUT_FORMAT_xRGB8888   = 4,
+    OVL_INPUT_FORMAT_YUYV       = 8,
+    OVL_INPUT_FORMAT_UYVY       = 9,
+    OVL_INPUT_FORMAT_YVYU       = 10,
+    OVL_INPUT_FORMAT_VYUY       = 11,
+    OVL_INPUT_FORMAT_YUV444     = 15,
+    OVL_INPUT_FORMAT_UNKNOWN     = 16,
+    
+    OVL_INPUT_FORMAT_ABGR8888   = OVL_INPUT_FORMAT_ARGB8888 +OVL_COLOR_BASE,
+    OVL_INPUT_FORMAT_BGR888     = OVL_INPUT_FORMAT_RGB888   +OVL_COLOR_BASE,
+    OVL_INPUT_FORMAT_BGR565     = OVL_INPUT_FORMAT_RGB565   +OVL_COLOR_BASE,
+    OVL_INPUT_FORMAT_PABGR8888  = OVL_INPUT_FORMAT_PARGB8888+OVL_COLOR_BASE,
+    OVL_INPUT_FORMAT_xBGR8888   = OVL_INPUT_FORMAT_xRGB8888 +OVL_COLOR_BASE,
+};
+enum OVL_INPUT_FORMAT ovl_fmt_convert(DpColorFormat fmt);
+
+int OVLStart(void) {
     
     DISP_REG_SET(DISP_REG_OVL_INTEN, 0x0f);
     DISP_REG_SET(DISP_REG_OVL_EN, 0x01);
@@ -46,7 +71,7 @@ int OVLStart() {
     return 0;
 }
 
-int OVLStop() {
+int OVLStop(void) {
     DISP_REG_SET(DISP_REG_OVL_INTEN, 0x00);
     DISP_REG_SET(DISP_REG_OVL_EN, 0x00);
     DISP_REG_SET(DISP_REG_OVL_INTSTA, 0x00);
@@ -54,7 +79,7 @@ int OVLStop() {
     return 0;
 }
 
-int OVLReset() {
+int OVLReset(void) {
 
     unsigned int delay_cnt = 0;
     unsigned int regValue;
@@ -66,7 +91,7 @@ int OVLReset() {
         delay_cnt++;
         if(delay_cnt>10000)
         {
-            printk("[DDP] error, OVLReset() timeout! \n");
+            DDP_DRV_ERR("[DDP] error, OVLReset() timeout! \n");
             break;
         }
     }
@@ -75,7 +100,7 @@ int OVLReset() {
     return 0;
 }
 
-int OVLInit() {
+int OVLInit(void) {
 
     DISP_REG_SET(DISP_REG_OVL_ROI_SIZE    , 0x00);           // clear regs
     DISP_REG_SET(DISP_REG_OVL_ROI_BGCLR   , 0x00);
@@ -118,7 +143,7 @@ int OVLROI(unsigned int bgW,
 {
     if((bgW > OVL_MAX_WIDTH) || (bgH > OVL_MAX_HEIGHT))
     {
-        printk("error: OVLROI(), exceed OVL max size, w=%d, h=%d \n", bgW, bgH);		
+        DDP_DRV_ERR("error: OVLROI(), exceed OVL max size, w=%d, h=%d \n", bgW, bgH);		
         ASSERT(0);
     }
 
@@ -147,7 +172,7 @@ int OVLLayerSwitch(unsigned layer, bool en) {
             DISP_REG_SET_FIELD(SRC_CON_FLD_L3_EN, DISP_REG_OVL_SRC_CON, en);
             break;
         default:
-            printk("error: invalid layer=%d \n", layer);           // invalid layer
+            DDP_DRV_ERR("error: invalid layer=%d \n", layer);           // invalid layer
             ASSERT(0);
     }
 
@@ -183,7 +208,7 @@ int OVL3DConfig(unsigned int layer_id,
             DISP_REG_SET_FIELD(L3_CON_FLD_R_FIRST,   DISP_REG_OVL_L3_CON, r_first);
             break;
         default:
-            printk("error: OVL3DConfig(), invalid layer=%d \n", layer_id);           // invalid layer
+            DDP_DRV_ERR("error: OVL3DConfig(), invalid layer=%d \n", layer_id);           // invalid layer
             ASSERT(0);
     }
 	  
@@ -191,7 +216,7 @@ int OVL3DConfig(unsigned int layer_id,
 }
 int OVLLayerConfig(unsigned int layer,
                    unsigned int source, 
-                   unsigned int fmt, 
+                   DpColorFormat format, 
                    unsigned int addr, 
                    unsigned int src_x,     // ROI x offset
                    unsigned int src_y,     // ROI y offset
@@ -212,9 +237,11 @@ int OVLLayerConfig(unsigned int layer,
     unsigned matrix_transform;
     unsigned mode = 0xdeaddead;                     // yuv to rgb conversion required
     unsigned int rgb_swap = 0;
+    enum OVL_INPUT_FORMAT fmt;
 
     ASSERT((dst_w <= OVL_MAX_WIDTH) && (dst_h <= OVL_MAX_HEIGHT));
 
+    fmt = ovl_fmt_convert(format);
     if(fmt==OVL_INPUT_FORMAT_ABGR8888  ||
        fmt==OVL_INPUT_FORMAT_PABGR8888 ||
        fmt==OVL_INPUT_FORMAT_xBGR8888 ||
@@ -252,13 +279,13 @@ int OVLLayerConfig(unsigned int layer,
 
     if((source == OVL_LAYER_SOURCE_SCL || source == OVL_LAYER_SOURCE_PQ) &&
        (fmt != OVL_INPUT_FORMAT_YUV444)) {
-        printk("error: direct link to OVL only support YUV444! \n" );
+        DDP_DRV_ERR("error: direct link to OVL only support YUV444! \n" );
         ASSERT(0);                           // direct link support YUV444 only
     }
 
     if((source == OVL_LAYER_SOURCE_MEM && addr == 0))
     {
-        printk("error: source from memory, but addr is 0! \n");
+        DDP_DRV_ERR("error: source from memory, but addr is 0! \n");
         ASSERT(0);                           // direct link support YUV444 only
     }
 
@@ -294,7 +321,7 @@ int OVLLayerConfig(unsigned int layer,
         case OVL_INPUT_FORMAT_UYVY:
         case OVL_INPUT_FORMAT_YVYU:
         case OVL_INPUT_FORMAT_VYUY:
-            matrix_transform = 0x6;
+            matrix_transform = 0x4;
             break;
         default:
             ASSERT(0);      // invalid input format
@@ -553,9 +580,9 @@ int OVLLayerConfig(unsigned int layer,
             ASSERT(0);       // invalid layer index
     }
 
-    if(0)//if(w==1080)
+    if(1)//if(w==1080) 
     {
-        // printk("[DDP]set 1080p ultra \n");
+        // DDP_DRV_DBG("[DDP]set 1080p ultra \n");
         DISP_REG_SET(DISP_REG_OVL_RDMA0_MEM_GMC_SETTING, 0x00f00040);
         DISP_REG_SET(DISP_REG_OVL_RDMA1_MEM_GMC_SETTING, 0x00f00040);
         DISP_REG_SET(DISP_REG_OVL_RDMA2_MEM_GMC_SETTING, 0x00f00040);
@@ -601,10 +628,53 @@ void OVLLayerTdshpEn(unsigned layer, bool en)
     }
 }
 
+
 void OVLEnableIrq(unsigned int value) 
 {
     DISP_REG_SET(DISP_REG_OVL_INTSTA, 0x00);
     DISP_REG_SET(DISP_REG_OVL_INTEN, value);
+}
+
+
+enum OVL_INPUT_FORMAT ovl_fmt_convert(DpColorFormat fmt)
+{
+    enum OVL_INPUT_FORMAT ovl_fmt = OVL_INPUT_FORMAT_UNKNOWN;
+
+    DDP_DRV_DBG("BOOT ovl_fmt_convert 0 fmt=%d, ovl_fmt=%d \n", fmt, ovl_fmt);
+    switch(fmt)
+    {
+        case eYUY2             :
+          ovl_fmt = OVL_INPUT_FORMAT_YUYV; break;
+        case eUYVY             :
+          ovl_fmt = OVL_INPUT_FORMAT_UYVY; break;
+        case eYVYU             :
+          ovl_fmt = OVL_INPUT_FORMAT_YVYU; break;
+        case eVYUY             :
+          ovl_fmt = OVL_INPUT_FORMAT_VYUY; break;
+        case eRGB565           : 
+          ovl_fmt = OVL_INPUT_FORMAT_RGB565; break;
+        case eRGB888           :  
+          ovl_fmt = OVL_INPUT_FORMAT_RGB888; break;
+        case eBGR888           : 
+          ovl_fmt = OVL_INPUT_FORMAT_BGR888; break;
+        case eARGB8888         :
+          ovl_fmt = OVL_INPUT_FORMAT_ARGB8888; break;
+        case eABGR8888         :
+          ovl_fmt = OVL_INPUT_FORMAT_ABGR8888; break;                                
+        case ePARGB8888        :
+          ovl_fmt = OVL_INPUT_FORMAT_PARGB8888; break;
+        case ePABGR8888        :
+          ovl_fmt = OVL_INPUT_FORMAT_PABGR8888; break;          
+        case eXARGB8888        :  
+          ovl_fmt = OVL_INPUT_FORMAT_xRGB8888; break;
+          
+        default:
+          DDP_DRV_ERR("error: DDP, unknown ovl input format = %d\n", fmt);
+    }
+
+    DDP_DRV_DBG("BOOT ovl_fmt_convert 1 fmt=%d, ovl_fmt=%d \n", fmt, ovl_fmt);
+    
+    return  ovl_fmt;   
 }
 
 

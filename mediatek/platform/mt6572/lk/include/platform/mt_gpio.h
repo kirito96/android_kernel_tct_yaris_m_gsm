@@ -1,21 +1,19 @@
 #ifndef _MT_GPIO_H_
 #define _MT_GPIO_H_
 
+#include <debug.h>
+#include <platform/mt_typedefs.h>
 #include <cust_gpio_usage.h>
 #include <platform/gpio_const.h>
 //#if !defined(MACH_FPGA)
 //#define MT_GPIO_ENABLED 1
 //#endif
 
-#include <platform/mt_typedefs.h>
-#include <debug.h>
-//#include <asm/mach-types.h>
-//#include <common.h>
 /*----------------------------------------------------------------------------*/
 //  Error Code No.
-#define RSUCCESS        0
-#define ERACCESS        1
-#define ERINVAL         2
+#define RSUCCESS	0
+#define ERACCESS	1
+#define ERINVAL		2
 #define ERWRAPPER	3
 /*----------------------------------------------------------------------------*/
 #ifndef s32
@@ -25,10 +23,9 @@
 	#define s64 signed long long
 #endif
          
-
-#define MAX_GPIO_PIN    (GPIO_MAX)
+#define MAX_GPIO_PIN    (MT_GPIO_BASE_MAX)
 /******************************************************************************
-* Enumeration for Clock output
+* Enumeration for GPIO pin
 ******************************************************************************/
 /* GPIO MODE CONTROL VALUE*/
 typedef enum {
@@ -114,12 +111,12 @@ typedef enum {
     CLK_OUT3,
     CLK_OUT4,
     CLK_OUT5,
-    CLK_MAX	
+    CLK_MAX
 }GPIO_CLKOUT;
 
 typedef enum CLK_SRC
 {
-    CLK_SRC_UNSUPPORTED = -1,	
+    CLK_SRC_UNSUPPORTED = -1,
     CLK_SRC_F32K 	= 0x2,
     CLK_SRC_F26M 	= 0x4,
     CLK_SRC_FAXI0 	= 0x6,
@@ -145,8 +142,8 @@ typedef enum {
     GPIO_VIO_MAX,
 } GPIO_POWER;
 /*----------------------------------------------------------------------------*/
-typedef struct {    
-    u32 val;        
+typedef struct {
+    u32 val;
     u32 set;
     u32 rst;
     u32 _align1;
@@ -154,27 +151,27 @@ typedef struct {
 /*----------------------------------------------------------------------------*/
 typedef struct {
     VAL_REGS    dir[5];             /*0x0000 ~ 0x004F: 80  bytes*/
-    u8          rsv00[176];         /*0x0050 ~ 0x00FF: 176 bytes*/    
+    u8          rsv00[176];         /*0x0050 ~ 0x00FF: 176 bytes*/
     VAL_REGS    dout[5];            /*0x0100 ~ 0x014F: 80  bytes*/
     u8          rsv01[176];         /*0x0150 ~ 0x01FF: 176 bytes*/
     VAL_REGS    din[5];             /*0x0200 ~ 0x024F: 80  bytes*/
     u8          rsv02[176];         /*0x0250 ~ 0x02FF: 176 bytes*/
-    VAL_REGS    mode[20];           /*0x0300 ~ 0x043F: 320 bytes*/  
+    VAL_REGS    mode[20];           /*0x0300 ~ 0x043F: 320 bytes*/
 } GPIO_REGS;
 /*----------------------------------------------------------------------------*/
 typedef struct {
     unsigned int no     : 16;
-    unsigned int mode   : 3;    
+    unsigned int mode   : 3;
     unsigned int pullsel: 1;
     unsigned int din    : 1;
     unsigned int dout   : 1;
     unsigned int pullen : 1;
     unsigned int dir    : 1;
     unsigned int dinv   : 1;
-    unsigned int _align : 7; 
-} GPIO_CFG; 
+    unsigned int _align : 7;
+} GPIO_CFG;
 /******************************************************************************
-* GPIO Driver interface 
+* GPIO Driver interface
 ******************************************************************************/
 /*direction*/
 s32 mt_set_gpio_dir(u32 pin, u32 dir);
@@ -184,7 +181,7 @@ s32 mt_get_gpio_dir(u32 pin);
 s32 mt_set_gpio_pull_enable(u32 pin, u32 enable);
 s32 mt_get_gpio_pull_enable(u32 pin);
 /*pull select*/
-s32 mt_set_gpio_pull_select(u32 pin, u32 select);    
+s32 mt_set_gpio_pull_select(u32 pin, u32 select);
 s32 mt_get_gpio_pull_select(u32 pin);
 
 /*data inversion*/

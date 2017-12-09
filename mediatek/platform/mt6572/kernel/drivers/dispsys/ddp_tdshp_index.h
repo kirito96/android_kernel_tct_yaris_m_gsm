@@ -1,4 +1,8 @@
+#ifndef __DDP_TDSHP_INDEX_H__
+#define __DDP_TDSHP_INDEX_H__
+
 #include "ddp_drv.h"
+
 
 DISPLAY_TDSHP_T tdshpindex = 
 {
@@ -666,4 +670,6 @@ entry:
 }  
 }        
 };       
+
+#endif
   

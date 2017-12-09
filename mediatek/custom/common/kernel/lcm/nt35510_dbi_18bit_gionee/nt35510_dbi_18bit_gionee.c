@@ -712,64 +712,7 @@ static void lcm_update(unsigned int x, unsigned int y,
     send_ctrl_cmd( 0x2C00 );
 }
 
-void lcm_read_fb(unsigned char *buffer)
-{	  
-    LCM_PRINT_FUNC();
-    
-    int i =0;
-    short  x0, y0, x1, y1;
-    short  h_X_start,l_X_start,h_X_end,l_X_end,h_Y_start,l_Y_start,h_Y_end,l_Y_end;
-    unsigned int readData;
-    
-    x0 = 0;
-    y0 = 0;
-    x1 = FRAME_WIDTH-1;
-    y1 = FRAME_HEIGHT-1;
-    
-    h_X_start=((x0&0x0300)>>8);
-    l_X_start=(x0&0x00FF);
-    h_X_end=((x1&0x0300)>>8);
-    l_X_end=(x1&0x00FF);
-    
-    h_Y_start=((y0&0x0300)>>8);
-    l_Y_start=(y0&0x00FF);
-    h_Y_end=((y1&0x0300)>>8);
-    l_Y_end=(y1&0x00FF);
-    
-    send_ctrl_cmd( 0x2A00 );
-    send_data_cmd( h_X_start);
-    send_ctrl_cmd( 0x2A01 );
-    send_data_cmd( l_X_start);
-    send_ctrl_cmd( 0x2A02);
-    send_data_cmd( h_X_end );
-    send_ctrl_cmd( 0x2A03);
-    send_data_cmd( l_X_end );
-    send_ctrl_cmd( 0x2B00 );
-    send_data_cmd( h_Y_start);
-    send_ctrl_cmd( 0x2B01 );
-    send_data_cmd( l_Y_start);
-    send_ctrl_cmd( 0x2B02);
-    send_data_cmd( h_Y_end );
-    send_ctrl_cmd( 0x2B03);
-    send_data_cmd( l_Y_end );    
-    send_ctrl_cmd( 0x2E00 );
-    
-    MDELAY(20);
-    
-    //Dummy Read
-    readData = read_data_cmd();
-    
-    for(i=0; i<60; i+=3)
-    {
-      readData = read_data_cmd();      
-      LCM_PRINT("Read data: 0x%08x \n", readData);
-      MDELAY(20);
-      
-      buffer[i]  =(readData&0x00FF0000)>>16;   //R
-      buffer[i+1]=(readData&0x0000FF00)>>8;    //G
-      buffer[i+2]=(readData&0x000000FF);       //B
-    }
-}
+
 
 
 LCM_DRIVER nt35510_dbi_18bit_gionee_lcm_drv = 
@@ -781,7 +724,6 @@ LCM_DRIVER nt35510_dbi_18bit_gionee_lcm_drv =
     .suspend        = lcm_suspend,
     .resume         = lcm_resume,
     .update         = lcm_update,
-    .compare_id     = lcm_compare_id,
-    .read_fb				= lcm_read_fb,
+    .compare_id     = lcm_compare_id
 };
 

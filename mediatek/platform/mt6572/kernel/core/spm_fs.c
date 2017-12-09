@@ -21,9 +21,9 @@ static bool pcm_sysfs_write(const char *buf,unsigned long count)
     int value;
     
     if(buf[0]=='0' && buf[1]=='x')
-        sscanf(buf,"%x%s",&value,field);
+        sscanf(buf,"%x%30s",&value,field);
     else
-        sscanf(buf,"%d%s",&value,field);
+        sscanf(buf,"%d%30s",&value,field);
     
     spm_crit2("field = %s, value=%d\n",field,value);
     
@@ -113,7 +113,7 @@ static int pcm_sysfs_read(char *buf)
 		p += sprintf(p,"     .wfi_l2c_mask = %d\n ",pcm_fs_curr->wfi_l2c_mask);
 		p += sprintf(p,"     .wfi_op = %d    /*{REDUCE_OR=0,REDUCE_AND}*/\n",pcm_fs_curr->wfi_op);
 		p += sprintf(p,"     .wfi_sel[]={%d,%d}\n",pcm_fs_curr->wfi_sel[0],pcm_fs_curr->wfi_sel[1]);
-		p += sprintf(p,"     .timer_val_ms=%d\n",pcm_fs_curr->timer_val_ms);
+		p += sprintf(p,"     .timer_val_ms=%d\n",(u32)pcm_fs_curr->timer_val_ms);
 		p += sprintf(p,"     .wake_src= 0x%X\n",pcm_fs_curr->wake_src);
 		p += sprintf(p,"     .cpu_pdn= %d\n",pcm_fs_curr->cpu_pdn);
 		p += sprintf(p,"     .infra_pdn = %d\n",pcm_fs_curr->infra_pdn);        
@@ -140,9 +140,9 @@ static ssize_t pcm_sysfs_write_suspend(struct file *file, const char *buffer, un
     {
         /* No common field found in common, Try specific ones!! */
         if(buffer[0]=='0' && buffer[1]=='x')
-            sscanf(buffer,"%x%s",&value,field);
+            sscanf(buffer,"%x%30s",&value,field);
         else
-            sscanf(buffer,"%d%s",&value,field);
+            sscanf(buffer,"%d%30s",&value,field);
         
         if(strcmp(field,"fgauge")==0)
          {
@@ -191,7 +191,7 @@ static int pcm_sysfs_read_suspend_timer(char *buf, char **start, off_t off, int 
     else  
        p += sprintf(p, "0 ");
     
-    p += sprintf(p, "%d",pcm_fs_curr->timer_val_ms);
+    p += sprintf(p, "%d",(u32)pcm_fs_curr->timer_val_ms);
               
     len = p - buf;
     
@@ -213,9 +213,9 @@ static ssize_t pcm_sysfs_write_dpidle(struct file *file, const char *buffer, uns
     {
         /* No common field found in common, Try specific ones!! */
         if(buffer[0]=='0' || buffer[0]=='x')
-            sscanf(buffer,"%x%s",&value,field);
+            sscanf(buffer,"%x%30s",&value,field);
         else
-            sscanf(buffer,"%d%s",&value,field);
+            sscanf(buffer,"%d%30s",&value,field);
         
         if(strcmp(field,"pwrlevel")==0)   
             pcm_fs_curr->pcm_pwrlevel=( 1 << value );
@@ -276,7 +276,7 @@ static int pcm_sysfs_read_dpidle_timer(char *buf, char **start, off_t off, int c
     char *p = buf;
     pcm_fs_curr = &pcm_config_dpidle;
     
-    p += sprintf(p, "%d",pcm_fs_curr->timer_val_ms);
+    p += sprintf(p, "%d",(u32)pcm_fs_curr->timer_val_ms);
        
     len = p - buf;
     
@@ -296,9 +296,9 @@ static ssize_t pcm_sysfs_write_mcdi(struct file *file, const char *buffer, unsig
     {
         /* No common field found in common, Try specific ones!! */
         if(buffer[0]=='0' || buffer[0]=='x')
-            sscanf(buffer,"%x%s",&value,field);
+            sscanf(buffer,"%x%30s",&value,field);
         else
-            sscanf(buffer,"%d%s",&value,field);
+            sscanf(buffer,"%d%30s",&value,field);
         
         if(strcmp(field,"mcdi_mode")==0)
         {
@@ -354,7 +354,7 @@ static int pcm_sysfs_read_mcdi_timer(char *buf, char **start, off_t off, int cou
     char *p = buf;
     pcm_fs_curr = &pcm_config_mcdi;
     
-    p += sprintf(p, "%d",pcm_fs_curr->timer_val_ms);
+    p += sprintf(p, "%d",(u32)pcm_fs_curr->timer_val_ms);
        
     len = p - buf;
     
@@ -366,7 +366,6 @@ void spm_fs_init(void)
 {
     struct proc_dir_entry *spm_fs_file = NULL;
     struct proc_dir_entry *spm_fs_dir = NULL;
-    int mcdi_err = 0;
     
     spm_fs_dir = proc_mkdir("spm_fs", NULL);
     if (!spm_fs_dir)

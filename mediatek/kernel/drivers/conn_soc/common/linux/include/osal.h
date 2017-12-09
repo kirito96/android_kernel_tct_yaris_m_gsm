@@ -9,37 +9,6 @@
 #ifndef _OSAL_H_
 #define _OSAL_H_
 
-#include <linux/version.h>
-#include <linux/init.h>
-#include <linux/module.h>
-#include <linux/types.h>
-#include <linux/kernel.h>
-#include <linux/fs.h>
-#include <linux/cdev.h>
-#include <linux/sched.h>
-#include <linux/poll.h>
-#include <asm/current.h>
-#include <asm/uaccess.h>
-#include <asm/io.h>
-#include <linux/proc_fs.h>
-#include <linux/workqueue.h>
-#include <linux/wait.h>
-#include <linux/time.h>
-#include <linux/delay.h>
-#include <linux/interrupt.h>
-#include <linux/irq.h>
-#include <linux/vmalloc.h>
-#include <linux/firmware.h>
-#include <linux/kthread.h>
-#include <linux/jiffies.h>
-#include <linux/slab.h>
-#include <linux/err.h>
-#ifdef WMT_PLAT_ALPS
-#include <linux/aee.h>
-#endif
-#include <linux/kfifo.h>
-#include <linux/wakelock.h>
-#include <linux/log2.h>
 #include <osal_typedef.h>
 /*******************************************************************************
 *                         C O M P I L E R   F L A G S
@@ -279,7 +248,7 @@ extern VOID* osal_memset(VOID *buf, INT32 i, UINT32 len);
 extern VOID* osal_memcpy(VOID *dst, const VOID *src, UINT32 len);
 extern INT32 osal_memcmp(const VOID *buf1, const VOID *buf2, UINT32 len);
 
-extern INT32 osal_msleep(UINT32 ms);
+extern INT32 osal_sleep_ms(UINT32 ms);
 extern INT32 osal_udelay(UINT32 us);
 extern INT32 osal_timer_create(P_OSAL_TIMER);
 extern INT32 osal_timer_start(P_OSAL_TIMER, UINT32);

@@ -17,7 +17,6 @@
 #include <linux/zlib.h>
 #include <linux/uaccess.h>
 #include <linux/crc32.h>
-
 #include "stp_dbg.h"
 //#include "stp_btm.h"
 #include "btm_core.h"
@@ -45,7 +44,11 @@ MTKSTP_DBG_T *g_stp_dbg = NULL;
 
 #define STP_DBG_FAMILY_NAME        "STP_DBG"
 #define MAX_BIND_PROCESS    (4)
+#ifdef WMT_PLAT_ALPS
 #define STP_DBG_AEE_EXP_API (1)
+#else
+#define STP_DBG_AEE_EXP_API (0)
+#endif
 enum {
     __STP_DBG_ATTR_INVALID,
     STP_DBG_ATTR_MSG,
@@ -257,10 +260,23 @@ INT32 wcn_core_dump_in(P_WCN_CORE_DUMP_T dmp, PUINT8 buf, INT32 len)
 				osal_memcpy(&dmp->info[osal_strlen(INFO_HEAD)], "Fw warm reset exception...", osal_strlen("Fw warm reset exception..."));
 				dmp->info[osal_strlen(INFO_HEAD) + osal_strlen("Fw warm reset exception...") + 1] = '\0';
 			}else{
-	            tmp = STP_CORE_DUMP_INFO_SZ - osal_strlen(INFO_HEAD);
-	            tmp = (len > tmp) ? tmp : len; 
-	            osal_memcpy(&dmp->info[osal_strlen(INFO_HEAD)], buf, tmp);
-	            dmp->info[STP_CORE_DUMP_INFO_SZ] = '\0';
+				char *pStr = buf;
+				char *pDtr = NULL;
+
+				pDtr = osal_strchr(pStr,'-');
+				if(NULL != pDtr)
+				{
+					tmp = pDtr - pStr;
+					osal_memcpy(&dmp->info[osal_strlen(INFO_HEAD)], buf, tmp);
+					dmp->info[osal_strlen(dmp->info) + 1] = '\0';
+				}else
+				{
+					tmp = STP_CORE_DUMP_INFO_SZ - osal_strlen(INFO_HEAD);
+	            	tmp = (len > tmp) ? tmp : len; 
+	            	osal_memcpy(&dmp->info[osal_strlen(INFO_HEAD)], buf, tmp);
+	            	dmp->info[STP_CORE_DUMP_INFO_SZ] = '\0';
+				}
+
 			}
             // show coredump start info on UI
             //osal_dbg_assert_aee("MT662x f/w coredump start", "MT662x firmware coredump start");
@@ -387,8 +403,7 @@ INT32 wcn_core_dump_flush(INT32 rst)
     // show coredump end info on UI
     //osal_dbg_assert_aee("MT662x f/w coredump end", "MT662x firmware coredump ends");
 #if STP_DBG_AEE_EXP_API
-    aee_kernel_dal_show("++ MT6572/82 coredump get successfully ++\n");
-
+    aee_kernel_dal_show("++ SOC_CONSYS coredump get successfully ++\n");
     // call AEE driver API
     aed_combo_exception(NULL, 0, (const int*)pbuf, len, (const char*)g_core_dump->info);
 #endif   
@@ -1132,9 +1147,16 @@ static int stp_dbg_nl_bind(
 
     if(num_bind_process < MAX_BIND_PROCESS) 
     {
+    
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0))
         bind_pid[num_bind_process] = info->snd_pid;
         num_bind_process++;
         STP_DBG_INFO_FUNC("%s():-> pid  = %d\n", __func__, info->snd_pid);
+#else
+        bind_pid[num_bind_process] = info->snd_portid;
+        num_bind_process++;
+        STP_DBG_INFO_FUNC("%s():-> pid  = %d\n", __func__, info->snd_portid);
+#endif
     }
     else 
     {
@@ -1240,7 +1262,8 @@ UINT8 *_stp_dbg_id_to_task(UINT32 id)
 			"Task_FM",
 			"Task_Idle",
 			"Task_DrvStp",
-			"Task_DrvBtif"
+			"Task_DrvBtif",
+			"Task_NatBt"
 		};
 	return taskStr[id];
 }
@@ -1264,7 +1287,7 @@ INT32 _stp_dbg_parser_assert_str(CHAR *str,ENUM_ASSERT_INFO_PARSER_TYPE type)
 	
 	if(!str)
 	{
-		WMT_ERR_FUNC("NULL string source\n");
+		STP_DBG_ERR_FUNC("NULL string source\n");
 		return -1;
 	}
 
@@ -1275,7 +1298,7 @@ INT32 _stp_dbg_parser_assert_str(CHAR *str,ENUM_ASSERT_INFO_PARSER_TYPE type)
 	}
 
 	pStr = str;
-	WMT_DBG_FUNC("source infor:%s\n",pStr);
+	STP_DBG_DBG_FUNC("source infor:%s\n",pStr);
 	switch(type){
 		case STP_DBG_ASSERT_INFO:
 			pDtr = osal_strstr(pStr,parser_sub_string[type]);
@@ -1285,20 +1308,21 @@ INT32 _stp_dbg_parser_assert_str(CHAR *str,ENUM_ASSERT_INFO_PARSER_TYPE type)
 				pTemp = osal_strchr(pDtr,' ');
 			}else
 			{
-				WMT_ERR_FUNC("parser str is NULL,substring(%s)\n",parser_sub_string[type]);
+				STP_DBG_ERR_FUNC("parser str is NULL,substring(%s)\n",parser_sub_string[type]);
 				return -3;
 			}
 			len = pTemp - pDtr;
 			osal_memcpy(&g_stp_dbg_cpupcr->assert_info[0],"assert@",osal_strlen("assert@"));
 			osal_memcpy(&g_stp_dbg_cpupcr->assert_info[osal_strlen("assert@")],pDtr,len);
 			g_stp_dbg_cpupcr->assert_info[osal_strlen("assert@") + len] = '_';
+
 			pTemp = osal_strchr(pDtr,'#');
 			pTemp += 1;
 
 			pTemp2 = osal_strchr(pTemp,' ');
 			osal_memcpy(&g_stp_dbg_cpupcr->assert_info[osal_strlen("assert@") + len + 1],pTemp,pTemp2 - pTemp);
 			g_stp_dbg_cpupcr->assert_info[osal_strlen("assert@") + len + 1 + pTemp2 - pTemp] = '\0';
-			WMT_INFO_FUNC("assert info:%s\n",&g_stp_dbg_cpupcr->assert_info[0]);
+			STP_DBG_INFO_FUNC("assert info:%s\n",&g_stp_dbg_cpupcr->assert_info[0]);
 			break;
 		case STP_DBG_FW_TASK_ID:
 			pDtr = osal_strstr(pStr,parser_sub_string[type]);
@@ -1308,7 +1332,7 @@ INT32 _stp_dbg_parser_assert_str(CHAR *str,ENUM_ASSERT_INFO_PARSER_TYPE type)
 				pTemp = osal_strchr(pDtr,' ');
 			}else
 			{
-				WMT_ERR_FUNC("parser str is NULL,substring(%s)\n",parser_sub_string[type]);
+				STP_DBG_ERR_FUNC("parser str is NULL,substring(%s)\n",parser_sub_string[type]);
 				return -3;
 			}
 			len = pTemp - pDtr;
@@ -1316,7 +1340,7 @@ INT32 _stp_dbg_parser_assert_str(CHAR *str,ENUM_ASSERT_INFO_PARSER_TYPE type)
 			tempBuf[len] = '\0';
 			g_stp_dbg_cpupcr->fwTaskId = osal_strtol(tempBuf, NULL, 16);
 
-			WMT_INFO_FUNC("fw task id :%x\n",osal_strtol(tempBuf, NULL, 16));
+			STP_DBG_INFO_FUNC("fw task id :%x\n",(UINT32)osal_strtol(tempBuf, NULL, 16));
 			break;
 		case STP_DBG_FW_ISR:
 			pDtr = osal_strstr(pStr,parser_sub_string[type]);
@@ -1326,7 +1350,7 @@ INT32 _stp_dbg_parser_assert_str(CHAR *str,ENUM_ASSERT_INFO_PARSER_TYPE type)
 				pTemp = osal_strchr(pDtr,',');
 			}else
 			{
-				WMT_ERR_FUNC("parser str is NULL,substring(%s)\n",parser_sub_string[type]);
+				STP_DBG_ERR_FUNC("parser str is NULL,substring(%s)\n",parser_sub_string[type]);
 				return -3;
 			}
 			len = pTemp - pDtr;
@@ -1335,7 +1359,7 @@ INT32 _stp_dbg_parser_assert_str(CHAR *str,ENUM_ASSERT_INFO_PARSER_TYPE type)
 
 			g_stp_dbg_cpupcr->fwIsr = osal_strtol(tempBuf, NULL, 16);
 
-			WMT_INFO_FUNC("fw isr str:%x\n",osal_strtol(tempBuf, NULL, 16));
+			STP_DBG_INFO_FUNC("fw isr str:%x\n",(UINT32)osal_strtol(tempBuf, NULL, 16));
 			break;
 		case STP_DBG_FW_IRQ:
 			pDtr = osal_strstr(pStr,parser_sub_string[type]);
@@ -1345,7 +1369,7 @@ INT32 _stp_dbg_parser_assert_str(CHAR *str,ENUM_ASSERT_INFO_PARSER_TYPE type)
 				pTemp = osal_strchr(pDtr,',');
 			}else
 			{
-				WMT_ERR_FUNC("parser str is NULL,substring(%s)\n",parser_sub_string[type]);
+				STP_DBG_ERR_FUNC("parser str is NULL,substring(%s)\n",parser_sub_string[type]);
 				return -3;
 			}
 			len = pTemp - pDtr;
@@ -1353,7 +1377,7 @@ INT32 _stp_dbg_parser_assert_str(CHAR *str,ENUM_ASSERT_INFO_PARSER_TYPE type)
 			tempBuf[len] = '\0';
 			g_stp_dbg_cpupcr->fwRrq = osal_strtol(tempBuf, NULL, 16);
 
-			WMT_INFO_FUNC("fw irq value:%x\n",osal_strtol(tempBuf, NULL, 16));
+			STP_DBG_INFO_FUNC("fw irq value:%x\n",(UINT32)osal_strtol(tempBuf, NULL, 16));
 			break;
 		case STP_DBG_ASSERT_TYPE:
 			pDtr = osal_strstr(pStr,parser_sub_string[type]);
@@ -1363,7 +1387,7 @@ INT32 _stp_dbg_parser_assert_str(CHAR *str,ENUM_ASSERT_INFO_PARSER_TYPE type)
 				pTemp = osal_strchr(pDtr,',');
 			}else
 			{
-				WMT_ERR_FUNC("parser str is NULL,substring(%s)\n",parser_sub_string[type]);
+				STP_DBG_ERR_FUNC("parser str is NULL,substring(%s)\n",parser_sub_string[type]);
 				return -3;
 			}
 			len = pTemp - pDtr;
@@ -1389,7 +1413,7 @@ INT32 _stp_dbg_parser_assert_str(CHAR *str,ENUM_ASSERT_INFO_PARSER_TYPE type)
 					pTemp = osal_strchr(pDtr,')');
 				}else
 				{
-					WMT_ERR_FUNC("parser str is NULL,substring(RB_FULL()\n");
+					STP_DBG_ERR_FUNC("parser str is NULL,substring(RB_FULL()\n");
 					return -4;
 				}
 				len = pTemp - pDtr;
@@ -1398,13 +1422,13 @@ INT32 _stp_dbg_parser_assert_str(CHAR *str,ENUM_ASSERT_INFO_PARSER_TYPE type)
 
 				g_stp_dbg_cpupcr->fwTaskId = osal_strtol(tempBuf, NULL, 16);
 
-				WMT_INFO_FUNC("update fw task id :%x\n",osal_strtol(tempBuf, NULL, 16));
+				STP_DBG_INFO_FUNC("update fw task id :%x\n",(UINT32)osal_strtol(tempBuf, NULL, 16));
 			}
 
-			WMT_INFO_FUNC("fw asert type:%s\n",g_stp_dbg_cpupcr->assert_type);
+			STP_DBG_INFO_FUNC("fw asert type:%s\n",g_stp_dbg_cpupcr->assert_type);
 		break;
 		default:
-			WMT_ERR_FUNC("unknow parser type\n");
+			STP_DBG_ERR_FUNC("unknow parser type\n");
 			break;
 	}
 
@@ -1457,10 +1481,10 @@ INT32 stp_dbg_poll_cpupcr(UINT32 times,UINT32 sleep,UINT32 cmd)
 
 		for(i = 0;i < times;i++)
 		{
-			STP_DBG_INFO_FUNC("i:%d,cpupcr:%08x\n",i,CONSYS_REG_READ(CONSYS_CPUPCR_REG));
+			STP_DBG_INFO_FUNC("i:%d,cpupcr:%08x\n",i,wmt_plat_read_cpupcr());
 			//osal_memcpy(&g_stp_dbg_cpupcr->buffer[i],(UINT8*)(CONSYS_REG_READ(CONSYS_CPUPCR_REG)),osal_sizeof(UINT32));
-			g_stp_dbg_cpupcr->buffer[g_stp_dbg_cpupcr->count + i] = CONSYS_REG_READ(CONSYS_CPUPCR_REG);
-			osal_msleep(sleep);
+			g_stp_dbg_cpupcr->buffer[g_stp_dbg_cpupcr->count + i] = wmt_plat_read_cpupcr();
+			osal_sleep_ms(sleep);
 		}
 		g_stp_dbg_cpupcr->count += times;
 
@@ -1477,10 +1501,10 @@ INT32 stp_dbg_poll_cpupcr(UINT32 times,UINT32 sleep,UINT32 cmd)
 		g_stp_dbg_cpupcr->count = 0;
 		for(i = 0;i < times;i++)
 		{
-			STP_DBG_INFO_FUNC("i:%d,cpupcr:%08x\n",i,CONSYS_REG_READ(CONSYS_CPUPCR_REG));
+			STP_DBG_INFO_FUNC("i:%d,cpupcr:%08x\n",i,wmt_plat_read_cpupcr());
 			//osal_memcpy(&g_stp_dbg_cpupcr->buffer[i],(UINT8*)(CONSYS_REG_READ(CONSYS_CPUPCR_REG)),osal_sizeof(UINT32));
-			g_stp_dbg_cpupcr->buffer[i] = CONSYS_REG_READ(CONSYS_CPUPCR_REG);
-			osal_msleep(sleep);
+			g_stp_dbg_cpupcr->buffer[i] = wmt_plat_read_cpupcr();
+			osal_sleep_ms(sleep);
 		}
 		g_stp_dbg_cpupcr->count = times;
 
@@ -1493,7 +1517,7 @@ INT32 stp_dbg_poll_cpupcr(UINT32 times,UINT32 sleep,UINT32 cmd)
 INT32 stp_dbg_poll_cuppcr_ctrl(UINT32 en)
 {
 
-	WMT_INFO_FUNC("%s polling cpupcr\n",en == 0? "start":"stop");
+	STP_DBG_INFO_FUNC("%s polling cpupcr\n",en == 0? "start":"stop");
 
 	osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
 	g_stp_dbg_cpupcr->stop_flag = en;
@@ -1537,6 +1561,25 @@ INT32 stp_dbg_set_version_info(UINT32 chipid,UINT8 *pRomVer,UINT8 *wifiVer,UINT8
 	return 0;
 }
 
+INT32 stp_dbg_set_host_assert_info(UINT32 drv_type,UINT32 reason,UINT32 en)
+{
+	osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+
+	g_stp_dbg_cpupcr->host_assert_info.assert_from_host = en;
+	g_stp_dbg_cpupcr->host_assert_info.drv_type = drv_type;
+	g_stp_dbg_cpupcr->host_assert_info.reason = reason;
+	
+	osal_unlock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+
+	return 0;
+}
+
+UINT32 stp_dbg_get_host_trigger_assert(VOID)
+{
+	return g_stp_dbg_cpupcr->host_assert_info.assert_from_host;
+}
+
+
 INT32 stp_dbg_set_fw_info(UINT8 *issue_info,UINT32 len,ENUM_STP_FW_ISSUE_TYPE issue_type)
 {
 	ENUM_ASSERT_INFO_PARSER_TYPE type_index;
@@ -1546,13 +1589,20 @@ INT32 stp_dbg_set_fw_info(UINT8 *issue_info,UINT32 len,ENUM_STP_FW_ISSUE_TYPE is
 
 	if(NULL == issue_info)
 	{
-		WMT_ERR_FUNC("null issue infor\n");
+		STP_DBG_ERR_FUNC("null issue infor\n");
 		return -1;
 	}
-	WMT_INFO_FUNC("issue type(%d)\n",issue_type);
+	STP_DBG_INFO_FUNC("issue type(%d)\n",issue_type);
 	g_stp_dbg_cpupcr->issue_type = issue_type;
 	osal_memset(&g_stp_dbg_cpupcr->assert_info[0],0,STP_ASSERT_INFO_SIZE);
-	if(STP_FW_ASSERT_ISSUE == issue_type)
+	
+	/*print patch version when assert happened*/
+	STP_DBG_INFO_FUNC("=======================================\n");
+	STP_DBG_INFO_FUNC("[consys patch]patch version:%s\n",g_stp_dbg_cpupcr->patchVer);
+	STP_DBG_INFO_FUNC("[consys patch]ALPS branch:%s\n",g_stp_dbg_cpupcr->branchVer);
+	STP_DBG_INFO_FUNC("=======================================\n");
+	
+	if((STP_FW_ASSERT_ISSUE == issue_type) || (STP_HOST_TRIGGER_FW_ASSERT == issue_type))
 	{
 		tempbuf = osal_malloc(len);
 		if(!tempbuf)
@@ -1569,7 +1619,7 @@ INT32 stp_dbg_set_fw_info(UINT8 *issue_info,UINT32 len,ENUM_STP_FW_ISSUE_TYPE is
 
 		tempbuf[len] = '\0';
 #if 0
-		WMT_INFO_FUNC("FW assert infor len(%d)\n",len);
+		STP_DBG_INFO_FUNC("FW assert infor len(%d)\n",len);
 		for(i = 0;i < len;i++)
 		{
 			if(0 == len%64)
@@ -1584,7 +1634,37 @@ INT32 stp_dbg_set_fw_info(UINT8 *issue_info,UINT32 len,ENUM_STP_FW_ISSUE_TYPE is
 		}
 		if(iRet)
 		{
-			WMT_ERR_FUNC("passert assert infor fail(%d)\n",iRet);
+			STP_DBG_ERR_FUNC("passert assert infor fail(%d)\n",iRet);
+		}
+
+		if(STP_HOST_TRIGGER_FW_ASSERT == issue_type)
+		{
+			switch(g_stp_dbg_cpupcr->host_assert_info.drv_type) {
+				case 0:
+					STP_DBG_INFO_FUNC("bt trigger assert\n");
+					osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+					if(31 != g_stp_dbg_cpupcr->host_assert_info.reason)
+					/*BT firmware trigger assert*/
+					{
+						g_stp_dbg_cpupcr->fwTaskId = 1;
+						
+					}else
+					/*BT stack trigger assert*/
+					{
+						g_stp_dbg_cpupcr->fwTaskId = 8;
+					}
+
+					g_stp_dbg_cpupcr->host_assert_info.assert_from_host = 0;
+					//g_stp_dbg_cpupcr->host_assert_info.drv_type = 0;
+					//g_stp_dbg_cpupcr->host_assert_info.reason = 0;
+
+					osal_unlock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+
+					break;
+				default:
+				break;
+			}
+
 		}
 		osal_free(tempbuf);
 	}
@@ -1615,7 +1695,7 @@ INT32 stp_dbg_set_fw_info(UINT8 *issue_info,UINT32 len,ENUM_STP_FW_ISSUE_TYPE is
 	}
 	else
 	{
-		WMT_ERR_FUNC("invalid issue type(%d)\n",issue_type);
+		STP_DBG_ERR_FUNC("invalid issue type(%d)\n",issue_type);
 		return -3;
 	}
 	
@@ -1669,15 +1749,37 @@ INT32 stp_dbg_cpupcr_infor_format(UINT8 **buf,UINT32 *str_len)
 		len += osal_sprintf(*buf + len,"<client>\n\t\t\t<task>%s</task>\n\t\t\t",_stp_dbg_id_to_task(g_stp_dbg_cpupcr->fwTaskId));
 		len += osal_sprintf(*buf + len,"<irqx>IRQ_0x%x</irqx>\n\t\t\t",g_stp_dbg_cpupcr->fwRrq);
 		len += osal_sprintf(*buf + len,"<isr>0x%x</isr>\n\t\t\t",g_stp_dbg_cpupcr->fwIsr);
-	}else if((STP_FW_ASSERT_ISSUE == g_stp_dbg_cpupcr->issue_type))
+		len += osal_sprintf(*buf + len,"<drv_type>NULL</drv_type>\n\t\t\t");
+		len += osal_sprintf(*buf + len,"<reason>NULL</reason>\n\t\t\t");
+	}else if((STP_FW_ASSERT_ISSUE == g_stp_dbg_cpupcr->issue_type) ||
+		(STP_HOST_TRIGGER_FW_ASSERT == g_stp_dbg_cpupcr->issue_type))
 	{
 		len += osal_sprintf(*buf + len,"%s\n\t\t</classification>\n\t\t<rc>\n\t\t\t",g_stp_dbg_cpupcr->assert_info);
 		len += osal_sprintf(*buf + len,"%s\n\t\t</rc>\n\t</issue>\n\t",g_stp_dbg_cpupcr->assert_type);
 		len += osal_sprintf(*buf + len,"<hint>\n\t\t<time_align>NULL</time_align>\n\t\t");
 		len += osal_sprintf(*buf + len,"<host>NULL</host>\n\t\t");
 		len += osal_sprintf(*buf + len,"<client>\n\t\t\t<task>%s</task>\n\t\t\t",_stp_dbg_id_to_task(g_stp_dbg_cpupcr->fwTaskId));
-		len += osal_sprintf(*buf + len,"<irqx>IRQ_0x%x</irqx>\n\t\t\t",g_stp_dbg_cpupcr->fwRrq);
+		if(32 == g_stp_dbg_cpupcr->host_assert_info.reason)
+		{
+			/*handling wmt turn on/off bt cmd has ack but no evt issue*/
+			len += osal_sprintf(*buf + len,"<irqx>NULL</irqx>\n\t\t\t");
+		}else
+		{
+			len += osal_sprintf(*buf + len,"<irqx>IRQ_0x%x</irqx>\n\t\t\t",g_stp_dbg_cpupcr->fwRrq);
+		}
 		len += osal_sprintf(*buf + len,"<isr>0x%x</isr>\n\t\t\t",g_stp_dbg_cpupcr->fwIsr);
+
+		if(STP_FW_ASSERT_ISSUE == g_stp_dbg_cpupcr->issue_type)
+		{
+			len += osal_sprintf(*buf + len,"<drv_type>NULL</drv_type>\n\t\t\t");
+			len += osal_sprintf(*buf + len,"<reason>NULL</reason>\n\t\t\t");
+		}
+
+		if(STP_HOST_TRIGGER_FW_ASSERT == g_stp_dbg_cpupcr->issue_type)
+		{
+			len += osal_sprintf(*buf + len,"<drv_type>%d</drv_type>\n\t\t\t",g_stp_dbg_cpupcr->host_assert_info.drv_type);
+			len += osal_sprintf(*buf + len,"<reason>%d</reason>\n\t\t\t",g_stp_dbg_cpupcr->host_assert_info.reason);
+		}
 	}else
 	{
 		len += osal_sprintf(*buf + len,"NULL\n\t\t</classification>\n\t\t<rc>\n\t\t\t");
@@ -1687,10 +1789,12 @@ INT32 stp_dbg_cpupcr_infor_format(UINT8 **buf,UINT32 *str_len)
 		len += osal_sprintf(*buf + len,"<client>\n\t\t\t<task>NULL</task>\n\t\t\t");
 		len += osal_sprintf(*buf + len,"<irqx>NULL</irqx>\n\t\t\t");
 		len += osal_sprintf(*buf + len,"<isr>NULL</isr>\n\t\t\t");
+		len += osal_sprintf(*buf + len,"<drv_type>NULL</drv_type>\n\t\t\t");
+		len += osal_sprintf(*buf + len,"<reason>NULL</reason>\n\t\t\t");
 	}
 
 	len += osal_sprintf(*buf + len,"<pctrace>");
-	WMT_INFO_FUNC("stp-dbg:sub len1 for debug(%d)\n",len);
+	STP_DBG_INFO_FUNC("stp-dbg:sub len1 for debug(%d)\n",len);
 
 	if(!g_stp_dbg_cpupcr->count)
 	{
@@ -1703,14 +1807,19 @@ INT32 stp_dbg_cpupcr_infor_format(UINT8 **buf,UINT32 *str_len)
 			len += osal_sprintf(*buf + len,"%08x,",g_stp_dbg_cpupcr->buffer[i]);
 		}
 	}
-	WMT_INFO_FUNC("stp-dbg:sub len2 for debug(%d)\n",len);
+	STP_DBG_INFO_FUNC("stp-dbg:sub len2 for debug(%d)\n",len);
 	len += osal_sprintf(*buf + len,"</pctrace>\n\t\t\t");
 	len += osal_sprintf(*buf + len,"<extension>NULL</extension>\n\t\t</client>\n\t</hint>\n</main>\n");
 	STP_DBG_INFO_FUNC("buffer len[%d]\n",len);
 	//STP_DBG_INFO_FUNC("Format infor:\n%s\n",*buf);
 	*str_len = len;
+	
+	osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
 	osal_memset(&g_stp_dbg_cpupcr->buffer[0],0,STP_DBG_CPUPCR_NUM);
 	g_stp_dbg_cpupcr->count = 0;
+	g_stp_dbg_cpupcr->host_assert_info.reason = 0;
+	g_stp_dbg_cpupcr->host_assert_info.drv_type = 0;
+	osal_unlock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
 
 	return 0;
 	

@@ -31,6 +31,7 @@ typedef struct{
 // External function
 // ============================================================
 extern kal_int32 battery_meter_get_battery_voltage(void);
+extern kal_int32 battery_meter_get_charging_current_imm(void);
 extern kal_int32 battery_meter_get_charging_current(void);
 extern kal_int32 battery_meter_get_battery_current(void);
 extern kal_bool  battery_meter_get_battery_current_sign(void);

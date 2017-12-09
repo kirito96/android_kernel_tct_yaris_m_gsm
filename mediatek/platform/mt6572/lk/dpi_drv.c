@@ -1,9 +1,79 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein
+ * is confidential and proprietary to MediaTek Inc. and/or its licensors.
+ * Without the prior written permission of MediaTek inc. and/or its licensors,
+ * any reproduction, modification, use or disclosure of MediaTek Software,
+ * and information contained herein, in whole or in part, shall be strictly prohibited.
+ */
+/* MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
+ * AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+ * NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+ * SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+ * SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
+ * THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
+ * THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
+ * CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
+ * SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
+ * CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+ * AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+ * OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
+ * MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek Software")
+ * have been modified by MediaTek Inc. All revisions are subject to any receiver's
+ * applicable license agreements with MediaTek Inc.
+ */
 
+/*****************************************************************************
+ *  Copyright Statement:
+ *  --------------------
+ *  This software is protected by Copyright and the information contained
+ *  herein is confidential. The software may not be copied and the information
+ *  contained herein may not be used or disclosed except with the written
+ *  permission of MediaTek Inc. (C) 2008
+ *
+ *  BY OPENING THIS FILE, BUYER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ *  THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ *  RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO BUYER ON
+ *  AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+ *  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+ *  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+ *  NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+ *  SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+ *  SUPPLIED WITH THE MEDIATEK SOFTWARE, AND BUYER AGREES TO LOOK ONLY TO SUCH
+ *  THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. MEDIATEK SHALL ALSO
+ *  NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE RELEASES MADE TO BUYER'S
+ *  SPECIFICATION OR TO CONFORM TO A PARTICULAR STANDARD OR OPEN FORUM.
+ *
+ *  BUYER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND CUMULATIVE
+ *  LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+ *  AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+ *  OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY BUYER TO
+ *  MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ *  THE TRANSACTION CONTEMPLATED HEREUNDER SHALL BE CONSTRUED IN ACCORDANCE
+ *  WITH THE LAWS OF THE STATE OF CALIFORNIA, USA, EXCLUDING ITS CONFLICT OF
+ *  LAWS PRINCIPLES.  ANY DISPUTES, CONTROVERSIES OR CLAIMS ARISING THEREOF AND
+ *  RELATED THERETO SHALL BE SETTLED BY ARBITRATION IN SAN FRANCISCO, CA, UNDER
+ *  THE RULES OF THE INTERNATIONAL CHAMBER OF COMMERCE (ICC).
+ *
+ *****************************************************************************/
 
 #ifdef BUILD_LK
 #define ENABLE_DPI_INTERRUPT        0
 #define ENABLE_DPI_REFRESH_RATE_LOG 0
 
+#include <string.h>
+#include <platform/mt_gpt.h>
 #include <platform/disp_drv_platform.h>
 #include <platform/ddp_reg.h>
 #else
@@ -59,6 +129,8 @@
                         OUTREG32(&REG, AS_UINT32(&r));    \
                     } while (0)
 #endif
+
+#define DPI_OUTREG32_R(type, addr2, addr1) DISP_OUTREG32_R(type, addr2, addr1)
 
 static PDSI_PHY_REGS const DSI_PHY_REG = (PDSI_PHY_REGS)(MIPI_CONFIG_BASE);
 static PDPI_REGS const DPI_REG = (PDPI_REGS)(DPI_BASE);
@@ -285,8 +357,6 @@ void DPI_InitVSYNC(unsigned int vsync_interval)
 
 DPI_STATUS DPI_Init(BOOL isDpiPoweredOn)
 {
-   unsigned int reg_value = 0;
-   
    if (isDpiPoweredOn) {
       _BackupDPIRegisters();
    } else {
@@ -314,7 +384,6 @@ DPI_STATUS DPI_Init(BOOL isDpiPoweredOn)
 
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_Init);
 
 
 DPI_STATUS DPI_Deinit(void)
@@ -324,7 +393,6 @@ DPI_STATUS DPI_Deinit(void)
    
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_Deinit);
 
 
 void DPI_mipi_switch(BOOL on)
@@ -352,12 +420,12 @@ DPI_STATUS DPI_Init_PLL(LCM_PARAMS *lcm_params)
 
     return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_Init_PLL);
 
 
 DPI_STATUS DPI_Set_DrivingCurrent(LCM_PARAMS *lcm_params)
 {
    DISP_LOG_PRINT(ANDROID_LOG_WARN, "DPI", "DPI_Set_DrivingCurrent not implement for 6575");
+
    return DPI_STATUS_OK;
 }
 
@@ -375,7 +443,6 @@ DPI_STATUS DPI_PowerOn()
    
     return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_PowerOn);
 
 
 DPI_STATUS DPI_PowerOff()
@@ -391,7 +458,6 @@ DPI_STATUS DPI_PowerOff()
    
     return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_PowerOff);
 
 #else
 
@@ -436,69 +502,65 @@ DPI_STATUS DPI_EnableClk()
    DPI_REG_EN en = DPI_REG->DPI_EN;
 
    en.EN = 1;
-   OUTREG32(&DPI_REG->DPI_EN, AS_UINT32(&en));
-   //release mutex0
-   //#ifndef BUILD_UBOOT
+   DPI_OUTREG32_R(PDPI_REG_EN, &DPI_REG->DPI_EN, &en);
 
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_EnableClk);
 
 
 DPI_STATUS DPI_DisableClk()
 {
    DPI_REG_EN en = DPI_REG->DPI_EN;
+
    en.EN = 0;
-   OUTREG32(&DPI_REG->DPI_EN, AS_UINT32(&en));
+   DPI_OUTREG32_R(PDPI_REG_EN, &DPI_REG->DPI_EN, &en);
    
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_DisableClk);
 
 
 DPI_STATUS DPI_EnableSeqOutput(BOOL enable)
 {
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_EnableSeqOutput);
 
 
 DPI_STATUS DPI_SetRGBOrder(DPI_RGB_ORDER input, DPI_RGB_ORDER output)
 {
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_SetRGBOrder);
 
 
 DPI_STATUS DPI_ConfigPixelClk(DPI_POLARITY polarity, UINT32 divisor, UINT32 duty)
 {
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_ConfigPixelClk);
 
 
 DPI_STATUS DPI_ConfigLVDS(LCM_PARAMS *lcm_params)
 {
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_ConfigLVDS);
 
 
 DPI_STATUS DPI_WaitVsync()
 {
-	UINT32 dpi_wait_time = 0;
-	MASKREG32(0x14006004, 0x2, 0x0);
-	while((INREG32(0x14006004)&0x2) != 0x2)	// polling RDMA start
-	{
-	   	udelay(50);//sleep 50us
-		dpi_wait_time++;
-		if(dpi_wait_time > 40000){
-			DISP_LOG_PRINT(ANDROID_LOG_WARN, "DPI", "Wait for RDMA0 Start IRQ timeout!!!\n");
-			break;
-		}
-	}
-	MASKREG32(0x14006004, 0x2, 0x0);
-	return DPI_STATUS_OK;
+   UINT32 dpi_wait_time = 0;
+
+   MASKREG32(DISP_REG_RDMA_INT_STATUS, 0x2, 0x0);
+   while((INREG32(DISP_REG_RDMA_INT_STATUS)&0x2) != 0x2)	// polling RDMA start
+   {
+      udelay(50);//sleep 50us
+
+      dpi_wait_time++;
+      if(dpi_wait_time > 40000){
+         DISP_LOG_PRINT(ANDROID_LOG_WARN, "DPI", "Wait for RDMA0 Start IRQ timeout!!!\n");
+         break;
+      }
+   }
+   MASKREG32(DISP_REG_RDMA_INT_STATUS, 0x2, 0x0);
+
+   return DPI_STATUS_OK;
 }
 
 
@@ -506,7 +568,6 @@ DPI_STATUS DPI_ConfigDataEnable(DPI_POLARITY polarity)
 {
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_ConfigDataEnable);
 
 
 DPI_STATUS DPI_ConfigVsync(DPI_POLARITY polarity, UINT32 pulseWidth, UINT32 backPorch,
@@ -518,11 +579,10 @@ DPI_STATUS DPI_ConfigVsync(DPI_POLARITY polarity, UINT32 pulseWidth, UINT32 back
    vporch.VFP = frontPorch;
    
    OUTREG32(&DPI_REG->TGEN_VWIDTH, AS_UINT32(&pulseWidth));
-   OUTREG32(&DPI_REG->TGEN_VPORCH, AS_UINT32(&vporch));
+   DPI_OUTREG32_R(PDPI_REG_TGEN_VPORCH, &DPI_REG->TGEN_VPORCH, &vporch);
    
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_ConfigVsync);
 
 
 DPI_STATUS DPI_ConfigHsync(DPI_POLARITY polarity, UINT32 pulseWidth, UINT32 backPorch,
@@ -534,25 +594,22 @@ DPI_STATUS DPI_ConfigHsync(DPI_POLARITY polarity, UINT32 pulseWidth, UINT32 back
    hporch.HFP = frontPorch;
    
    OUTREG32(&DPI_REG->TGEN_HWIDTH, AS_UINT32(&pulseWidth));
-   OUTREG32(&DPI_REG->TGEN_HPORCH, AS_UINT32(&hporch));
+   DPI_OUTREG32_R(PDPI_REG_TGEN_HPORCH, &DPI_REG->TGEN_HPORCH, &hporch);
    
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_ConfigHsync);
 
 
 DPI_STATUS DPI_FBEnable(DPI_FB_ID id, BOOL enable)
 {
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_FBEnable);
 
 
 DPI_STATUS DPI_FBSyncFlipWithLCD(BOOL enable)
 {
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_FBSyncFlipWithLCD);
 
 
 DPI_STATUS DPI_SetDSIMode(BOOL enable)
@@ -572,14 +629,12 @@ DPI_STATUS DPI_FBSetFormat(DPI_FB_FORMAT format)
 {
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_FBSetFormat);
 
 
 DPI_FB_FORMAT DPI_FBGetFormat(void)
 {
    return 0;
 }
-EXPORT_SYMBOL(DPI_FBGetFormat);
 
 
 DPI_STATUS DPI_OutputSetting(void)
@@ -601,11 +656,10 @@ DPI_STATUS DPI_OutputSetting(void)
    output_setting.DPI_OEN_OFF = 0;
    output_setting.DUAL_EDGE_SEL = 0;
 
-   OUTREG32(&DPI_REG->OUTPUT_SETTING, AS_UINT32(&output_setting));
+   DPI_OUTREG32_R(PDPI_REG_OUTPUT_SETTING, &DPI_REG->OUTPUT_SETTING,&output_setting);
 
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_OutputSetting);
 
 
 DPI_STATUS DPI_FBSetSize(UINT32 width, UINT32 height)
@@ -614,32 +668,28 @@ DPI_STATUS DPI_FBSetSize(UINT32 width, UINT32 height)
    size.WIDTH = width;
    size.HEIGHT = height;
    
-   OUTREG32(&DPI_REG->SIZE, AS_UINT32(&size));
+   DPI_OUTREG32_R(PDPI_REG_SIZE, &DPI_REG->SIZE, &size);
    
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_FBSetSize);
 
 
 DPI_STATUS DPI_FBSetAddress(DPI_FB_ID id, UINT32 address)
 {
    return DPI_STATUS_OK;
 }    
-EXPORT_SYMBOL(DPI_FBSetAddress);
 
 
 DPI_STATUS DPI_FBSetPitch(DPI_FB_ID id, UINT32 pitchInByte)
 {
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_FBSetPitch);
 
 
 DPI_STATUS DPI_SetFifoThreshold(UINT32 low, UINT32 high)
 {
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_SetFifoThreshold);
 
 
 DPI_STATUS DPI_DumpRegisters(void)
@@ -660,14 +710,12 @@ DPI_STATUS DPI_DumpRegisters(void)
 
    return DPI_STATUS_OK;
 }
-EXPORT_SYMBOL(DPI_DumpRegisters);
 
 
 UINT32 DPI_GetCurrentFB(void)
 {
    return 0;
 }
-EXPORT_SYMBOL(DPI_GetCurrentFB);
 
 
 DPI_STATUS DPI_Capture_Framebuffer(unsigned int pvbuf, unsigned int bpp)
@@ -682,7 +730,6 @@ DPI_STATUS DPI_EnableInterrupt(DISP_INTERRUPT_EVENTS eventID)
    switch(eventID)
    {
       case DISP_DPI_VSYNC_INT:
-            //DPI_REG->INT_ENABLE.VSYNC = 1;
             OUTREGBIT(DPI_REG_INTERRUPT,DPI_REG->INT_ENABLE,VSYNC,1);
          break;
       default:

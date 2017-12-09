@@ -3,7 +3,7 @@
 ###################################################################
 
 MOD_SRC  = 
-MOD_OBJ  = $(D_ROOT)/out
+MOD_OBJ  = $(MTK_ROOT_OUT)/PRELOADER_OBJ/obj
 
 ###################################################################
 # source files
@@ -21,12 +21,10 @@ MOD_SRC  := \
 	msdc_utils.c \
 	mt_i2c.c \
 	mtk_key.c \
-	mt6577_pdn.c \
 	mt_usbd.c \
 	mt_usbphy.c \
 	mt_usbtty.c \
 	mt_emi.c \
-	mt6577_cpu_power.c \
 	mtk_timer.c \
 	mtk_wdt.c \
 	partition_mt.c \
@@ -44,7 +42,11 @@ MOD_SRC  := \
 	mt_mmmfg_sram_repair.c
 	
 ifneq ("$(MTK_EMMC_SUPPORT)","yes")
+	ifeq ("$(MTK_SPI_NAND_SUPPORT)","yes")
+		MOD_SRC  += mtk_snand_pl.c 
+	else
 	MOD_SRC  += 	mtk_nand.c 
+	endif
 	MOD_SRC  +=	bmt.c
 endif
  	

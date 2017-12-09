@@ -45,7 +45,9 @@
 // APMIXED
 //
 
+#ifndef APMIXEDSYS_BASE
 #define APMIXEDSYS_BASE         APMIXED_BASE
+#endif
 
 #define AP_PLL_CON0             (APMIXEDSYS_BASE + 0x0000)
 #define AP_PLL_CON1             (APMIXEDSYS_BASE + 0x0004)
@@ -435,12 +437,6 @@
 // extern "C" { // TODO: disable temp
 #endif
 
-#ifdef __MT_CLKMGR_C__
-  #define EXTERN
-#else
-  #define EXTERN extern
-#endif
-
 /*=============================================================*/
 // Include files
 /*=============================================================*/
@@ -498,7 +494,7 @@ typedef enum
 #define TO_CG_GRP_ID(grp_name)          grp_name##_TO
 #define NR_CG_GRP_CLKS(grp_name)        (grp_name##_TO - grp_name##_FROM + 1)
 
-typedef enum
+typedef enum cg_clk_id
 {
     // CG_MIXED
     BEG_CG_GRP(CG_MIXED, MT_CG_SYS_26M),
@@ -739,58 +735,65 @@ struct larb_monitor
 // Global function definition
 /*=============================================================*/
 
-EXTERN int enable_clock(cg_clk_id id, const char *name);
-EXTERN int disable_clock(cg_clk_id id, const char *name);
-EXTERN int clock_is_on(cg_clk_id id);
-EXTERN void dump_clk_info_by_id(cg_clk_id id);
+#ifdef __MT_CLKMGR_C__
+  #define CLKMGR_EXTERN
+#else
+  #define CLKMGR_EXTERN extern
+#endif
 
-EXTERN int clkmux_sel(clkmux_id id, cg_clk_id clksrc, const char *name);
-EXTERN int clkmux_get(clkmux_id id, const char *name);
+CLKMGR_EXTERN int enable_clock(enum cg_clk_id id, char *name);
+CLKMGR_EXTERN int disable_clock(enum cg_clk_id id, char *name);
+CLKMGR_EXTERN int mt_enable_clock(cg_clk_id id, const char *name);
+CLKMGR_EXTERN int mt_disable_clock(cg_clk_id id, const char *name);
+CLKMGR_EXTERN int clock_is_on(cg_clk_id id);
+CLKMGR_EXTERN void dump_clk_info_by_id(cg_clk_id id);
 
-EXTERN int enable_pll(pll_id id, const char *name);
-EXTERN int disable_pll(pll_id id, const char *name);
-EXTERN int pll_fsel(pll_id id, unsigned int value);
-EXTERN int pll_is_on(pll_id id);
+CLKMGR_EXTERN int clkmux_sel(clkmux_id id, cg_clk_id clksrc, const char *name);
+CLKMGR_EXTERN int clkmux_get(clkmux_id id, const char *name);
 
-EXTERN int enable_subsys(subsys_id id, const char *name);
-EXTERN int disable_subsys(subsys_id id, const char *name);
-EXTERN int disable_subsys_force(subsys_id id, const char *name);
-EXTERN void register_larb_monitor(struct larb_monitor *handler);
-EXTERN void unregister_larb_monitor(struct larb_monitor *handler);
-EXTERN int md_power_on(subsys_id id);
-EXTERN int md_power_off(subsys_id id, unsigned int timeout);
-EXTERN int conn_power_on(subsys_id id);
-EXTERN int conn_power_off(subsys_id id, unsigned int timeout);
-EXTERN int subsys_is_on(subsys_id id);
+CLKMGR_EXTERN int enable_pll(pll_id id, const char *name);
+CLKMGR_EXTERN int disable_pll(pll_id id, const char *name);
+CLKMGR_EXTERN int pll_fsel(pll_id id, unsigned int value);
+CLKMGR_EXTERN int pll_is_on(pll_id id);
 
-EXTERN const char *grp_get_name(cg_grp_id id);
-EXTERN int grp_dump_regs(cg_grp_id id, unsigned int *ptr);
-EXTERN const char *pll_get_name(pll_id id);
-EXTERN int pll_dump_regs(pll_id id, unsigned int *ptr);
-EXTERN const char *subsys_get_name(subsys_id id);
-EXTERN int subsys_dump_regs(subsys_id id, unsigned int *ptr);
+CLKMGR_EXTERN int enable_subsys(subsys_id id, const char *name);
+CLKMGR_EXTERN int disable_subsys(subsys_id id, const char *name);
+CLKMGR_EXTERN int disable_subsys_force(subsys_id id, const char *name);
+CLKMGR_EXTERN void register_larb_monitor(struct larb_monitor *handler);
+CLKMGR_EXTERN void unregister_larb_monitor(struct larb_monitor *handler);
+CLKMGR_EXTERN int md_power_on(subsys_id id);
+CLKMGR_EXTERN int md_power_off(subsys_id id, unsigned int timeout);
+CLKMGR_EXTERN int conn_power_on(subsys_id id);
+CLKMGR_EXTERN int conn_power_off(subsys_id id, unsigned int timeout);
+CLKMGR_EXTERN int subsys_is_on(subsys_id id);
 
-EXTERN unsigned int mt_get_emi_freq(void);
-EXTERN unsigned int mt_get_bus_freq(void);
-EXTERN unsigned int mt_get_cpu_freq(void);
+CLKMGR_EXTERN const char *grp_get_name(cg_grp_id id);
+CLKMGR_EXTERN int grp_dump_regs(cg_grp_id id, unsigned int *ptr);
+CLKMGR_EXTERN const char *pll_get_name(pll_id id);
+CLKMGR_EXTERN int pll_dump_regs(pll_id id, unsigned int *ptr);
+CLKMGR_EXTERN const char *subsys_get_name(subsys_id id);
+CLKMGR_EXTERN int subsys_dump_regs(subsys_id id, unsigned int *ptr);
 
-EXTERN int snapshot_golden_setting(const char *func, const unsigned int line);
+CLKMGR_EXTERN unsigned int mt_get_emi_freq(void);
+CLKMGR_EXTERN unsigned int mt_get_bus_freq(void);
+CLKMGR_EXTERN unsigned int mt_get_cpu_freq(void);
 
-EXTERN void print_mtcmos_trace_info_for_met(void);
+CLKMGR_EXTERN int snapshot_golden_setting(const char *func, const unsigned int line);
 
-EXTERN bool is_ddr3(void);
+CLKMGR_EXTERN void print_mtcmos_trace_info_for_met(void);
 
-EXTERN bool clkmgr_idle_can_enter(unsigned int *condition_mask, unsigned int *block_mask);
+CLKMGR_EXTERN bool is_ddr3(void);
 
-EXTERN cg_grp_id clk_id_to_grp_id(cg_clk_id id);
-EXTERN unsigned int clk_id_to_mask(cg_clk_id id);
+CLKMGR_EXTERN bool clkmgr_idle_can_enter(unsigned int *condition_mask, unsigned int *block_mask);
 
-EXTERN int clkmgr_is_locked(void);
+CLKMGR_EXTERN cg_grp_id clk_id_to_grp_id(cg_clk_id id);
+CLKMGR_EXTERN unsigned int clk_id_to_mask(cg_clk_id id);
 
-EXTERN int mt_clkmgr_init(void);
+CLKMGR_EXTERN int clkmgr_is_locked(void);
 
+CLKMGR_EXTERN int mt_clkmgr_init(void);
 
-#undef EXTERN
+#undef CLKMGR_EXTERN
 
 #ifdef __cplusplus
 // } // TODO: disable temp

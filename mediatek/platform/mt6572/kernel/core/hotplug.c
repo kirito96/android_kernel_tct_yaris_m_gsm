@@ -6,10 +6,16 @@
 #endif
 #include <mach/mt_spm_idle.h>
 
+#ifdef CONFIG_MTK_SCHED_TRACERS
+#include <trace/events/mtk_events.h>
+#include "kernel/trace/trace.h"
+DEFINE_PER_CPU(unsigned long long, last_event_ts);
+#endif
 
+#include <mach/wd_api.h>
 
-/* 
- * extern function 
+/*
+ * extern function
  */
 extern void __disable_dcache(void);         //definition in mt_cache_v7.S
 extern void __enable_dcache(void);          //definition in mt_cache_v7.S
@@ -17,14 +23,11 @@ extern void __inner_clean_dcache_L2(void);  //definition in mt_cache_v7.S
 extern void inner_dcache_flush_L1(void);    //definition in inner_cache.c
 extern void __switch_to_smp(void);          //definition in mt_hotplug.S
 extern void __switch_to_amp(void);          //definition in mt_hotplug.S
-#ifdef CONFIG_MTK_WD_KICKER
-extern void wk_stop_kick_cpu(int cpu);
-#endif
 
 
 
-/* 
- * global variable 
+/*
+ * global variable
  */
 atomic_t hotplug_cpu_count = ATOMIC_INIT(1);
 
@@ -40,21 +43,21 @@ static inline void cpu_enter_lowpower(unsigned int cpu)
 #ifdef SPM_MCDI_FUNC
     spm_hot_plug_out_after(cpu);
 #endif
-    
+
     /* Clear the SCTLR C bit to prevent further data cache allocation */
     __disable_dcache();
-    
+
     /* Clean and invalidate all data from the L1 data cache */
     inner_dcache_flush_L1();
     //Just flush the cache.
     //flush_cache_all();
-    
+
     /* Clean all data from the L2 data cache */
     __inner_clean_dcache_L2();
-    
+
     /* Execute a CLREX instruction */
     __asm__ __volatile__("clrex");
-    
+
     /* Switch the processor from SMP mode to AMP mode by clearing the ACTLR SMP bit */
     __switch_to_amp();
 }
@@ -62,10 +65,10 @@ static inline void cpu_enter_lowpower(unsigned int cpu)
 static inline void cpu_leave_lowpower(unsigned int cpu)
 {
     //HOTPLUG_INFO("cpu_leave_lowpower\n");
-    
+
     /* Set the ACTLR.SMP bit to 1 for SMP mode */
     __switch_to_smp();
-    
+
     /* Enable dcache */
     __enable_dcache();
 }
@@ -74,18 +77,18 @@ static inline void platform_do_lowpower(unsigned int cpu, int *spurious)
 {
     /* Just enter wfi for now. TODO: Properly shut off the cpu. */
     for (;;) {
-        
+
         /* Execute an ISB instruction to ensure that all of the CP15 register changes from the previous steps have been committed */
         isb();
-        
+
         /* Execute a DSB instruction to ensure that all cache, TLB and branch predictor maintenance operations issued by any processor in the multiprocessor device before the SMP bit was cleared have completed */
         dsb();
-        
+
         /*
          * here's the WFI
          */
         __asm__ __volatile__("wfi");
-        
+
         if (pen_release == cpu) {
             /*
              * OK, proper wakeup, we're done
@@ -120,12 +123,12 @@ int platform_cpu_kill(unsigned int cpu)
 #ifdef CONFIG_HOTPLUG_WITH_POWER_CTRL
     if (1 == cpu)
     {
-        spm_mtcmos_ctrl_cpu1(STA_POWER_DOWN);
+        spm_mtcmos_ctrl_cpu1(STA_POWER_DOWN, 1);
     }
 #endif
-    
+
     atomic_dec(&hotplug_cpu_count);
-    
+
     return 1;
 }
 
@@ -136,11 +139,18 @@ int platform_cpu_kill(unsigned int cpu)
 void platform_cpu_die(unsigned int cpu)
 {
     int spurious = 0;
-    
+	struct wd_api *wd_api = NULL;
+
     HOTPLUG_INFO("platform_cpu_die, cpu: %d\n", cpu);
 
-#ifdef CONFIG_MTK_WD_KICKER
-    wk_stop_kick_cpu(cpu);
+	get_wd_api(&wd_api);
+    if (wd_api)
+        wd_api->wd_cpu_hot_plug_off_notify(cpu);
+
+
+#ifdef CONFIG_MTK_SCHED_TRACERS
+    trace_cpu_hotplug(cpu, 0, per_cpu(last_event_ts, cpu));
+    per_cpu(last_event_ts, cpu) = ns2usecs(ftrace_now(cpu));
 #endif
 
     /*
@@ -154,7 +164,7 @@ void platform_cpu_die(unsigned int cpu)
      * coherency, and then restore interrupts
      */
     cpu_leave_lowpower(cpu);
-    
+
     if (spurious)
         HOTPLUG_INFO("platform_do_lowpower, spurious wakeup call, cpu: %d, spurious: %d\n", cpu, spurious);
 }

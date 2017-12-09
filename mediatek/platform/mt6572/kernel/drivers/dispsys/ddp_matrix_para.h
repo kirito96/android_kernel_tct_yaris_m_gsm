@@ -1,6 +1,8 @@
 #ifndef _DDP_MATRIX_PARA_H_
 #define _DDP_MATRIX_PARA_H_
 
+#include <mach/mt_typedefs.h>
+
 
 #define TABLE_NO 10
 
@@ -14,6 +16,43 @@
 #define RGB2YUV_601_XVYCC  7
 #define RGB2YUV_709        8
 #define RGB2YUV_709_XVYCC  9
+
+static const short int coef_rdma_601_r2y[5][3] = 
+{
+  {263, 516, 100},
+  {-152, -298, 450},
+  {450, -377, -73},
+  {0, 0, 0},
+  {0, 128, 128}  
+};
+
+static const short int coef_rdma_709_r2y[5][3] = 
+{
+  {187, 629, 63},
+  {-103, -347, 450},
+  {450, -409, -41},
+  {0, 0, 0},
+  {16, 128, 128} 
+};
+
+static const short int coef_rdma_601_y2r[5][3] = 
+{
+  {1193, 0, 1633},
+  {1193, -400, -832},
+  {1193, 2065, 0},
+  {-16, -128, -128},
+  {0, 0, 0}  
+};
+
+static const short int coef_rdma_709_y2r[5][3] = 
+{
+  {1193, 0, 1934},
+  {1193, -217, -545},
+  {1193, 2163, -1},
+  {-16, -128, -128},
+  {0, 0, 0}  
+};
+
 
 static const short int coef[10][5][3] = 
   //-----------------------------------------

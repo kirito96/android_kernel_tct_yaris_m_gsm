@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2011 MediaTek, Inc.
+ *
+ * Author: Pupa Chen <pupa.chen@mediatek.com>
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
 #ifndef __MT_DCM_C__
 #define __MT_DCM_C__
 
@@ -10,12 +25,20 @@
 
 #include <mach/mt_typedefs.h>
 #include <mach/sync_write.h>
-#include <mach/mt_dcm.h>
 #include <mach/mt_clkmgr.h>
+#include <mach/mt_dcm.h>
 
 #include <linux/timer.h>
 
-//-#undef CONFIG_MTK_MET
+//#define LPM_MET_ENABLE
+
+#if defined (LPM_MET_ENABLE)
+#include "linux/met_drv.h"
+extern int met_ext_dev_add(struct metdevice *metdev);
+extern int met_ext_dev_del(struct metdevice *metdev);
+#endif //#if defined (LPM_MET_ENABLE)
+
+#undef CONFIG_MTK_MET	//- skip MET porting
 #ifdef CONFIG_MTK_MET
 #include <linux/met_drv.h>
 #endif
@@ -158,7 +181,7 @@ const char EM_dcm_name[NUM_OF_EM_DCM_TYPE][16]	= {
 
 
 const DCM_REG_MAP dcm_reg_map[NUM_OF_DCM_REGS]	= {
-													__REGXfer(TOP_CKDIV1				),
+													__REGXfer(DCM_TOP_CKDIV1				),
 													__REGXfer(TOP_DCMCTL                ),
 													__REGXfer(TOP_DCMDBC                ),
 
@@ -169,8 +192,8 @@ const DCM_REG_MAP dcm_reg_map[NUM_OF_DCM_REGS]	= {
 													__REGXfer(TOPBUS_DCMCTL             ),
 													__REGXfer(TOPEMI_DCMCTL             ),
 
-													__REGXfer(INFRABUS_DCMCTL0          ),
-													__REGXfer(INFRABUS_DCMCTL1          ),
+													__REGXfer(DCM_INFRABUS_DCMCTL0          ),
+													__REGXfer(DCM_INFRABUS_DCMCTL1          ),
 
 													__REGXfer(MMSYS_HW_DCM_DIS0         ),
 													__REGXfer(MMSYS_HW_DCM_DIS1         ),
@@ -260,8 +283,8 @@ static AP_DCM_INFRA_CTRL		ap_dcm_infra_ctrl_default    	= {0, 0, 0, 1, 1, RG_INF
 static AP_DCM_PERI_CTRL			ap_dcm_peri_ctrl_default		= {0, 0, 0, 1, 1, RG_PERIDCM_SFSEL_DIV32, RG_PERIDCM_FSEL_DIV1, 1, 7};
 static AP_DCM_PMIC_CTRL			ap_dcm_pmic_ctrl_default		= {0, 0, RG_PMIC_SFSEL_DIV32};
 static AP_DCM_USB_CTRL			ap_dcm_usb_ctrl_default 		= {0};
-static UINT32					mm_dcm_ctrl_default 			= 0x3FFFFF;
-static MFG_DCM_BG3D_CTRL		mfg_dcm_ctrl_default			= {1, 1, BG3D_FSEL_DIV64, 0x3F};
+//static UINT32					mm_dcm_ctrl_default 			= 0x3FFFFF;
+//static MFG_DCM_BG3D_CTRL		mfg_dcm_ctrl_default			= {1, 1, BG3D_FSEL_DIV64, 0x3F};
 #else
 static AP_DCM_ARMCORE_CTRL		ap_dcm_armcore_ctrl_default		= {ARM_CORE_DCM_DISABLE};
 static AP_DCM_ARML2BUS_CTRL		ap_dcm_arml2bus_ctrl_default	= {AXI_DIV_SEL_D2, 0, 0};
@@ -271,9 +294,10 @@ static AP_DCM_INFRA_CTRL		ap_dcm_infra_ctrl_default    	= {0, 0, 0, 0, 0, RG_INF
 static AP_DCM_PERI_CTRL			ap_dcm_peri_ctrl_default		= {0, 0, 0, 0, 0, RG_PERIDCM_SFSEL_DIV32, RG_PERIDCM_FSEL_DIV1, 1, 7};
 static AP_DCM_PMIC_CTRL			ap_dcm_pmic_ctrl_default		= {0, 0, RG_PMIC_SFSEL_DIV32};
 static AP_DCM_USB_CTRL			ap_dcm_usb_ctrl_default 		= {0};
-static UINT32					mm_dcm_ctrl_default 			= 0x3FFFFF;
-static MFG_DCM_BG3D_CTRL		mfg_dcm_ctrl_default			= {1, 1, BG3D_FSEL_DIV64, 0x3F};
+//static UINT32					mm_dcm_ctrl_default 			= 0x3FFFFF;
+//static MFG_DCM_BG3D_CTRL		mfg_dcm_ctrl_default			= {1, 1, BG3D_FSEL_DIV64, 0x3F};
 #endif
+
 
 
 
@@ -286,7 +310,7 @@ static AP_DCM_PERI_CTRL			ap_dcm_peri_ctrl		= {0, 0, 0, 0, 0, 0, 0, 0, 0};
 static AP_DCM_PMIC_CTRL			ap_dcm_pmic_ctrl		= {0, 0, RG_PMIC_SFSEL_DIV32};
 static AP_DCM_USB_CTRL			ap_dcm_usb_ctrl 		= {0};
 static UINT32					mm_dcm_ctrl 			= 0x3FFFFF;
-static MFG_DCM_BG3D_CTRL		mfg_dcm_ctrl			= {1, 1, BG3D_FSEL_DIV64, 0x3F};
+//static MFG_DCM_BG3D_CTRL		mfg_dcm_ctrl			= {1, 1, BG3D_FSEL_DIV64, 0x3F};
 
 UINT32* ap_dcm_default_setting[NUM_OF_AP_DCM_TYPE] = {(UINT32*)&ap_dcm_armcore_ctrl_default, (UINT32*)&ap_dcm_arml2bus_ctrl_default, (UINT32*)&ap_dcm_topbus_ctrl_default, (UINT32*)&ap_dcm_emi_ctrl_default,
 														(UINT32*)&ap_dcm_infra_ctrl_default, (UINT32*)&ap_dcm_peri_ctrl_default, (UINT32*)&ap_dcm_pmic_ctrl_default, (UINT32*)&ap_dcm_usb_ctrl_default};
@@ -305,8 +329,8 @@ static LPM_CTRL em_lpm_request;
 static DEFINE_SPINLOCK(dcm_spin_lock);
 static DEFINE_SPINLOCK(lpm_spin_lock);
 static DEFINE_SPINLOCK(freqmeter_spin_lock);
-#define DCM_LOCK				spin_lock(&dcm_spin_lock);
-#define DCM_UNLOCK				spin_unlock(&dcm_spin_lock);
+#define DCM_LOCK			spin_lock(&dcm_spin_lock);
+#define DCM_UNLOCK			spin_unlock(&dcm_spin_lock);
 #define LPM_LOCK(fLAG)			spin_lock_irqsave(&lpm_spin_lock, fLAG);
 #define LPM_UNLOCK(fLAG)		spin_unlock_irqrestore(&lpm_spin_lock, fLAG);
 #define FREQM_LOCK				spin_lock(&freqmeter_spin_lock);
@@ -336,13 +360,8 @@ typedef struct{
 }LPM_TIMER_DATA;
 static LPM_TIMER_DATA lpm_timer_data;
 
-#ifdef CONFIG_MTK_MET
-struct metdevice *pmet_lpm;
-EXPORT_SYMBOL(pmet_lpm);
-#endif
-
 #ifdef LPM_MET_ENABLE
-extern struct metdevice met_lpm_device;
+struct metdevice met_lpm_device[];
 typedef struct
 {
 	UINT32		init;
@@ -377,7 +396,7 @@ static AP_DCM_Handler ap_dcm_handler[NUM_OF_AP_DCM_TYPE] = {	ap_dcm_armcore,
 #ifndef __DCM_CTP__
 static void mt_fqmtr_init (void);
 static void mt_lpm_init (void);
-static void lpm_timer_callback(UINT32 param);
+static void lpm_timer_callback(unsigned long param);
 #endif //- !__DCM_CTP__
 
 
@@ -397,7 +416,7 @@ UINT32 dcm_init(UINT32 option)
 	dcm_initiated = 1;
 	
 	{	//- AP MISC DCM
-		reg = dcm_read_reg (INFRABUS_DCMCTL1);
+		reg = dcm_read_reg (DCM_INFRABUS_DCMCTL1);
 		if (dcm_pmic_getinit)
 		{	
 			ap_dcm_pmic_ctrl_default.rg_pmic_bclkdcm_en		= (reg >> RG_PMIC_BCLKDCM_EN_BIT) & RG_PMIC_BCLKDCM_EN_MASK;
@@ -500,6 +519,8 @@ INT32 dcm_enable_usb (UINT32 enable)
 
 	ctrl.rg_usbdcm_en = enable;
 	ap_dcm_usb (AP_DCM_OP_CONFIG, (void*) &ctrl);
+
+	return 0;
 }
 
 INT32 dcm_enable_pmic (UINT32 sfsel, UINT32 spi_dcm_en, UINT32 bclk_dcm_en)
@@ -510,6 +531,8 @@ INT32 dcm_enable_pmic (UINT32 sfsel, UINT32 spi_dcm_en, UINT32 bclk_dcm_en)
 	ctrl.rg_pmic_spiclkdcm_en	= spi_dcm_en;
 	ctrl.rg_pmic_bclkdcm_en		= bclk_dcm_en;
 	ap_dcm_pmic (AP_DCM_OP_CONFIG, (void*) &ctrl);
+
+	return 0;
 }
 
 static void ap_dcm_armcore (UINT32 option, void* ctrl)
@@ -530,11 +553,13 @@ static void ap_dcm_armcore (UINT32 option, void* ctrl)
 			memcpy((void*)&ap_dcm_armcore_ctrl, ctrl, sizeof (AP_DCM_ARMCORE_CTRL));
 			break;
 		default:
-			return;
+			return; //fixme. need unlock.
 			break;
 	}
 
 
+	/* *TOP_DCMDBC = aor(*TOP_DCMDBC, ~(1<<0), 
+	  (ap_dcm_armcore_ctrl.mode == ARM_CORE_DCM_MODE1) ? 1 : 0);*/
 	reg = dcm_read_reg (TOP_DCMDBC);
 	dcm_clr_field (reg, TOPCKGEN_DCM_DBC_CNT);
 	if (ap_dcm_armcore_ctrl.mode == ARM_CORE_DCM_MODE1)
@@ -543,6 +568,8 @@ static void ap_dcm_armcore (UINT32 option, void* ctrl)
 	}
 	dcm_write_reg (reg, TOP_DCMDBC);
 
+	/* *TOP_DCMCTL = aor(*TOP_DCMCTL, ~(0x3<<1), 
+	 (ap_dcm_armcore_ctrl.mode == ARM_CORE_DCM_MODE2)? 0x3<<1 : 0<<1); */
 	reg = dcm_read_reg (TOP_DCMCTL);
 	dcm_clr_field (reg, ARM_DCM_WFE_ENABLE);
 	dcm_clr_field (reg, ARM_DCM_WFI_ENABLE);
@@ -554,6 +581,9 @@ static void ap_dcm_armcore (UINT32 option, void* ctrl)
 	dcm_write_reg (reg, TOP_DCMCTL);
 	
 	//- update status
+	/* em_dcm_sta[EM_ARM_DCM] = aor(em_dcm_sta[EM_ARM_DCM], ~0x3,  ap_dcm_armcore_ctrl.mode); */
+	/* em_dcm_en[EM_ARM_DCM] = aor(em_dcm_en[EM_ARM_DCM], ~1, 
+	 (ap_dcm_armcore_ctrl.mode != ARM_CORE_DCM_DISABLE) ? 1 : 0*/
 	em_dcm_sta[EM_ARM_DCM] &= (~0x3);
 	em_dcm_en[EM_ARM_DCM]  &= (~(1 << 0));
 	if (ap_dcm_armcore_ctrl.mode != ARM_CORE_DCM_DISABLE)
@@ -585,7 +615,7 @@ static void ap_dcm_arml2bus (UINT32 option, void* ctrl)
 			memcpy((void*)&ap_dcm_arml2bus_ctrl, ctrl, sizeof (AP_DCM_ARML2BUS_CTRL));
 			break;
 		default:
-			return;
+			return; //fixme
 			break;
 	}
 
@@ -596,6 +626,7 @@ static void ap_dcm_arml2bus (UINT32 option, void* ctrl)
 	   	case AXI_DIV_SEL_D3:
         case AXI_DIV_SEL_D4:
 		case AXI_DIV_SEL_D5:
+			/* *ACLKEN_DIV = aor(*ACLKEN_DIV, ~0x1f<<0,  ap_dcm_arml2bus_ctrl.cg0_div); */
 			reg = dcm_read_reg (ACLKEN_DIV);
 			dcm_clr_and_set_field (reg, ap_dcm_arml2bus_ctrl.cg0_div, AXI_DIV_SEL);
 			dcm_write_reg (reg, ACLKEN_DIV);
@@ -604,10 +635,12 @@ static void ap_dcm_arml2bus (UINT32 option, void* ctrl)
 		break;
 	}
 
+	/* *CA7_MISC_CONFIG = aor(*CA7_MISC_CONFIG, ~(1<<9),  ap_dcm_arml2bus_ctrl.cg1_en<<9); */
 	reg = dcm_read_reg (CA7_MISC_CONFIG);
 	dcm_clr_and_set_field (reg, ap_dcm_arml2bus_ctrl.cg1_en, L2_BUS_DCM_EN);
 	dcm_write_reg (reg, CA7_MISC_CONFIG);
 
+	/* *CA7_CACHE_CONFIG = aor(*CA7_CACHE_CONFIG, ~(1<<8), ap_dcm_arml2bus_ctrl.cg2_en<<8); */
 	reg = dcm_read_reg (CA7_CACHE_CONFIG);
 	dcm_clr_and_set_field (reg, ap_dcm_arml2bus_ctrl.cg2_en, L2C_SRAM_MCU_DCM_EN);
 	dcm_write_reg (reg, CA7_CACHE_CONFIG);
@@ -641,7 +674,7 @@ static void ap_dcm_topbus (UINT32 option, void* ctrl)
 			memcpy((void*)&ap_dcm_topbus_ctrl, ctrl, sizeof (AP_DCM_TOPBUS_CTRL));
 			break;
 		default:
-			return;
+			return; //fixme
 			break;
 	}
 
@@ -654,9 +687,11 @@ static void ap_dcm_topbus (UINT32 option, void* ctrl)
 
 	dcm_write_reg (reg_0, TOPBUS_DCMCTL);
 	dsb();
-	dcm_write_reg (reg_1, TOPBUS_DCMCTL);
+	dcm_write_reg (reg_1, TOPBUS_DCMCTL); // toggle 0->1 to take effect, and parking at 1.
 	dsb();
+#if 0
 	dcm_write_reg (reg_0, TOPBUS_DCMCTL);
+#endif
 	
 	DCM_UNLOCK;	
 }
@@ -679,13 +714,15 @@ static void ap_dcm_emi (UINT32 option, void* ctrl)
 				dcm_write_reg (reg_refresh &0xFFFFFFFD, (EMI_BASE + 0x68));
 				udelay (10);
 				
+				/* *TOPEMI_DCMCTL = aor(*TOPEMI_DCMCTL, 0x0400FE00, 1<<2);; */
+				/* *TOPEMI_DCMCTL = aor(*TOPEMI_DCMCTL, 0x0400FE00, (1<<2) | (1<<0));; */
 				reg_emi = (0x0400FE00 & dcm_read_reg (TOPEMI_DCMCTL)) | 0x04;
 				dcm_set_field (reg_emi, 0, RG_EMIDCM_ENABLE);
 				dcm_write_reg (reg_emi, TOPEMI_DCMCTL);
 				dsb();
 				dcm_write_reg ((reg_emi | (RG_EMIDCM_APB_TOG_MASK << RG_EMIDCM_APB_TOG_BIT)), TOPEMI_DCMCTL);
 				dsb();
-				dcm_write_reg (reg_emi, TOPEMI_DCMCTL);
+				//dcm_write_reg (reg_emi, TOPEMI_DCMCTL); //astone fixed, part toggle bit at 1 to avoid corruption.
 
 				ap_dcm_emi_ctrl.dcm_en = 0;
 				//- re-enable auto refresh
@@ -694,20 +731,24 @@ static void ap_dcm_emi (UINT32 option, void* ctrl)
 			}break;
 		case AP_DCM_OP_ENABLE:
 			{
+				/* *TOPEMI_DCMCTL = aor(*TOPEMI_DCMCTL, 0x0400FE00, (1<<8) | (1<<2));; */
+				/* *TOPEMI_DCMCTL = aor(*TOPEMI_DCMCTL, 0x0400FE00, (1<<8) | (1<<2) | (1<<0)); */
 				reg_emi = (0x0400FE00 & dcm_read_reg (TOPEMI_DCMCTL)) | 0x04;
 				dcm_set_field (reg_emi, 1, RG_EMIDCM_ENABLE);
 				dcm_write_reg (reg_emi, TOPEMI_DCMCTL);
 				dsb();
 				dcm_write_reg ((reg_emi | (RG_EMIDCM_APB_TOG_MASK << RG_EMIDCM_APB_TOG_BIT)), TOPEMI_DCMCTL);
 				dsb();
-				dcm_write_reg (reg_emi, TOPEMI_DCMCTL);
+				//dcm_write_reg (reg_emi, TOPEMI_DCMCTL); //astone, to park toggle bit at 1
 				
 				ap_dcm_emi_ctrl.dcm_en = 1;
 			}break;
 		case AP_DCM_OP_CONFIG:
 			{
+				/* fixme, to avoid to toggle each field separately and not to acount about side effect. */
 				if (ap_dcm_emi_ctrl.idle_fsel != ctl->idle_fsel)
 				{	
+					/* *TOPEMI_DCMCTL = aor(*TOPEMI_DCMCTL, ~(0x1F<<21), (ctl->idle_fsel<<21) | 0x20);  */
 					reg_emi = (0x0400FE00 & dcm_read_reg (TOPEMI_DCMCTL)) | 0x20;
 					dcm_set_field (reg_emi, ctl->idle_fsel, RG_EMIDCM_IDLE_FSEL);
 					dcm_write_reg (reg_emi, TOPEMI_DCMCTL);
@@ -718,6 +759,7 @@ static void ap_dcm_emi (UINT32 option, void* ctrl)
 				}
 				if (ap_dcm_emi_ctrl.full_sel != ctl->full_sel)
 				{
+					/* *TOPEMI_DCMCTL = aor(*TOPEMI_DCMCTL, ~(0x1F<<16), (ctl->full_sel<<16) | 0x10);  */
 					reg_emi = (0x0400FE00 & dcm_read_reg (TOPEMI_DCMCTL)) | 0x10;
 					dcm_set_field (reg_emi, ctl->full_sel, RG_EMIDCM_FULL_SEL);
 					dcm_write_reg (reg_emi, TOPEMI_DCMCTL);
@@ -728,6 +770,7 @@ static void ap_dcm_emi (UINT32 option, void* ctrl)
 				}
 				if (ap_dcm_emi_ctrl.dbc_en != ctl->dbc_en)
 				{
+					/* *TOPEMI_DCMCTL = aor(*TOPEMI_DCMCTL, ~(0x1<<8), (ctl->dbc_en<<8) | 0x8);  */
 					reg_emi = (0x0400FE00 & dcm_read_reg (TOPEMI_DCMCTL)) | 0x08;
 					dcm_set_field (reg_emi, ctl->dbc_en, RG_EMIDCM_DBC_ENABLE);
 					dcm_write_reg (reg_emi, TOPEMI_DCMCTL);
@@ -745,6 +788,7 @@ static void ap_dcm_emi (UINT32 option, void* ctrl)
 					dcm_write_reg (reg_refresh &0xFFFFFFFD, (EMI_BASE + 0x68));
 					udelay (10);
 
+					/* *TOPEMI_DCMCTL = aor(*TOPEMI_DCMCTL, ~(0x1<<7), (ctl->dcm_en<<7) | 0x4);  */
 					reg_emi = (0x0400FE00 & dcm_read_reg (TOPEMI_DCMCTL)) | 0x04;
 					dcm_set_field (reg_emi, ctl->dcm_en, RG_EMIDCM_ENABLE);
 					dcm_write_reg (reg_emi, TOPEMI_DCMCTL);
@@ -760,6 +804,7 @@ static void ap_dcm_emi (UINT32 option, void* ctrl)
 				}
 				if (ap_dcm_emi_ctrl.force_on != ctl->force_on)			
 				{
+					/* *TOPEMI_DCMCTL = aor(*TOPEMI_DCMCTL, ~(0x1<<6), (ctl->force_on<<6) | 0x2);  */
 					reg_emi = (0x0400FE00 & dcm_read_reg (TOPEMI_DCMCTL)) | 0x02;
 					dcm_set_field (reg_emi, ctl->force_on, RG_EMIDCM_FORCE_ON);
 					dcm_write_reg (reg_emi, TOPEMI_DCMCTL);
@@ -771,11 +816,12 @@ static void ap_dcm_emi (UINT32 option, void* ctrl)
 				memcpy((void*)&ap_dcm_emi_ctrl, ctrl, sizeof (AP_DCM_EMI_CTRL));
 			}break;
 		default:
-			return;
+			return; //fixme
 			break;
 	}
 	
 	//- field exclusive apb_sel
+	/* *TOPEMI_DCMCTL = aor(*TOPEMI_DCMCTL, ~(0x1f<<1), 0);  */
 	reg_0 = 0;
 	dcm_set_field (reg_0, ap_dcm_emi_ctrl.force_off, RG_EMIDCM_FORCE_OFF);
 	dcm_set_field (reg_0, ap_dcm_emi_ctrl.force_on, RG_EMIDCM_FORCE_ON);
@@ -819,17 +865,17 @@ static void ap_dcm_infra (UINT32 option, void* ctrl)
 			memcpy((void*)&ap_dcm_infra_ctrl, ctrl, sizeof (AP_DCM_INFRA_CTRL));
 			break;
 		default:
-			return;
+			return; //fixme
 			break;
 	}
 
 	//- force on first
-	dcm_write_reg ((1 << RG_INFRADCM_FORCE_ON_BIT), SET_INFRABUS_DCMCTL0);
+	dcm_write_reg ((1 << RG_INFRADCM_FORCE_ON_BIT), SET_DCM_INFRABUS_DCMCTL0);
 
 	//- clear field ctrl_1
 	dcm_set_field (reg_1, RG_INFRADCM_DEBOUNCE_EN_MASK, RG_INFRADCM_DEBOUNCE_EN);
 	dcm_set_field (reg_1, RG_INFRADCM_DEBOUNCE_CNT_MASK, RG_INFRADCM_DEBOUNCE_CNT);
-	dcm_write_reg (reg_1, CLR_INFRABUS_DCMCTL1);
+	dcm_write_reg (reg_1, CLR_DCM_INFRABUS_DCMCTL1);
 
 	dsb ();
 
@@ -837,7 +883,7 @@ static void ap_dcm_infra (UINT32 option, void* ctrl)
 	reg_1 = 0;
 	dcm_set_field (reg_1, ap_dcm_infra_ctrl.dbc_en, RG_INFRADCM_DEBOUNCE_EN);
 	dcm_set_field (reg_1, ap_dcm_infra_ctrl.dbc_cnt, RG_INFRADCM_DEBOUNCE_CNT);
-	dcm_write_reg (reg_1, SET_INFRABUS_DCMCTL1);
+	dcm_write_reg (reg_1, SET_DCM_INFRABUS_DCMCTL1);
 
 	//- clear field ctrl_0
 	reg_0 = 0;
@@ -847,7 +893,7 @@ static void ap_dcm_infra (UINT32 option, void* ctrl)
 	dcm_set_field (reg_0, RG_INFRADCM_CLKSLW_EN_MASK, RG_INFRADCM_CLKSLW_EN);
 	dcm_set_field (reg_0, RG_INFRADCM_SFSEL_MASK, RG_INFRADCM_SFSEL);
 //	dcm_set_field (reg_0, RG_INFRADCM_FSEL_MASK, RG_INFRADCM_FSEL);
-	dcm_write_reg (reg_0, CLR_INFRABUS_DCMCTL0);
+	dcm_write_reg (reg_0, CLR_DCM_INFRABUS_DCMCTL0);
 
 	dsb ();
 
@@ -859,20 +905,20 @@ static void ap_dcm_infra (UINT32 option, void* ctrl)
 	dcm_set_field (reg_0, ap_dcm_infra_ctrl.clkslw_en, RG_INFRADCM_CLKSLW_EN);
 	dcm_set_field (reg_0, ap_dcm_infra_ctrl.full_sel, RG_INFRADCM_SFSEL);
 	dcm_set_field (reg_0, ap_dcm_infra_ctrl.idle_fsel, RG_INFRADCM_FSEL);
-	dcm_write_reg (reg_0, SET_INFRABUS_DCMCTL0);
+	dcm_write_reg (reg_0, SET_DCM_INFRABUS_DCMCTL0);
 
 	dsb ();
 
 	//- write force on field
 	if (ap_dcm_infra_ctrl.force_on)
 	{
-		dcm_write_reg ((1 << RG_INFRADCM_FORCE_ON_BIT), SET_INFRABUS_DCMCTL0);
+		dcm_write_reg ((1 << RG_INFRADCM_FORCE_ON_BIT), SET_DCM_INFRABUS_DCMCTL0);
 	}
 	else
 	{
-		dcm_write_reg ((1 << RG_INFRADCM_FORCE_ON_BIT), CLR_INFRABUS_DCMCTL0);
+		dcm_write_reg ((1 << RG_INFRADCM_FORCE_ON_BIT), CLR_DCM_INFRABUS_DCMCTL0);
 	}
-	
+
 	em_dcm_sta[EM_INFRA_DCM] = reg_0 | (reg_1 << 8);
 
 	em_dcm_en[EM_INFRA_DCM] = (ap_dcm_infra_ctrl.clkoff_en << 0);
@@ -906,12 +952,12 @@ static void ap_dcm_peri (UINT32 option, void* ctrl)
 	}
 
 	//- force on first
-	dcm_write_reg ((1 << RG_PERIDCM_FORCE_ON_BIT), SET_INFRABUS_DCMCTL0);
+	dcm_write_reg ((1 << RG_PERIDCM_FORCE_ON_BIT), SET_DCM_INFRABUS_DCMCTL0);
 
 	//- clear field ctrl_1
 	dcm_set_field (reg_1, RG_PERIDCM_DEBOUNCE_EN_MASK, RG_PERIDCM_DEBOUNCE_EN);
 	dcm_set_field (reg_1, RG_PERIDCM_DEBOUNCE_CNT_MASK, RG_PERIDCM_DEBOUNCE_CNT);
-	dcm_write_reg (reg_1, CLR_INFRABUS_DCMCTL1);
+	dcm_write_reg (reg_1, CLR_DCM_INFRABUS_DCMCTL1);
 
 	dsb ();
 
@@ -919,7 +965,7 @@ static void ap_dcm_peri (UINT32 option, void* ctrl)
 	reg_1 = 0;
 	dcm_set_field (reg_1, ap_dcm_peri_ctrl.dbc_en, RG_PERIDCM_DEBOUNCE_EN);
 	dcm_set_field (reg_1, ap_dcm_peri_ctrl.dbc_cnt, RG_PERIDCM_DEBOUNCE_CNT);
-	dcm_write_reg (reg_1, SET_INFRABUS_DCMCTL1);
+	dcm_write_reg (reg_1, SET_DCM_INFRABUS_DCMCTL1);
 
 	//- clear field ctrl_0
 	reg_0 = 0;
@@ -929,7 +975,7 @@ static void ap_dcm_peri (UINT32 option, void* ctrl)
 	dcm_set_field (reg_0, RG_PERIDCM_CLKSLW_EN_MASK, RG_PERIDCM_CLKSLW_EN);
 	dcm_set_field (reg_0, RG_PERIDCM_SFSEL_MASK, RG_PERIDCM_SFSEL);
 //-	dcm_set_field (reg_0, RG_PERIDCM_FSEL_MASK, RG_PERIDCM_FSEL);
-	dcm_write_reg (reg_0, CLR_INFRABUS_DCMCTL0);
+	dcm_write_reg (reg_0, CLR_DCM_INFRABUS_DCMCTL0);
 
 	dsb ();
 
@@ -941,18 +987,18 @@ static void ap_dcm_peri (UINT32 option, void* ctrl)
 	dcm_set_field (reg_0, ap_dcm_peri_ctrl.clkslw_en, RG_PERIDCM_CLKSLW_EN);
 	dcm_set_field (reg_0, ap_dcm_peri_ctrl.full_sel, RG_PERIDCM_SFSEL);
 	dcm_set_field (reg_0, ap_dcm_peri_ctrl.idle_fsel, RG_PERIDCM_FSEL);
-	dcm_write_reg (reg_0, SET_INFRABUS_DCMCTL0);
+	dcm_write_reg (reg_0, SET_DCM_INFRABUS_DCMCTL0);
 
 	dsb ();
 
 	//- write force on field
 	if (ap_dcm_peri_ctrl.force_on)
 	{
-		dcm_write_reg ((1 << RG_PERIDCM_FORCE_ON_BIT), CLR_INFRABUS_DCMCTL0);
+		dcm_write_reg ((1 << RG_PERIDCM_FORCE_ON_BIT), SET_DCM_INFRABUS_DCMCTL0);
 	}
 	else
 	{
-		dcm_write_reg ((1 << RG_PERIDCM_FORCE_ON_BIT), CLR_INFRABUS_DCMCTL0);
+		dcm_write_reg ((1 << RG_PERIDCM_FORCE_ON_BIT), CLR_DCM_INFRABUS_DCMCTL0);
 	}
 	
 	em_dcm_sta[EM_PERI_DCM] = (reg_0 >> 16) | (reg_1 << 2);
@@ -977,7 +1023,7 @@ static void ap_dcm_pmic (UINT32 option, void* ctrl)
 			break;
 		case AP_DCM_OP_ENABLE:
 			ap_dcm_pmic_ctrl.rg_pmic_spiclkdcm_en 	= 1;
-			ap_dcm_pmic_ctrl.rg_pmic_bclkdcm_en		= 0; //- WHQA
+			ap_dcm_pmic_ctrl.rg_pmic_bclkdcm_en		= 1;			
 			break;
 		case AP_DCM_OP_CONFIG:
 			memcpy((void*)&ap_dcm_pmic_ctrl, ctrl, sizeof (AP_DCM_PMIC_CTRL));
@@ -991,7 +1037,7 @@ static void ap_dcm_pmic (UINT32 option, void* ctrl)
 	dcm_set_field (reg, RG_PMIC_SFSEL_MASK, RG_PMIC_SFSEL);
 	dcm_set_field (reg, RG_PMIC_SPICLKDCM_EN_MASK, RG_PMIC_SPICLKDCM_EN);
 	dcm_set_field (reg, RG_PMIC_BCLKDCM_EN_MASK, RG_PMIC_BCLKDCM_EN);
-	dcm_write_reg (reg, CLR_INFRABUS_DCMCTL1);
+	dcm_write_reg (reg, CLR_DCM_INFRABUS_DCMCTL1);
 
 	dsb();
 
@@ -1000,7 +1046,7 @@ static void ap_dcm_pmic (UINT32 option, void* ctrl)
 	dcm_set_field (reg, ap_dcm_pmic_ctrl.rg_pmic_sfsel, RG_PMIC_SFSEL);
 	dcm_set_field (reg, ap_dcm_pmic_ctrl.rg_pmic_spiclkdcm_en, RG_PMIC_SPICLKDCM_EN);
 	dcm_set_field (reg, ap_dcm_pmic_ctrl.rg_pmic_bclkdcm_en, RG_PMIC_BCLKDCM_EN);
-	dcm_write_reg (reg, SET_INFRABUS_DCMCTL1);
+	dcm_write_reg (reg, SET_DCM_INFRABUS_DCMCTL1);
 
 	em_dcm_sta[EM_MISC_DCM] &= (~0xFE);
 	em_dcm_sta[EM_MISC_DCM] |= reg;
@@ -1033,13 +1079,13 @@ static void ap_dcm_usb (UINT32 option, void* ctrl)
 	
 	if (ap_dcm_usb_ctrl.rg_usbdcm_en)
 	{
-		dcm_write_reg ((1 << RG_USBDCM_EN_BIT), SET_INFRABUS_DCMCTL1);
+		dcm_write_reg ((1 << RG_USBDCM_EN_BIT), SET_DCM_INFRABUS_DCMCTL1);
 		em_dcm_sta[EM_MISC_DCM] |= 0x1;
 		em_dcm_en[EM_MISC_DCM] |= (1 << 0);
 	}
 	else
 	{
-		dcm_write_reg ((1 << RG_USBDCM_EN_BIT), CLR_INFRABUS_DCMCTL1);
+		dcm_write_reg ((1 << RG_USBDCM_EN_BIT), CLR_DCM_INFRABUS_DCMCTL1);
 		em_dcm_sta[EM_MISC_DCM] &= (~0x1);
 		em_dcm_en[EM_MISC_DCM] &= (~(1 << 0));
 	}
@@ -1294,7 +1340,7 @@ void dcm_mfgsys_gpu(MFG_DCM_BG3D_CTRL* ctrl)
 }
 
 #ifndef __DCM_CTP__
-static INT32 dcm_proc_dbg_read(char *page, char **start, off_t off, INT32 count, INT32 *eof, void *data)
+static INT32 dcm_proc_dbg_read(char *page, char **start, off_t off, int count, INT32 *eof, void *data)
 {
 	char *p = page;
 	UINT32 sta[NUM_OF_EM_DCM_TYPE];
@@ -1331,7 +1377,7 @@ static INT32 dcm_proc_dbg_read(char *page, char **start, off_t off, INT32 count,
 	return len < count ? len : count;
 }
 
-static INT32 dcm_proc_dbg_write(struct file *file, const char *buffer, UINT32 count, void *data)
+static INT32 dcm_proc_dbg_write(struct file *file, const char *buffer, unsigned long count, void *data)
 {
 	INT32 		ret;
 	char 		kbuf[256];
@@ -1340,7 +1386,7 @@ static INT32 dcm_proc_dbg_write(struct file *file, const char *buffer, UINT32 co
 
 	dcm_info("Enter: %s\n",__func__);
 
-	len = min(count, (UINT32)(sizeof(kbuf)-1));
+	len = min(count, (typeof(count))(sizeof(kbuf)-1));
 
 	if (count == 0)		return -1;
 	if(count > 255)		count = 255;
@@ -1467,8 +1513,8 @@ static INT32 dcm_proc_dbg_write(struct file *file, const char *buffer, UINT32 co
 					if (em_dcm_mode)
 					{
 						pmic_ctrl.rg_pmic_sfsel			= (p4 >> RG_PMIC_SFSEL_BIT) 		& RG_PMIC_SFSEL_MASK;
-						pmic_ctrl.rg_pmic_spiclkdcm_en	= (p4 >> RG_PMIC_SPICLKDCM_EN_BIT)	& RG_PMIC_SPICLKDCM_EN_MASK;						
-						pmic_ctrl.rg_pmic_bclkdcm_en	= 0; //- WHQA
+						pmic_ctrl.rg_pmic_spiclkdcm_en	= (p4 >> RG_PMIC_SPICLKDCM_EN_BIT)	& RG_PMIC_SPICLKDCM_EN_MASK;
+						pmic_ctrl.rg_pmic_bclkdcm_en	= (p4 >> RG_PMIC_BCLKDCM_EN_BIT)	& RG_PMIC_BCLKDCM_EN_MASK;
 		
 						ap_dcm_pmic (AP_DCM_OP_CONFIG, (void*) &pmic_ctrl);
 		
@@ -1538,7 +1584,7 @@ static INT32 dcm_proc_dumpregs_read(char *page, char **start, off_t off, INT32 c
 	return len < count ? len : count;
 }
 
-static INT32 dcm_proc_dumpregs_write(struct file *file, const char *buffer, UINT32 count, void *data)
+static INT32 dcm_proc_dumpregs_write(struct file *file, const char *buffer, unsigned long count, void *data)
 {
 	dcm_info("Enter: %s\n",__func__);
 
@@ -1549,6 +1595,7 @@ static INT32 dcm_proc_help_read(char *page, char **start, off_t off, INT32 count
 {
 	char *p = page;
 	UINT32 len = 0;
+	UINT32 i;
 
 	if (off > 0)
 	{
@@ -1557,15 +1604,9 @@ static INT32 dcm_proc_help_read(char *page, char **start, off_t off, INT32 count
 	}
 
 	dcm_info("Enter: %s\n",__func__);
+	for (i=0; i<NUM_OF_EM_DCM_TYPE; i++)
 	{
-		p += sprintf(p, "ARM b1:l2bus, b0:core\n"
-						"EMI b0\n"
-						"INFRA b0\n"
-						"PERI b0\n"
-						"MISC b1:pmic spi, b0:usb\n"
-						"MM b21:b0\n"
-						"MFG b0"				
-					);
+		p += sprintf(p, "\r\nhelp!!!\r\n,");
 	}
 
 	*start = page + off;
@@ -1576,16 +1617,16 @@ static INT32 dcm_proc_help_read(char *page, char **start, off_t off, INT32 count
 	return len < count ? len : count;
 }
 
-static INT32 dcm_proc_help_write(struct file *file, const char *buffer, UINT32 count, void *data)
+static INT32 dcm_proc_help_write(struct file *file, const char *buffer, unsigned long count, void *data)
 {
 	INT32 		ret;
 	char 		kbuf[256];
 	UINT32	 	len = 0;
-	UINT32		p1,p2,p3,p4;
+	UINT32		p1;
 
 	dcm_info("Enter: %s\n",__func__);
 
-	len = min(count, (UINT32)(sizeof(kbuf)-1));
+	len = min(count, (typeof(count))(sizeof(kbuf)-1));
 
 	if (count == 0)		return -1;
 	if(count > 255)		count = 255;
@@ -1712,18 +1753,22 @@ void gpiodbg_armcore_dbg_out(void)
 {
 	UINT32 reg;
 
+	/* *MCU_BIU_CON = aor(*MCU_BIU_CON, ~(1<<2), 0); */
 	reg = dcm_read_reg (MCU_BIU_CON);
 	dcm_clr_and_set_field (reg, 0, CLKMUX_SEL_MON);
 	dcm_write_reg (reg, MCU_BIU_CON);
 
+	/* *TEST_DBG_CTRL = aor(*TEST_DBG_CTRL, ~0x0ff, 0x0ff); */
 	reg = dcm_read_reg (TEST_DBG_CTRL);
 	dcm_clr_and_set_field (reg, 0xFF, RG_ARMCLK_K1);
 	dcm_write_reg (reg, TEST_DBG_CTRL);
 
+	/* *DBG_CTRL = aor(*DBG_CTRL, ~0x0ff, 7); */
 	reg = dcm_read_reg (DBG_CTRL);
 	dcm_clr_and_set_field (reg, 0x07, CA7_MON_SEL);
 	dcm_write_reg (reg, DBG_CTRL);
 
+	/* *INFRA_AO_DBG_CON0 = aor(*INFRA_AO_DBG_CON0, ~0x3f, 0x27); */
 	reg = dcm_read_reg (INFRA_AO_DBG_CON0);
 	dcm_clr_and_set_field (reg, 1, DEBUG_PIN_SEL);
 	dcm_clr_and_set_field (reg, MUCSYS_DEBUG_PINS_LSB, INFRA_AO_DEBUG_MON0);
@@ -1737,14 +1782,17 @@ void gpiodbg_arml2bus_dbg_out(void)
 {
 	UINT32 reg;
 
+	/* *MCU_BIU_CON = aor(*MCU_BIU_CON, ~(1<<2), (1<<2)); */
 	reg = dcm_read_reg (MCU_BIU_CON);
 	dcm_clr_and_set_field (reg, 0x01, CLKMUX_SEL_MON);
 	dcm_write_reg (reg, MCU_BIU_CON);
 
+	/* *DBG_CTRL = aor(*DBG_CTRL, ~0x0ff, 7); */
 	reg = dcm_read_reg (DBG_CTRL);
 	dcm_clr_and_set_field (reg, 0x07, CA7_MON_SEL);
 	dcm_write_reg (reg, DBG_CTRL);
 
+	/* *INFRA_AO_DBG_CON0 = aor(*INFRA_AO_DBG_CON0, ~0x3f, 0x27); */
 	reg = dcm_read_reg (INFRA_AO_DBG_CON0);
 	dcm_clr_and_set_field (reg, 1, DEBUG_PIN_SEL);
 	dcm_clr_and_set_field (reg, MUCSYS_DEBUG_PINS_LSB, INFRA_AO_DEBUG_MON0);
@@ -1759,16 +1807,20 @@ void gpiodbg_spm_csw_dbg_out(void)
 {
 	UINT32 reg;
 
+	/* *TEST_DBG_CTRL = aor(*TEST_DBG_CTRL, ~(1<<12), 1<<12); */
 	reg = dcm_read_reg (TEST_DBG_CTRL);
 	dcm_clr_and_set_field (reg, 0x1, RG_CLK_DBG_EN);
 	dcm_write_reg (reg, TEST_DBG_CTRL);
 
+	/* *TEST_DBG_CTRL = aor(*TEST_DBG_CTRL, ~(0x3f<<10), 0<<10); */
 	reg = dcm_read_reg (TEST_DBG_CTRL);
 	dcm_clr_and_set_field (reg, 0x0, RG_CLK_DBGOUT_SEL);
 	dcm_write_reg (reg, TEST_DBG_CTRL);
 
+	/* *INFRA_AO_DBG_CON0 = aor(*INFRA_AO_DBG_CON0, ~(0x3f<<0), 0x20); */
 	reg = dcm_read_reg (INFRA_AO_DBG_CON0);
 	dcm_clr_and_set_field (reg, 0x1, DEBUG_PIN_SEL);
+	dcm_clr_and_set_field (reg, TOP_CLOCK_CONTROL, INFRA_AO_DEBUG_MON0); /* fixme, pupa ignored this? */
 	dcm_write_reg (reg, INFRA_AO_DBG_CON0);
 
 	//- GPIO setting
@@ -1780,14 +1832,17 @@ void gpiodbg_emi_dbg_out(void)
 {
 	UINT32 reg;
 
+	/* *TEST_DBG_CTRL = aor(*TEST_DBG_CTRL, ~(1<<12), 1<<12); */
 	reg = dcm_read_reg (TEST_DBG_CTRL);
 	dcm_clr_and_set_field (reg, 0x1, RG_CLK_DBG_EN);
 	dcm_write_reg (reg, TEST_DBG_CTRL);
 
+	/* *TEST_DBG_CTRL = aor(*TEST_DBG_CTRL, ~(0x3<<10), 2<<10); */
 	reg = dcm_read_reg (TEST_DBG_CTRL);
 	dcm_clr_and_set_field (reg, 0x2, RG_CLK_DBGOUT_SEL);
 	dcm_write_reg (reg, TEST_DBG_CTRL);
 
+	/* *INFRA_AO_DBG_CON0 = aor(*INFRA_AO_DBG_CON0, ~(0x3f<<0), 0x20; */
 	reg = dcm_read_reg (INFRA_AO_DBG_CON0);
 	dcm_clr_and_set_field (reg, 0x1, DEBUG_PIN_SEL);
 	dcm_clr_and_set_field (reg, TOP_CLOCK_CONTROL, INFRA_AO_DEBUG_MON0);	
@@ -1802,10 +1857,12 @@ void gpiodbg_infra_dbg_out(void)
 {
 	UINT32 reg;
 
+	/* *TEST_DBG_CTRL = aor(*TEST_DBG_CTRL, ~(1<<12), 1<<12); */
 	reg = dcm_read_reg (TEST_DBG_CTRL);
 	dcm_clr_and_set_field (reg, 0x1, RG_CLK_DBG_EN);
 	dcm_write_reg (reg, TEST_DBG_CTRL);
 
+	/* *INFRA_AO_DBG_CON0 = aor(*INFRA_AO_DBG_CON0, ~(0x3f<<0), 0x25); */
 	reg = dcm_read_reg (INFRA_AO_DBG_CON0);
 	dcm_clr_and_set_field (reg, 0x1, DEBUG_PIN_SEL);
 	dcm_clr_and_set_field (reg, INFRASYS_GLOBAL_CON_LSB, INFRA_AO_DEBUG_MON0);
@@ -1820,10 +1877,12 @@ void gpiodbg_peri_dbg_out(void)
 {
 	UINT32 reg;
 
+	/* *TEST_DBG_CTRL = aor(*TEST_DBG_CTRL, ~(1<<12), 1<<12);*/
 	reg = dcm_read_reg (TEST_DBG_CTRL);
 	dcm_clr_and_set_field (reg, 0x1, RG_CLK_DBG_EN);
 	dcm_write_reg (reg, TEST_DBG_CTRL);
 
+	/* *INFRA_AO_DBG_CON0 = aor(*INFRA_AO_DBG_CON0, ~(0x3f<<0), 0x24); */
 	reg = dcm_read_reg (INFRA_AO_DBG_CON0);
 	dcm_clr_and_set_field (reg, 0x1, DEBUG_PIN_SEL);
 	dcm_clr_and_set_field (reg, INFRASYS_GLOBAL_CON_MSB, INFRA_AO_DEBUG_MON0);
@@ -1837,6 +1896,8 @@ void gpiodbg_peri_dbg_out(void)
 
 /////////////////////////////////////////
 //- freq meter
+
+#define FQMTR_APMCU_CLOCK_PRE_DIV (4)  //
 void freqm_reset (void)
 {
 	dcm_write_reg ((1 << RG_FQMTR_RST_BIT), FREQ_MTR_CTRL);
@@ -1872,6 +1933,9 @@ INT32 freqm_getresult (FREQMETER_CTRL* ctl, const char* caller)
 		else
 		{
 			ctl->result_in_count = ((reg & RG_FQMTR_DATA_MASK) >> RG_FQMTR_DATA_BIT);
+			if (ctl->mon_sel == FQMTR_SRC_APMCU_CLOCK) {		
+				ctl->result_in_count *= (FQMTR_APMCU_CLOCK_PRE_DIV);
+			}
 			break;
 		}
 	}
@@ -1895,6 +1959,7 @@ INT32 freqm_kick (FREQMETER_CTRL* ctl, const char* caller)
 {
 	UINT32	reg;
 	INT32	status = FREQMETER_SUCCESS;
+	int saved_test_dbg_ctrl = 0 , saved_dbg_ctrl = 0;
 
 	FREQM_LOCK;
 
@@ -1906,6 +1971,20 @@ INT32 freqm_kick (FREQMETER_CTRL* ctl, const char* caller)
 	fm_last_owner = fm_magic_owner ++;
 
 	freqm_reset ();
+	if (ctl->mon_sel == FQMTR_SRC_APMCU_CLOCK) {
+		u32 reg;
+		/* *TEST_DBG_CTRL = aor(*TEST_DBG_CTRL, ~0x0ff, 0x0ff); */
+		saved_test_dbg_ctrl = reg = dcm_read_reg (TEST_DBG_CTRL);
+		dcm_clr_and_set_field (reg, FQMTR_APMCU_CLOCK_PRE_DIV-1, RG_ARMCLK_K1);
+		dcm_write_reg (reg, TEST_DBG_CTRL);
+
+		/* *DBG_CTRL = aor(*DBG_CTRL, ~0x0ff, 7); */
+		saved_dbg_ctrl = reg = dcm_read_reg (DBG_CTRL);
+		dcm_clr_and_set_field (reg, 0x07, CA7_MON_SEL);
+		dcm_write_reg (reg, DBG_CTRL);
+
+		ctl->mon_len_in_ref_clk = 0x400;
+	}
 	//- fill field
 	reg = ( ((ctl->divider & RG_FQMTR_CKDIV_MASK) << RG_FQMTR_CKDIV_BIT) |
 			((ctl->ref_clk_sel & RG_FQMTR_FIXCLK_SEL_MASK) << RG_FQMTR_FIXCLK_SEL_BIT) |
@@ -1917,6 +1996,25 @@ INT32 freqm_kick (FREQMETER_CTRL* ctl, const char* caller)
 	dcm_write_reg (reg, FREQ_MTR_CTRL);
 	ctl->owner = fm_last_owner;
 
+	if (ctl->mon_sel == FQMTR_SRC_APMCU_CLOCK) {		
+		u32 reg;
+		while (1) {
+			reg = dcm_read_reg (FREQ_MTR_DATA);
+			dmb();
+			if ((reg & (RG_FQMTR_BUSY_MASK << RG_FQMTR_BUSY_BIT)) == 0)
+				break;
+		}
+
+		/* *TEST_DBG_CTRL = aor(*TEST_DBG_CTRL, ~0x0ff, 0x0ff); */
+		reg = saved_test_dbg_ctrl;
+		dcm_write_reg (reg, TEST_DBG_CTRL);
+
+		/* *DBG_CTRL = aor(*DBG_CTRL, ~0x0ff, 7); */
+		reg = saved_dbg_ctrl;
+		dcm_write_reg (reg, DBG_CTRL);
+	}
+
+
 	FREQM_UNLOCK;
 	
 	if (status == FREQMETER_NO_RESOURCE)
@@ -1926,7 +2024,6 @@ INT32 freqm_kick (FREQMETER_CTRL* ctl, const char* caller)
 
 	strcpy(fm_kick_last_caller, caller);
 
- err:
  	return status;
 
 }
@@ -1934,7 +2031,7 @@ INT32 freqm_kick (FREQMETER_CTRL* ctl, const char* caller)
 
 
 #ifndef __DCM_CTP__
-static INT32 fqmtr_proc_sta_write (struct file *file, const char *buffer, UINT32 count, void *data)
+static INT32 fqmtr_proc_sta_write (struct file *file, const char *buffer, unsigned long count, void *data)
 {
 	dcm_info("Enter: %s\n",__func__);
 
@@ -1945,7 +2042,6 @@ static INT32 fqmtr_proc_sta_read (char *page, char **start, off_t off, INT32 cou
 {
 	char *p = page;
 	UINT32 len = 0;
-	UINT32 i;
 
 	if (off > 0)
 	{
@@ -1955,7 +2051,7 @@ static INT32 fqmtr_proc_sta_read (char *page, char **start, off_t off, INT32 cou
 
 	dcm_info("Enter: %s\n",__func__);
 
-	p += sprintf(p, "\r\status = %d\r\n", em_fqmtr_sta);
+	p += sprintf(p, "\rstatus = %d\r\n", em_fqmtr_sta);
 
 	*start = page + off;
 	len = p - page;
@@ -1965,7 +2061,7 @@ static INT32 fqmtr_proc_sta_read (char *page, char **start, off_t off, INT32 cou
 	return len < count ? len : count;
 }
 
-static INT32 fqmtr_proc_dbg_write (struct file *file, const char *buffer, UINT32 count, void *data)
+static INT32 fqmtr_proc_dbg_write (struct file *file, const char *buffer, unsigned long count, void *data)
 {
 	INT32 		ret;
 	char 		kbuf[256];
@@ -1973,7 +2069,7 @@ static INT32 fqmtr_proc_dbg_write (struct file *file, const char *buffer, UINT32
 	UINT32		p1,p2,p3;
 
 	dcm_info("Enter: %s\n",__func__);
-	len = min(count, (UINT32)(sizeof(kbuf)-1));
+	len = min(count, (typeof(count))(sizeof(kbuf)-1));
 	if (count == 0)		return -1;
 	if(count > 255)		count = 255;
 	ret = copy_from_user(kbuf, buffer, count);
@@ -2051,7 +2147,7 @@ static INT32 fqmtr_proc_dbg_read (char *page, char **start, off_t off, INT32 cou
 }
 
 
-static INT32 fqmtr_proc_help_write (struct file *file, const char *buffer, UINT32 count, void *data)
+static INT32 fqmtr_proc_help_write (struct file *file, const char *buffer, unsigned long count, void *data)
 {
 	dcm_info("Enter: %s\n",__func__);
 
@@ -2100,7 +2196,6 @@ do {                                                                            
 static void mt_fqmtr_init (void)
 {
 	struct proc_dir_entry *proc_dir = NULL;
-	UINT32 i;
 
 	//TODO: check the permission!!
 
@@ -2140,11 +2235,28 @@ void lpm_reset (void)
 	
 	disable_clock (MT_CG_UPLL_D12, "LPM 104MHz");
 
+/*
+	//- 104M
+	//- reset assert
+	dcm_write_reg (0, LPM_CTRL_REG);
+	reg = dcm_read_reg (LPM_CTRL_REG);
+	//- reset de-assert
+	dcm_write_reg (1, LPM_CTRL_REG);
+	reg = dcm_read_reg (LPM_CTRL_REG);
+	
+	//- 32K
+	//- reset assert 32K
+	dcm_write_reg (2, LPM_CTRL_REG);
+	reg = dcm_read_reg (LPM_CTRL_REG);
+	//- reset de-assert
+	dcm_write_reg (3, LPM_CTRL_REG);
+*/
 }
 
 INT32 lpm_getresult (LPM_CTRL* ctl, const char* caller)
 {
-	UINT32	reg, i, flags;
+	UINT32	reg, i;
+	unsigned long flags;
 	UINT32	overflow;
 	INT32	status = LPM_SUCCESS;
 
@@ -2164,7 +2276,7 @@ INT32 lpm_getresult (LPM_CTRL* ctl, const char* caller)
 		overflow = dcm_read_reg (LPM_LONGEST_HIGHTIME) >> RG_TOTAL_TIME_OVERFLOW_BIT;
 		for (i=0; i<NUM_OF_LPM_CNT_TYPE; i++)
 		{
-			if (overflow & 0x1)
+			if (overflow & (0x1<<i))
 			{
 				ctl->result[i] = LPM_COUNT_OVERFLOW_MASK;
 			}
@@ -2191,13 +2303,13 @@ INT32 lpm_getresult (LPM_CTRL* ctl, const char* caller)
 
 	strcpy(lpm_getresult_last_caller, caller);
 
- err:
 	return status;
 }
 
 INT32 lpm_kick (LPM_CTRL* ctl, const char* caller)
 {
-	UINT32	reg, flags;
+	UINT32	reg;
+	unsigned long flags;
 	INT32	status = LPM_SUCCESS;
 
 	LPM_LOCK(flags);
@@ -2237,13 +2349,12 @@ INT32 lpm_kick (LPM_CTRL* ctl, const char* caller)
 	
 	strcpy(lpm_kick_last_caller, caller);
 	
- err:
  	return status;
 
 }
 
 #ifndef __DCM_CTP__
-static INT32 lpm_proc_sta_write (struct file *file, const char *buffer, UINT32 count, void *data)
+static INT32 lpm_proc_sta_write (struct file *file, const char *buffer, unsigned long count, void *data)
 {
 	dcm_info("Enter: %s\n",__func__);
 
@@ -2254,7 +2365,6 @@ static INT32 lpm_proc_sta_read (char *page, char **start, off_t off, INT32 count
 {	
 	char *p = page;
 	UINT32 len = 0;
-	UINT32 i;
 
 	if (off > 0)
 	{
@@ -2264,7 +2374,7 @@ static INT32 lpm_proc_sta_read (char *page, char **start, off_t off, INT32 count
 
 	dcm_info("Enter: %s\n",__func__);
 
-	p += sprintf(p, "\r\status = %d\r\n", em_lpm_sta);
+	p += sprintf(p, "\rstatus = %d\r\n", em_lpm_sta);
 
 	*start = page + off;
 	len = p - page;
@@ -2274,7 +2384,7 @@ static INT32 lpm_proc_sta_read (char *page, char **start, off_t off, INT32 count
 	return len < count ? len : count;
 }
 
-static INT32 lpm_proc_dbg_write (struct file *file, const char *buffer, UINT32 count, void *data)
+static INT32 lpm_proc_dbg_write (struct file *file, const char *buffer, unsigned long count, void *data)
 {
 	INT32 		ret;
 	char 		kbuf[256];
@@ -2282,7 +2392,7 @@ static INT32 lpm_proc_dbg_write (struct file *file, const char *buffer, UINT32 c
 	UINT32		p1,p2,p3,p4,p5,p6,p7;
 
 	dcm_info("Enter: %s\n",__func__);
-	len = min(count, (UINT32)(sizeof(kbuf)-1));
+	len = min(count, (typeof(count))(sizeof(kbuf)-1));
 	if (count == 0)		return -1;
 	if(count > 255)		count = 255;
 	ret = copy_from_user(kbuf, buffer, count);
@@ -2458,7 +2568,7 @@ static INT32 lpm_proc_dbg_read (char *page, char **start, off_t off, INT32 count
 }
 
 
-static INT32 lpm_proc_help_write (struct file *file, const char *buffer, UINT32 count, void *data)
+static INT32 lpm_proc_help_write (struct file *file, const char *buffer, unsigned long count, void *data)
 {
 	dcm_info("Enter: %s\n",__func__);
 
@@ -2536,19 +2646,15 @@ static void mt_lpm_init (void)
 		lpm_timer_data.sta_min[i] = 100;
 	}
 	
-	#ifdef CONFIG_MTK_MET
 	#ifdef LPM_MET_ENABLE
-		pmet_lpm = &met_lpm_device;
-	#else		
-		pmet_lpm = 0;
+	met_ext_dev_add(met_lpm_device);
 	#endif //- LPM_MET_ENABLE
-	#endif //- CONFIG_MTK_MET
 }
 
-static void lpm_timer_callback(UINT32 param)
+static void lpm_timer_callback(unsigned long param)
 {
 	UINT32 i, denominator, tmp, tt;
-	LPM_TIMER_DATA *dp = (struct LPM_TIMER_DATA*) param;
+//	LPM_TIMER_DATA *dp = (LPM_TIMER_DATA*) param;
    	
    	em_lpm_sta = LPM_getresult (&(lpm_timer_data.ctrl));
 	if (lpm_timer_data.mode != 0)
@@ -2700,7 +2806,7 @@ void LowPowerMonitor(void)
 				}
 			}
 		}
-		trace_printk("%5lu.%06lu,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", (UINT32)(stamp), nano_rem/1000, (0-status),
+		trace_printk("%5u.%06u,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n", (UINT32)(stamp), nano_rem/1000, (0-status),
 																				data[0][0],data[1][0],data[2][0],data[3][0],data[4][0],
 																							data[1][1],data[2][1],data[3][1],data[4][1],
 																							data[1][2],data[2][2],data[3][2],data[4][2]																				
@@ -2760,8 +2866,8 @@ static int met_lpm_print_help(char *buf, int len)
 //It will be called back when run "met-cmd --extract" and mode is 1
 static int met_lpm_print_header(char *buf, int len)
 {
-	met_lpm_device.mode = 0;
-	return snprintf(buf, PAGE_SIZE, met_lpm_header, met_lpm_device.polling_interval,
+	met_lpm_device->mode = 0;
+	return snprintf(buf, PAGE_SIZE, met_lpm_header, met_lpm_device->polling_interval,
 													met_lpm_ctrl.ctrl.ref_clk_sel,
 													met_lpm_ctrl.ctrl.mon_sel,
 													met_lpm_ctrl.ctrl.good_duration_criteria);
@@ -2774,34 +2880,42 @@ static int met_lpm_process_argument(const char *arg, int len)
 	UINT32 p1;
 	
 
-	sscanf(arg, "%d,%d,%d,%x",	&met_lpm_device.polling_interval,
+	sscanf(arg, "%d,%d,%d,%x",	&met_lpm_device->polling_interval,
 								&met_lpm_ctrl.ctrl.ref_clk_sel,
 								&met_lpm_ctrl.ctrl.mon_sel,
 								&met_lpm_ctrl.ctrl.good_duration_criteria);
 	
-	dcm_info("====MET LPM Argument(len=%d):%s %d,%d,%d,%x\n", len, arg, met_lpm_device.polling_interval,
+	dcm_info("====MET LPM Argument(len=%d):%s %d,%d,%d,%x\n", len, arg, met_lpm_device->polling_interval,
 												met_lpm_ctrl.ctrl.ref_clk_sel,
 												met_lpm_ctrl.ctrl.mon_sel,
 												met_lpm_ctrl.ctrl.good_duration_criteria);
 												
-	met_lpm_device.mode = 1;
+	met_lpm_device->mode = 1;
 	return 0;
+	#ifdef LPM_MET_ENABLE
+	met_ext_dev_add(met_lpm_device);
+	#endif //- LPM_MET_ENABLE
 }
 
-struct metdevice met_lpm_device = {
-	.name = "lpm",
-	.owner = THIS_MODULE,
-	.type = MET_TYPE_BUS,
-	.cpu_related = 0,
-	.start = met_lpm_start,
-	.stop = met_lpm_stop,
-	.polling_interval = 10,//ms
-	.timed_polling = met_lpm_polling,
-	.tagged_polling = met_lpm_polling,
-	.print_help = met_lpm_print_help,
-	.print_header = met_lpm_print_header,
-	.process_argument = met_lpm_process_argument
+
+struct metdevice met_lpm_device[] = {
+	{
+		.name = "lpm",
+		.owner = THIS_MODULE,
+		.type = MET_TYPE_BUS,
+		.cpu_related = 0,
+		.start = met_lpm_start,
+		.stop = met_lpm_stop,
+		.polling_interval = 10,//ms
+		.timed_polling = met_lpm_polling,
+		.tagged_polling = met_lpm_polling,
+		.print_help = met_lpm_print_help,
+		.print_header = met_lpm_print_header,
+		.process_argument = met_lpm_process_argument
+	}
 };
+
+EXPORT_SYMBOL(met_lpm_device);
 #endif //- LPM_MET_ENABLE
 #endif //- !__DCM_CTP__
 #endif //- __MT_DCM_C__

@@ -135,6 +135,10 @@ typedef enum _ENUM_WMT_OPID_T {
     WMT_OPID_GPIO_STATE = 19,
     WMT_OPID_BGW_DS = 20, 
     WMT_OPID_SET_MCU_CLK = 21,
+    WMT_OPID_ADIE_LPBK_TEST = 22,
+#if CFG_WMT_LTE_COEX_HANDLING
+    WMT_OPID_IDC_MSG_HANDLING = 23,
+#endif
     WMT_OPID_MAX
 } ENUM_WMT_OPID_T, *P_ENUM_WMT_OPID_T;
 
@@ -155,7 +159,9 @@ typedef struct _WMT_GEN_CONF {
     UCHAR coex_wmt_ant_mode;
     UCHAR coex_wmt_wifi_time_ctl;
     UCHAR coex_wmt_ext_pta_dev_on;
-
+	/*mt6592 and LTE coex filter mode setting*/
+	UCHAR coex_wmt_filter_mode;
+	
     UCHAR coex_bt_rssi_upper_limit;
     UCHAR coex_bt_rssi_mid_limit;
     UCHAR coex_bt_rssi_lower_limit;
@@ -228,7 +234,7 @@ typedef enum _WMT_IC_PIN_STATE_
     WMT_IC_PIN_MUX = 6,
     WMT_IC_PIN_GPIO = 7,
     WMT_IC_PIN_GPIO_HIGH = 8,
-    WMT_IC_PIN_GPIO_LOW = 8,
+    WMT_IC_PIN_GPIO_LOW = 9,
     WMT_IC_PIN_STATE_MAX
 } WMT_IC_PIN_STATE, *P_WMT_IC_PIN_STATE;
 
@@ -421,6 +427,12 @@ extern MTK_WCN_BOOL wmt_core_get_aee_dump_flag(void);
 #if CFG_CORE_INTERNAL_TXRX
 extern INT32 wmt_core_lpbk_do_stp_init(void);
 extern INT32 wmt_core_lpbk_do_stp_deinit(void);
+#endif
+
+extern VOID wmt_core_set_coredump_state(ENUM_DRV_STS state);
+#if CFG_WMT_LTE_COEX_HANDLING
+extern VOID wmt_core_set_flag_for_test(UINT32 enable);
+extern UINT32 wmt_core_get_flag_for_test(VOID);
 #endif
 /*******************************************************************************
 *                              F U N C T I O N S

@@ -1,3 +1,9 @@
+/*
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ */
 
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -17,7 +23,7 @@
 #include <linux/ktime.h>
 #include <linux/xlog.h>
 #include <linux/jiffies.h>
-#include <linux/string.h> 
+#include <linux/string.h>
 #include <linux/mutex.h>
 #include <linux/aee.h>
 #include <asm/system.h>
@@ -32,9 +38,18 @@
 #include "mach/mt_pmic_wrap.h"
 #include "mach/mt_dcm.h"
 #include "mach/mt_ptp.h"
+/**************************************************
+* enable for DVFS random test
+***************************************************/
 //#define MT_DVFS_RANDOM_TEST
+/**************************************************
+* enable this option to adjust buck voltage
+***************************************************/
 #define MT_BUCK_ADJUST
 
+/***************************
+* debug message
+****************************/
 #define dprintk(fmt, args...)                                       \
 do {                                                                \
     if (mt_cpufreq_debug) {                                         \
@@ -53,6 +68,9 @@ static struct early_suspend mt_cpufreq_early_suspend_handler =
 };
 #endif
 
+/**************************************************
+* enable DVFS function
+***************************************************/
 static int g_dvfs_disable_count = 0;
 static unsigned int g_cur_OPP;
 static unsigned int g_normal_max_OPP;
@@ -80,6 +98,9 @@ static bool mt_cpufreq_usb_raise = true;
 static DEFINE_SPINLOCK(mt_cpufreq_lock);
 static DEFINE_MUTEX(power_mutex);
 
+/***************************
+* Operate Point Definition
+****************************/
 #define OP(khz, volt)       \
 {                           \
     .cpufreq_khz = khz,     \
@@ -107,37 +128,35 @@ struct mt_cpu_power_info
     unsigned int cpufreq_power;
 };
 
+/***************************
+* MT6572 E1 DVFS Table
+****************************/
 static struct mt_cpu_freq_info mt6572_freqs_e1[] = {
-	OP(DVFS_D1, DVFS_V0),
+    OP(DVFS_D2, DVFS_V0),
     OP(DVFS_D3, DVFS_V0),
     OP(DVFS_F1, DVFS_V1),
     OP(DVFS_F2, DVFS_V1),
     OP(DVFS_F3, DVFS_V1),
-    OP(DVFS_F4, DVFS_V1),
 };
 
 static struct mt_cpu_freq_info mt6572_freqs_e1_1[] = {
-    OP(DVFS_D1, DVFS_V0),	
     OP(DVFS_D3, DVFS_V0),
     OP(DVFS_F1, DVFS_V1),
     OP(DVFS_F2, DVFS_V1),
     OP(DVFS_F3, DVFS_V1),
-    OP(DVFS_F4, DVFS_V1),
 };
 
 static struct mt_cpu_freq_info mt6572m_freqs_e1[] = {
-    OP(DVFS_D1, DVFS_V0),
-    OP(DVFS_D3, DVFS_V0),	
     OP(DVFS_F1, DVFS_V1),
     OP(DVFS_F2, DVFS_V1),
     OP(DVFS_F3, DVFS_V1),
-    OP(DVFS_F4, DVFS_V1),
 };
 
 static unsigned int mt_cpu_freqs_num;
 static struct mt_cpu_freq_info *mt_cpu_freqs = NULL;
 static struct cpufreq_frequency_table *mt_cpu_freqs_table;
 static struct mt_cpu_tbl_info spm_pmic_config[MAX_SPM_PMIC_TBL];
+static unsigned int cpu_num = 0;
 /* Power Golden table */
 static struct mt_cpu_power_info mt_cpu_golden_power[] = {
     {.cpufreq_khz = DVFS_D0, .cpufreq_volt = DVFS_V0, .cpufreq_ncpu = 2, .cpufreq_power = 724 },
@@ -151,27 +170,28 @@ static struct mt_cpu_power_info mt_cpu_golden_power[] = {
     {.cpufreq_khz = DVFS_F2, .cpufreq_volt = DVFS_V1, .cpufreq_ncpu = 2, .cpufreq_power = 362 },
     {.cpufreq_khz = DVFS_D3, .cpufreq_volt = DVFS_V0, .cpufreq_ncpu = 1, .cpufreq_power = 343 },
     {.cpufreq_khz = DVFS_F3, .cpufreq_volt = DVFS_V1, .cpufreq_ncpu = 2, .cpufreq_power = 302 },
-    {.cpufreq_khz = DVFS_F4, .cpufreq_volt = DVFS_V1, .cpufreq_ncpu = 2, .cpufreq_power = 302 },
     {.cpufreq_khz = DVFS_F1, .cpufreq_volt = DVFS_V1, .cpufreq_ncpu = 1, .cpufreq_power = 249 },
     {.cpufreq_khz = DVFS_F2, .cpufreq_volt = DVFS_V1, .cpufreq_ncpu = 1, .cpufreq_power = 215 },
     {.cpufreq_khz = DVFS_F3, .cpufreq_volt = DVFS_V1, .cpufreq_ncpu = 1, .cpufreq_power = 181 },
-    {.cpufreq_khz = DVFS_F4, .cpufreq_volt = DVFS_V1, .cpufreq_ncpu = 1, .cpufreq_power = 181 },
 };
 
 static struct mt_cpu_power_info *mt_cpu_power = NULL;
 
+/******************************
+* Extern Function Declaration
+*******************************/
 extern void hp_limited_cpu_num(int num);
 extern unsigned int PTP_get_ptp_level(void);
 extern int mt_cpufreq_cur_load(void);
 extern void mt_cpufreq_thermal_protect(unsigned int limited_power);
-extern unsigned int get_normal_max_opp_idx();
+extern unsigned int get_normal_max_opp_idx(void);
 extern  kal_bool charging_type_detection_done(void);
 /* Look for MAX frequency in number of DVS. */
 unsigned int mt_cpufreq_max_frequency_by_DVS(unsigned int num)
 {
-    int voltage_change_num = 0;
+    /* int voltage_change_num = 0; */
     int i = 0;
-	
+
     /* Assume mt6572_freqs_e1 voltage will be put in order, and freq will be put from high to low.*/
     for(i = num; i < MAX_SPM_PMIC_TBL; i++){
         if(spm_pmic_config[i].cpufreq_volt > DVFS_MIN_VCORE){
@@ -179,60 +199,86 @@ unsigned int mt_cpufreq_max_frequency_by_DVS(unsigned int num)
             return spm_pmic_config[i].cpufreq_khz;
         }
     }
-    
+
     return 0;
 }
 EXPORT_SYMBOL(mt_cpufreq_max_frequency_by_DVS);
 
-void set_spm_tbl(unsigned int pmic_value, unsigned int freq)
+void restore_default_volt(void)
 {
-	  unsigned int i;
-	  unsigned long flags;
-	  spin_lock_irqsave(&mt_cpufreq_lock, flags);
-	  
-    for(i = 0; i < MAX_SPM_PMIC_TBL; i++)	{
-        if(spm_pmic_config[i].cpufreq_khz == freq){
-        	  switch(spm_pmic_config[i].tbl_idx){
-        	      case 3:
-        	          mt65xx_reg_sync_writel(pmic_value, PMIC_WRAP_DVFS_WDATA3);
-        	          break;
-        	      case 4:
-        	      	  mt65xx_reg_sync_writel(pmic_value, PMIC_WRAP_DVFS_WDATA4);
-        	          break;
-        	      case 5:
-        	          mt65xx_reg_sync_writel(pmic_value, PMIC_WRAP_DVFS_WDATA5);
-        	          break;
-        	      default:
-        	      	  dprintk("There is no entry [%d] in spm table for ptpod", spm_pmic_config[i].tbl_idx);
-        	          break;
+    unsigned int i, j;
+    for(i = 0; i < MAX_SPM_PMIC_TBL; i++){
+        // make sure which entry need to restore
+        if(spm_pmic_config[i].cpufreq_khz > NOR_MAX_FREQ){
+            // set spm_pmic_config & mt_cpu_freqs.cpufreq_volt up-to-date
+            spm_pmic_config[i].cpufreq_volt = DVFS_V0;
+        	  for(j = 0; j < mt_cpu_freqs_num;j++) {
+                if(mt_cpu_freqs[j].cpufreq_khz == spm_pmic_config[i].cpufreq_khz){
+                    mt_cpu_freqs[j].cpufreq_volt = DVFS_V0;
+                }
         	  }
-        	  //set vcore again to make sure value take effect        	  
-        	  mt_vcore_freq_volt_set(mt_cpu_freqs[g_cur_OPP].cpufreq_volt, mt_cpu_freqs[g_cur_OPP].cpufreq_khz);
-        	  // set spm_pmic_config up-to-date
-        	  spm_pmic_config[i].cpufreq_volt = PMIC_VAL_TO_VOLT(pmic_value);
-        	  dprintk("spm_pmic_config[%d].cpufreq_volt = %d", i, spm_pmic_config[i].cpufreq_volt);
+            xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "PTPOD: restore entry[], volt[%d] \n",i, spm_pmic_config[i].cpufreq_khz);
+            mt65xx_reg_sync_writel(VOLT_TO_PMIC_VAL(spm_pmic_config[i].cpufreq_volt), PMIC_WRAP_DVFS_WDATA3 + 8 * i);
         }
     }
-    
+    //set vcore again to make sure value take effect
+    mt_vcore_freq_volt_set(mt_cpu_freqs[g_cur_OPP].cpufreq_volt, mt_cpu_freqs[g_cur_OPP].cpufreq_khz);
+}
+
+void set_spm_tbl(unsigned int pmic_value, unsigned int freq)
+{
+	  unsigned int i, j;
+	  unsigned long flags;
+	  spin_lock_irqsave(&mt_cpufreq_lock, flags);
+
+    for(i = 0; i < MAX_SPM_PMIC_TBL; i++)	{
+        if(spm_pmic_config[i].cpufreq_khz == freq){
+            switch(spm_pmic_config[i].tbl_idx){
+                case 3:
+                    mt65xx_reg_sync_writel(pmic_value, PMIC_WRAP_DVFS_WDATA3);
+                    break;
+                case 4:
+                    mt65xx_reg_sync_writel(pmic_value, PMIC_WRAP_DVFS_WDATA4);
+                    break;
+                case 5:
+                    mt65xx_reg_sync_writel(pmic_value, PMIC_WRAP_DVFS_WDATA5);
+                    break;
+                default:
+                    dprintk("There is no entry [%d] in spm table for ptpod", spm_pmic_config[i].tbl_idx);
+                    break;
+            }
+            // set spm_pmic_config & mt_cpu_freqs.cpufreq_volt up-to-date
+            spm_pmic_config[i].cpufreq_volt = PMIC_VAL_TO_VOLT(pmic_value);
+            for(j = 0; j < mt_cpu_freqs_num;j++) {
+                if(mt_cpu_freqs[j].cpufreq_khz == freq){
+                    mt_cpu_freqs[j].cpufreq_volt = PMIC_VAL_TO_VOLT(pmic_value);
+                }
+            }
+            dprintk("Set spm_pmic_config[%d].cpufreq_volt = %d", i, spm_pmic_config[i].cpufreq_volt);
+            //set vcore again to make sure value take effect
+            mt_vcore_freq_volt_set(mt_cpu_freqs[g_cur_OPP].cpufreq_volt, mt_cpu_freqs[g_cur_OPP].cpufreq_khz);
+        }
+    }
+
     spin_unlock_irqrestore(&mt_cpufreq_lock, flags);
 }
 
 void check_cur_power(unsigned int idx){
 	  unsigned int i;
     for(i = 0; i < g_cpufreq_power_tbl_num; i++){
-        if((mt_cpu_power[i].cpufreq_khz == mt_cpu_freqs[idx].cpufreq_khz) && (mt_cpu_power[i].cpufreq_ncpu == num_online_cpus())){
+        if((mt_cpu_power[i].cpufreq_khz == mt_cpu_freqs[idx].cpufreq_khz) && (mt_cpu_power[i].cpufreq_ncpu == cpu_num)){
             if(mt_cpu_power[i].cpufreq_power > mt_cpu_power[g_max_power_OPP].cpufreq_power){
-            	  dprintk("%d > %d", mt_cpu_power[i].cpufreq_power, mt_cpu_power[g_max_power_OPP].cpufreq_power);
-                aee_kernel_exception("DVFS", "CPU power over thermal limitation: %d > %d", mt_cpu_power[i].cpufreq_power, mt_cpu_power[g_max_power_OPP].cpufreq_power);	
+                dprintk("%d > %d", mt_cpu_power[i].cpufreq_power, mt_cpu_power[g_max_power_OPP].cpufreq_power);
+                aee_kernel_exception("DVFS", "CPU power over thermal limitation: %d > %d", mt_cpu_power[i].cpufreq_power, mt_cpu_power[g_max_power_OPP].cpufreq_power);
             }
         }
     }
 }
 
-unsigned int mt_cpufreq_min_power(){
+unsigned int mt_cpufreq_min_power(void) {
     return mt_cpu_power[g_cpufreq_power_tbl_num-1].cpufreq_power;
 }
-unsigned int mt_cpufreq_max_power(){
+unsigned int mt_cpufreq_max_power(void) {
     return mt_cpu_power[0].cpufreq_power;
 }
 
@@ -260,7 +306,7 @@ static void mt_setup_power_table(int num)
     }
 }
 
-void mt_dvfs_power_dispatch()
+void mt_dvfs_power_dispatch(void)
 {
     unsigned int cpu_loading, gpu_loading, cpu_power_budget, gpu_power_budget, total_power_budget, total_loading, diff, i;
 
@@ -274,14 +320,14 @@ void mt_dvfs_power_dispatch()
     gpu_power_budget = mt_gpufreq_min_power();
 
     if(total_power_budget > (cpu_power_budget + gpu_power_budget)){
-      
+
         total_power_budget -= (cpu_power_budget + gpu_power_budget);
         cpu_loading = mt_cpufreq_cur_load() + 1;
         gpu_loading = mt_gpufreq_cur_load() + 1;
         total_loading = gpu_loading + cpu_loading;
         cpu_power_budget += (total_power_budget * cpu_loading / total_loading);
         gpu_power_budget += (total_power_budget * gpu_loading / total_loading);
-       
+
         //give power budget to gpu
         if(cpu_power_budget > mt_cpufreq_max_power() && gpu_power_budget < mt_gpufreq_max_power()) {
             diff = cpu_power_budget - mt_cpufreq_max_power();
@@ -306,7 +352,7 @@ void mt_dvfs_power_dispatch()
         mt_cpufreq_thermal_protect(cpu_power_budget);
         mt_gpufreq_thermal_protect(gpu_power_budget);
         if(cpu_power_budget + gpu_power_budget > g_limited_power){
-            aee_kernel_exception("DVFS", "power budget overflow: %d + %d > %d", cpu_power_budget, gpu_power_budget, g_limited_power);	
+            aee_kernel_exception("DVFS", "power budget overflow: %d + %d > %d", cpu_power_budget, gpu_power_budget, g_limited_power);
         }
     }
 }
@@ -315,11 +361,11 @@ void set_dvfs_thermal_limit(unsigned int limited_power)
 {
     // set global power info
     mutex_lock(&power_mutex);
-    
+
     g_limited_power = limited_power;
 
     if(g_limited_power == 0){
-    	g_max_power_OPP = 0;
+        g_max_power_OPP = 0;
         mt_cpufreq_thermal_protect(0);
         mt_gpufreq_thermal_protect(0);
     }
@@ -335,12 +381,12 @@ void set_dvfs_thermal_limit(unsigned int limited_power)
     mutex_unlock(&power_mutex);
 }
 
-void mt_dvfs_power_dispatch_safe()
+void mt_dvfs_power_dispatch_safe(void)
 {
     mutex_lock(&power_mutex);
-    
+
     mt_dvfs_power_dispatch();
-    
+
     mutex_unlock(&power_mutex);
 }
 
@@ -437,17 +483,20 @@ int GPU_freq_output()
         res = freqmeter_getresult (&fqmtr);
         if (res != FREQMETER_SUCCESS)
         {
-            // check error code 
+            // check error code
             dprintk("GPU_freq_output: freqmeter get result fail!! \n");
             return -1;
         }
     else
     {
-            // success 
+            // success
             return ((fqmtr.result_in_count * 26) / 0x400);
         }
     }
 }
+/**************************************
+ * CPU DVFS control vcore by spm to pmic_wrapper
+ **************************************/
 #define MAX_RETRY_COUNT (100)
 
 int spm_dvfs_ctrl_volt(unsigned int value)
@@ -476,36 +525,44 @@ int spm_dvfs_ctrl_volt(unsigned int value)
     return 0;
 }
 
+/***********************************************
+* register frequency table to cpufreq subsystem
+************************************************/
 static int mt_setup_freqs_table(struct cpufreq_policy *policy, struct mt_cpu_freq_info *freqs, int num)
 {
     struct cpufreq_frequency_table *table;
     int i, ret;
 
-    table = kzalloc((num + 1) * sizeof(*table), GFP_KERNEL);
-    if (table == NULL)
-        return -ENOMEM;
+    if(mt_cpu_freqs_table == NULL){
+        table = kzalloc((num + 1) * sizeof(*table), GFP_KERNEL);
+        if (table == NULL)
+            return -ENOMEM;
 
-    for (i = 0; i < num; i++) {
-        table[i].index = i;
-        table[i].frequency = freqs[i].cpufreq_khz;
+        for (i = 0; i < num; i++) {
+            table[i].index = i;
+            table[i].frequency = freqs[i].cpufreq_khz;
+        }
+
+        table[num].frequency = CPUFREQ_TABLE_END;
+
+        mt_cpu_freqs = freqs;
+        mt_cpu_freqs_num = num;
+        mt_cpu_freqs_table = table;
     }
-    //table[num].frequency = i;
-    table[num].frequency = CPUFREQ_TABLE_END;
 
-    mt_cpu_freqs = freqs;
-    mt_cpu_freqs_num = num;
-    mt_cpu_freqs_table = table;
-
-    ret = cpufreq_frequency_table_cpuinfo(policy, table);
+    ret = cpufreq_frequency_table_cpuinfo(policy, mt_cpu_freqs_table);
     if (!ret)
         cpufreq_frequency_table_get_attr(mt_cpu_freqs_table, policy->cpu);
 
     if (mt_cpu_power == NULL)
-        mt_setup_power_table(num);     
+        mt_setup_power_table(num);
 
     return 0;
 }
 
+/*****************************
+* set CPU DVFS status
+******************************/
 int mt_cpufreq_state_set(int enabled)
 {
     struct cpufreq_policy *policy;
@@ -552,8 +609,9 @@ int mt_cpufreq_state_set(int enabled)
         }
 
         mt_cpufreq_pause = true;
-        cpufreq_driver_target(policy, mt_cpu_freqs[g_normal_max_OPP].cpufreq_khz, CPUFREQ_RELATION_L); 
-    } 
+        if (mt_cpu_freqs)
+            cpufreq_driver_target(policy, mt_cpu_freqs[g_normal_max_OPP].cpufreq_khz, CPUFREQ_RELATION_L);
+    }
 
     return 0;
 }
@@ -615,15 +673,19 @@ void mt_vcore_freq_volt_set(unsigned int target_volt, unsigned int target_freq)
     else{
         for(i = 0; i < MAX_SPM_PMIC_TBL; i++){
             if(spm_pmic_config[i].cpufreq_khz == target_freq){
-            	  spm_pmic_config[i].cpufreq_volt = target_volt;
-            	  dprintk("switch vcore to  var DVS%d: %d mV\n", spm_pmic_config[i].tbl_idx, spm_pmic_config[i].cpufreq_volt);
+                dprintk("switch vcore to var DVS%d: %d mV\n", spm_pmic_config[i].tbl_idx, spm_pmic_config[i].cpufreq_volt);
                 spm_dvfs_ctrl_volt(spm_pmic_config[i].tbl_idx);
-		            g_vcore = spm_pmic_config[i].cpufreq_volt;
+                g_vcore = spm_pmic_config[i].cpufreq_volt;
             }
         }
     }
 }
 
+/***********************************************************
+* [note]
+* 1. frequency ramp up need to wait voltage settle
+* 2. frequency ramp down do not need to wait voltage settle
+************************************************************/
 static void mt_cpufreq_set(unsigned int old_OPP, unsigned int new_OPP)
 {
     unsigned int armpll_dds = 0, target_freq = mt_cpu_freqs[new_OPP].cpufreq_khz;
@@ -635,7 +697,7 @@ static void mt_cpufreq_set(unsigned int old_OPP, unsigned int new_OPP)
 
     if( target_freq> PLL_MAX_FREQ || target_freq < PLL_MIN_FREQ){
         dprintk("set_armpll_freq: freq [%d] out of range\n", target_freq);
-        return -1;
+        return;
     }
     else
     {
@@ -671,7 +733,7 @@ static void mt_cpufreq_set(unsigned int old_OPP, unsigned int new_OPP)
     {
         // switch CPU clock to mainpll in the very beginning
         mt_cpu_clock_switch(MAINPLL_SRC);
-        
+
         if(cur_vcore != new_vcore){
             mt_vcore_freq_volt_set(new_vcore, mt_cpu_freqs[new_OPP].cpufreq_khz);
         }
@@ -714,6 +776,9 @@ static void mt_cpufreq_set(unsigned int old_OPP, unsigned int new_OPP)
     dprintk("[CPU freq]: %d\n", CPU_freq_output());
 }
 
+/**************************************
+* check if maximum frequency is needed
+***************************************/
 static int mt_cpufreq_keep_org_freq(unsigned int old_OPP, unsigned int new_OPP)
 {
     //if (mt_cpufreq_pause)
@@ -759,12 +824,12 @@ static unsigned int mt_thermal_limited_verify(unsigned int OPP_index)
     struct cpufreq_policy *policy;
 
     policy = cpufreq_cpu_get(0);
-
+    cpu_num = num_online_cpus();
 
     for (i = g_max_power_OPP; i < (g_cpufreq_power_tbl_num); i++)
     {
         // search some OPPs on power table which cpu number = online
-        if(mt_cpu_power[i].cpufreq_ncpu == num_online_cpus())
+        if(mt_cpu_power[i].cpufreq_ncpu == cpu_num)
         {
                 //legal table entry
                 if( mt_cpu_power[i].cpufreq_khz >= mt_cpu_freqs[OPP_index].cpufreq_khz ){
@@ -773,13 +838,13 @@ static unsigned int mt_thermal_limited_verify(unsigned int OPP_index)
                 else {
                     // need to do throttling
                     cpufreq_frequency_table_target(policy, mt_cpu_freqs_table, mt_cpu_power[i].cpufreq_khz, CPUFREQ_RELATION_L, &OPP_index);
-                    dprintk("[verified] target_freq = %d, ncpu = %d\n", mt_cpu_freqs[OPP_index].cpufreq_khz, num_online_cpus());
+                    dprintk("[verified] target_freq = %d, ncpu = %d\n", mt_cpu_freqs[OPP_index].cpufreq_khz, cpu_num);
                     return OPP_index;
                 }
         }
     }
     dprintk("Can't find suitable OPP for thermal throttling!\n");
-    dprintk("g_max_power_OPP = %d, freq = %d, ncpu = %d\n", g_max_power_OPP, mt_cpu_freqs[g_cur_OPP].cpufreq_khz / 1000, num_online_cpus());
+    dprintk("g_max_power_OPP = %d, freq = %d, ncpu = %d\n", g_max_power_OPP, mt_cpu_freqs[g_cur_OPP].cpufreq_khz / 1000, cpu_num);
     return OPP_index;
 }
 
@@ -789,7 +854,7 @@ unsigned int get_max_vcore(unsigned int cpu_volt, unsigned int gpu_volt)
 
     max_vcore = cpu_volt > gpu_volt ? cpu_volt : gpu_volt;
 
-    return max_vcore; 
+    return max_vcore;
 }
 
 unsigned int get_cur_vcore()
@@ -797,12 +862,12 @@ unsigned int get_cur_vcore()
     return g_vcore;
 }
 
-unsigned int mt_cpufreq_cur_volt()
+unsigned int mt_cpufreq_cur_volt(void)
 {
     return mt_cpu_freqs[g_cur_OPP].cpufreq_volt;
 }
 
-unsigned int get_defcur_opp_idx()
+unsigned int get_defcur_opp_idx(void)
 {
     int i;
     for(i = 0; i < mt_cpu_freqs_num; i++){
@@ -812,7 +877,11 @@ unsigned int get_defcur_opp_idx()
     }
     return 0;
 }
-unsigned int get_normal_max_opp_idx()
+/*unsigned int get_defmax_opp_idx()
+{
+    return MAX_OPP;
+}*/
+unsigned int get_normal_max_opp_idx(void)
 {
     int i;
     for(i = 0; i < mt_cpu_freqs_num; i++) {
@@ -822,16 +891,28 @@ unsigned int get_normal_max_opp_idx()
     }
     return 0;
 }
-unsigned int get_normal_max_freq(){
+/*unsigned int get_defmin_opp_idx()
+{
+    return MIN_OPP;
+}*/
+unsigned int get_normal_max_freq(void){
     return mt_cpu_freqs[g_normal_max_OPP].cpufreq_khz;
 }
+/**********************************
+* cpufreq target callback function
+***********************************/
+/*************************************************
+* [note]
+* 1. handle frequency change request
+* 2. call mt_cpufreq_set to set target frequency
+**************************************************/
 static int mt_cpufreq_target(struct cpufreq_policy *policy, unsigned int target_freq, unsigned int relation)
 {
-    int i, new_OPP_idx, fix_OPP;
+    int i, new_OPP_idx; /* , fix_OPP; */
     unsigned int cpu;
     unsigned long flags;
 
-    struct mt_cpu_freq_info next;
+    /* struct mt_cpu_freq_info next; */
     struct cpufreq_freqs freqs;
 
     if (!mt_cpufreq_ready)
@@ -840,7 +921,7 @@ static int mt_cpufreq_target(struct cpufreq_policy *policy, unsigned int target_
     if (policy->cpu >= num_possible_cpus())
         return -EINVAL;
 
-    
+
 
     if (mt_cpufreq_fix == true || mt_cpufreq_fixdds == true){
         //fix opp gets higher priority, so we check if system need to fix freq
@@ -876,23 +957,31 @@ static int mt_cpufreq_target(struct cpufreq_policy *policy, unsigned int target_
 #ifndef MT_DVFS_RANDOM_TEST
         // don't do ramp down until there are "two" continuous request to ramp down
         if (mt_cpufreq_keep_org_freq(g_cur_OPP, new_OPP_idx))
-        {   
+        {
             //keep org opp
             new_OPP_idx = g_cur_OPP;
         }
         //
-        if(clock_is_on(MT_CG_USB_SW_CG) == PWR_ON && mt_cpufreq_usb_raise == true && charging_type_detection_done()== true )
+        if(clock_is_on(MT_CG_USB_SW_CG) == PWR_ON && mt_cpufreq_usb_raise == true && charging_type_detection_done() == KAL_TRUE)
         {
         	  new_OPP_idx = 0;
         }
         // dynamic control power budget for CPU
         if(g_limited_power != 0){
-            // throttling OPP 
+            // throttling OPP
             mutex_lock(&power_mutex);
+            if (num_online_cpus() > g_limited_max_ncpu)
+            {
+                for (i = num_online_cpus(); i > g_limited_max_ncpu; i--)
+                {
+                    dprintk("turn off CPU%d due to thermal protection\n", (i - 1));
+                    cpu_down((i - 1));
+                }
+            }
             new_OPP_idx = mt_thermal_limited_verify(new_OPP_idx);
-            dprintk("CPU freq after thermal verified: %d MHZ\n", mt_cpu_freqs[new_OPP_idx].cpufreq_khz / 1000);
             check_cur_power(new_OPP_idx);
             mutex_unlock(&power_mutex);
+            dprintk("CPU freq after thermal verified: %d MHZ\n", mt_cpu_freqs[new_OPP_idx].cpufreq_khz / 1000);
         }
         // error check
         if (mt_cpu_freqs[new_OPP_idx].cpufreq_khz < mt_cpu_freqs[mt_cpu_freqs_num-1].cpufreq_khz)
@@ -976,10 +1065,13 @@ static int mt_cpufreq_target(struct cpufreq_policy *policy, unsigned int target_
     return 0;
 }
 
+/*********************************************************
+* set up frequency table and register to cpufreq subsystem
+**********************************************************/
 static int mt_cpufreq_init(struct cpufreq_policy *policy)
 {
     int ret = -EINVAL;
-    unsigned int ver;
+    /* unsigned int ver; */
 
     if (policy->cpu >= num_possible_cpus())
         return -EINVAL;
@@ -997,8 +1089,8 @@ static int mt_cpufreq_init(struct cpufreq_policy *policy)
     **********************************************/
     //Efuse Table Entry Point
     g_cpufreq_get_ptp_level = get_ptp_level();
-    dprintk("get_ptp_level: %d\n", g_cpufreq_get_ptp_level);
-    
+    xlog_printk(ANDROID_LOG_ERROR, "Power/DVFS", "g_cpufreq_get_ptp_level = %d\n", g_cpufreq_get_ptp_level);
+
     if(g_cpufreq_get_ptp_level == PTP_LEVEL_0){
         ret = mt_setup_freqs_table(policy, ARRAY_AND_SIZE(mt6572m_freqs_e1));
     }
@@ -1013,7 +1105,7 @@ static int mt_cpufreq_init(struct cpufreq_policy *policy)
     }
 
     //policy->cpuinfo.max_freq = g_max_freq_by_ptp;
-    
+
     policy->cpuinfo.max_freq = mt_cpu_freqs[0].cpufreq_khz;
     policy->cpuinfo.min_freq = mt_cpu_freqs[mt_cpu_freqs_num-1].cpufreq_khz;
 
@@ -1038,6 +1130,9 @@ static struct cpufreq_driver mt_cpufreq_driver = {
     .name   = "mt-cpufreq",
 };
 
+/*********************************
+* early suspend callback function
+**********************************/
 void mt_cpufreq_early_suspend(struct early_suspend *h)
 {
     #ifndef MT_DVFS_RANDOM_TEST
@@ -1049,6 +1144,9 @@ void mt_cpufreq_early_suspend(struct early_suspend *h)
     return;
 }
 
+/*******************************
+* late resume callback function
+********************************/
 void mt_cpufreq_late_resume(struct early_suspend *h)
 {
     #ifndef MT_DVFS_RANDOM_TEST
@@ -1060,6 +1158,9 @@ void mt_cpufreq_late_resume(struct early_suspend *h)
     return;
 }
 
+/************************************************
+* API to switch back default voltage setting for PTPOD disabled
+*************************************************/
 void mt_cpufreq_return_default_DVS_by_ptpod(void)
 {
     /*if(g_cpufreq_get_ptp_level == 0)
@@ -1086,7 +1187,7 @@ void mt_cpufreq_return_default_DVS_by_ptpod(void)
         mt65xx_reg_sync_writel(0x28, PMIC_WRAP_DVFS_WDATA3); // 0.95V VPROC
         mt65xx_reg_sync_writel(0x18, PMIC_WRAP_DVFS_WDATA4); // 0.85V VPROC
     }
-	
+
     mt65xx_reg_sync_writel(0x38, PMIC_WRAP_DVFS_WDATA5); // 1.05V VCORE
     mt65xx_reg_sync_writel(0x28, PMIC_WRAP_DVFS_WDATA6); // 0.95V VCORE
     mt65xx_reg_sync_writel(0x18, PMIC_WRAP_DVFS_WDATA7); // 0.85V VCORE
@@ -1095,6 +1196,9 @@ void mt_cpufreq_return_default_DVS_by_ptpod(void)
 }
 EXPORT_SYMBOL(mt_cpufreq_return_default_DVS_by_ptpod);
 
+/************************************************
+* DVFS enable API for PTPOD
+*************************************************/
 void mt_cpufreq_enable_by_ptpod(void)
 {
     mt_cpufreq_ptpod_disable = false;
@@ -1102,6 +1206,37 @@ void mt_cpufreq_enable_by_ptpod(void)
 }
 EXPORT_SYMBOL(mt_cpufreq_enable_by_ptpod);
 
+/************************************************
+* DVFS disable API for PTPOD
+*************************************************/
+/*unsigned int mt_cpufreq_disable_by_ptpod(void)
+{
+    struct cpufreq_policy *policy;
+
+    mt_cpufreq_ptpod_disable = true;
+
+    policy = cpufreq_cpu_get(0);
+
+    if (!policy)
+        goto no_policy;
+
+    cpufreq_driver_target(policy, mt_cpu_freqs[0].cpufreq_khz, CPUFREQ_RELATION_L);
+
+    xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "mt_cpufreq disabled by ptpod, limited freq. at %d\n", DVFS_F2);
+
+    cpufreq_cpu_put(policy);
+
+no_policy:
+    return mt_cpu_freqs[g_cur_OPP].cpufreq_khz;
+}
+EXPORT_SYMBOL(mt_cpufreq_disable_by_ptpod);
+*/
+/************************************************
+* frequency adjust interface for thermal protect
+*************************************************/
+/******************************************************
+* parameter: target power
+*******************************************************/
 void mt_cpufreq_thermal_protect(unsigned int limited_power)
 {
     int i = 0, ncpu = 0, found = 0;
@@ -1171,7 +1306,7 @@ void mt_cpufreq_thermal_protect(unsigned int limited_power)
                     cpu_down((i - 1));
                 }
             }
-            
+
             //cpufreq_driver_target(policy, g_limited_max_freq, CPUFREQ_RELATION_L);
         }
     }
@@ -1183,6 +1318,9 @@ no_policy:
 }
 EXPORT_SYMBOL(mt_cpufreq_thermal_protect);
 
+/***************************
+* show current DVFS stauts
+****************************/
 static int mt_cpufreq_state_read(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
     int len = 0;
@@ -1197,6 +1335,9 @@ static int mt_cpufreq_state_read(char *buf, char **start, off_t off, int count, 
     return len;
 }
 
+/************************************
+* set DVFS stauts by sysfs interface
+*************************************/
 static ssize_t mt_cpufreq_state_write(struct file *file, const char *buffer, unsigned long count, void *data)
 {
     int enabled = 0;
@@ -1224,6 +1365,9 @@ static ssize_t mt_cpufreq_state_write(struct file *file, const char *buffer, uns
     return count;
 }
 
+/****************************
+* show current limited freq
+*****************************/
 static int mt_cpufreq_limited_power_read(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
     int len = 0;
@@ -1235,6 +1379,9 @@ static int mt_cpufreq_limited_power_read(char *buf, char **start, off_t off, int
     return len;
 }
 
+/**********************************
+* limited power for thermal protect
+***********************************/
 static ssize_t mt_cpufreq_limited_power_write(struct file *file, const char *buffer, unsigned long count, void *data)
 {
     unsigned int power = 0;
@@ -1252,6 +1399,9 @@ static ssize_t mt_cpufreq_limited_power_write(struct file *file, const char *buf
     return -EINVAL;
 }
 
+/***************************
+* show current debug status
+****************************/
 static int mt_cpufreq_debug_read(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
     int len = 0;
@@ -1266,13 +1416,16 @@ static int mt_cpufreq_debug_read(char *buf, char **start, off_t off, int count, 
     return len;
 }
 
+/***********************
+* enable debug message
+************************/
 static ssize_t mt_cpufreq_debug_write(struct file *file, const char *buffer, unsigned long count, void *data)
 {
     int debug = 0;
 
     if (sscanf(buffer, "%d", &debug) == 1)
     {
-        if (debug == 0) 
+        if (debug == 0)
         {
             mt_cpufreq_debug = 0;
             return count;
@@ -1295,6 +1448,9 @@ static ssize_t mt_cpufreq_debug_write(struct file *file, const char *buffer, uns
     return -EINVAL;
 }
 
+/***************************
+* show cpufreq power info
+****************************/
 static int mt_cpufreq_power_dump_read(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
     int i = 0, len = 0, pmic_setting;
@@ -1312,6 +1468,16 @@ static int mt_cpufreq_power_dump_read(char *buf, char **start, off_t off, int co
         }
         pwrap_read(VPROC_VOSEL_CTRL, &pmic_setting);
         xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "VPROC_VOSEL_CTRL(0x%x) = %d\n", VPROC_VOSEL_CTRL, pmic_setting);
+
+        for(i = 0; i < MAX_SPM_PMIC_TBL; i++){
+            xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "spm_pmic_config[%d].tbl_idx = %d\n", i, spm_pmic_config[i].tbl_idx);
+            xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "spm_pmic_config[%d].cpufreq_khz = %d\n", i, spm_pmic_config[i].cpufreq_khz);
+            xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "spm_pmic_config[%d].cpufreq_volt = %d\n", i, spm_pmic_config[i].cpufreq_volt);
+        }
+        for(i = 0; i < mt_cpu_freqs_num; i++) {
+            xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "mt_cpu_freqs[%d].cpufreq_khz = %d\n", i, mt_cpu_freqs[i].cpufreq_khz);
+            xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "mt_cpu_freqs[%d].cpufreq_volt = %d\n", i, mt_cpu_freqs[i].cpufreq_volt);
+        }
 
         p += sprintf(p, "done\n");
 
@@ -1335,7 +1501,7 @@ static int mt_cpufreq_freq_read(char *buf, char **start, off_t off, int count, i
             p += sprintf(p, "[%d] %u KHZ\n", i, mt_cpu_freqs[i].cpufreq_khz);
         }
         len = p - buf;
-        return len; 
+        return len;
     }
 }
 static ssize_t mt_cpufreq_freq_write(struct file *file, const char *buffer, unsigned long count, void *data)
@@ -1353,19 +1519,19 @@ static ssize_t mt_cpufreq_freq_write(struct file *file, const char *buffer, unsi
                 return -EINVAL;
             }
             cpufreq_driver_target(policy, freq, CPUFREQ_RELATION_L);
-            return count;        
+            return count;
         }
         else if(freq == 0){
             mt_cpufreq_fix = false;
         }
     }
     return -EINVAL;
-    
+
 }
 
 static int mt_cpufreq_get_power_budget(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
-    int i, len;
+    int /* i, */ len;
     char *p = buf;
 
     // set eof = 1 to indicate end of file
@@ -1376,7 +1542,7 @@ static int mt_cpufreq_get_power_budget(char *buf, char **start, off_t off, int c
     else{
         p += sprintf(p, "Current PowerBudget: %u \n", g_limited_power);
         len = p - buf;
-        return len; 
+        return len;
     }
 }
 static ssize_t mt_cpufreq_set_power_budget(struct file *file, const char *buffer, unsigned long count, void *data)
@@ -1387,7 +1553,7 @@ static ssize_t mt_cpufreq_set_power_budget(struct file *file, const char *buffer
         xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "Set PowerBudget: [%u]\n", power_budget);
         set_dvfs_thermal_limit(power_budget);
 
-        return count;        
+        return count;
     }
     else
         return -EINVAL;
@@ -1395,7 +1561,7 @@ static ssize_t mt_cpufreq_set_power_budget(struct file *file, const char *buffer
 }
 static int mt_cpufreq_get_armpll_dds(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
-    int i, len;
+    int /* i, */ len;
     char *p = buf;
 
     // set eof = 1 to indicate end of file
@@ -1407,7 +1573,7 @@ static int mt_cpufreq_get_armpll_dds(char *buf, char **start, off_t off, int cou
         p += sprintf(p, "ARMPLL_CON1: [0x%x] \n", DRV_Reg32(ARMPLL_CON1));
         p += sprintf(p, "ARMPLL_CON2: [0x%x] \n", DRV_Reg32(ARMPLL_CON1+4));
         len = p - buf;
-        return len; 
+        return len;
     }
 
 }
@@ -1417,7 +1583,7 @@ static ssize_t mt_cpufreq_set_armpll_dds(struct file *file, const char *buffer, 
     if (sscanf(buffer, "0x%x", &armpll_dds) == 1){
 
         if(armpll_dds == 0){
-           mt_cpufreq_fixdds = false; 
+           mt_cpufreq_fixdds = false;
         }
         else{
             mt_cpu_clock_switch(MAINPLL_SRC);
@@ -1428,7 +1594,7 @@ static ssize_t mt_cpufreq_set_armpll_dds(struct file *file, const char *buffer, 
             mt_cpu_clock_switch(ARMPLL_SRC);
             mt_cpufreq_fixdds = true;
         }
-        return count;        
+        return count;
     }
     else
         return -EINVAL;
@@ -1437,7 +1603,7 @@ static ssize_t mt_cpufreq_set_armpll_dds(struct file *file, const char *buffer, 
 
 static int mt_cpufreq_get_usb_raise(char *buf, char **start, off_t off, int count, int *eof, void *data)
 {
-    int i, len;
+    int /* i, */ len;
     char *p = buf;
 
     // set eof = 1 to indicate end of file
@@ -1448,7 +1614,7 @@ static int mt_cpufreq_get_usb_raise(char *buf, char **start, off_t off, int coun
     else{
         p += sprintf(p, "fix highest freq: [%d] \n", mt_cpufreq_usb_raise);
         len = p - buf;
-        return len; 
+        return len;
     }
 
 }
@@ -1458,20 +1624,23 @@ static ssize_t mt_cpufreq_set_usb_raise(struct file *file, const char *buffer, u
     if (sscanf(buffer, "%d", &raise_freq) == 1){
 
         if(raise_freq == 0){
-            mt_cpufreq_usb_raise = false; 
+            mt_cpufreq_usb_raise = false;
         }
         else if (raise_freq == 1){
             mt_cpufreq_usb_raise = true;
         }
-        return count;        
+        return count;
     }
     else
         return -EINVAL;
 
 }
+/*******************************************
+* cpufrqe platform driver callback function
+********************************************/
 static int mt_cpufreq_pdrv_probe(struct platform_device *pdev)
-{   
-    int pmic_ctrl, ret, i , pmic_idx = 0;
+{
+    int /* pmic_ctrl, */ ret, i , pmic_idx = 0;
     #ifdef CONFIG_HAS_EARLYSUSPEND
     mt_cpufreq_early_suspend_handler.suspend = mt_cpufreq_early_suspend;
     mt_cpufreq_early_suspend_handler.resume = mt_cpufreq_late_resume;
@@ -1510,7 +1679,7 @@ static int mt_cpufreq_pdrv_probe(struct platform_device *pdev)
     g_max_power_OPP = 0;
     //g_limited_max_freq = g_max_freq_by_ptp;
     //g_limited_min_freq = DVFS_F3;
-    
+
 
     /*if(g_cpufreq_get_ptp_level == 0)
         spm_dvfs_ctrl_volt(1); // default set to 1.15V
@@ -1518,8 +1687,8 @@ static int mt_cpufreq_pdrv_probe(struct platform_device *pdev)
         spm_dvfs_ctrl_volt(2); // default set to 1.15V
     else
         spm_dvfs_ctrl_volt(1); // default set to 1.15V*/
-    
-    
+
+
 
     // we will use 0,1,3,4,5
     //caution: this table is shared with gpu dvfs, so take care!!
@@ -1530,7 +1699,7 @@ static int mt_cpufreq_pdrv_probe(struct platform_device *pdev)
             pmic_idx++;
             // exceed table limit
             if(pmic_idx > MAX_SPM_PMIC_TBL)
-            	  aee_kernel_exception("DVFS", "index > MAX_TBL: %d > %d", pmic_idx, MAX_SPM_PMIC_TBL);	
+            	  aee_kernel_exception("DVFS", "index > MAX_TBL: %d > %d", pmic_idx, MAX_SPM_PMIC_TBL);
         }
     }
     for(i = pmic_idx; i < MAX_SPM_PMIC_TBL; i++){
@@ -1538,12 +1707,9 @@ static int mt_cpufreq_pdrv_probe(struct platform_device *pdev)
     	  spm_pmic_config[i].cpufreq_khz = NOR_MAX_FREQ;
     }
     for(i = 0; i < MAX_SPM_PMIC_TBL; i++){
-        spm_pmic_config[i].tbl_idx = i+3;	
+        spm_pmic_config[i].tbl_idx = i+3;	// 3 is the start entry of spm to pmic wrapper table
     }
-    /*for(i = 0; i < MAX_SPM_PMIC_TBL; i++){
-  	    spm_pmic_config[pmic_idx].cpufreq_volt = (spm_pmic_config[pmic_idx].cpufreq_volt - 700) * 100 / 625;
-    }*/
-    
+
     mt65xx_reg_sync_writel(VPROC_VOSEL_ON, PMIC_WRAP_DVFS_ADR0);
     mt65xx_reg_sync_writel(VPROC_VOSEL_ON, PMIC_WRAP_DVFS_ADR1);
     mt65xx_reg_sync_writel(VPROC_VOSEL_ON, PMIC_WRAP_DVFS_ADR2);
@@ -1552,7 +1718,7 @@ static int mt_cpufreq_pdrv_probe(struct platform_device *pdev)
     mt65xx_reg_sync_writel(VPROC_VOSEL_ON, PMIC_WRAP_DVFS_ADR5);
     mt65xx_reg_sync_writel(TOP_CKPDN0_SET, PMIC_WRAP_DVFS_ADR6);
     mt65xx_reg_sync_writel(TOP_CKPDN0_CLR, PMIC_WRAP_DVFS_ADR7);
-    
+
     mt65xx_reg_sync_writel(0x58, PMIC_WRAP_DVFS_WDATA0); // 1.25V
     mt65xx_reg_sync_writel(0x48, PMIC_WRAP_DVFS_WDATA1); // 1.15V
     mt65xx_reg_sync_writel(0x38, PMIC_WRAP_DVFS_WDATA2); // 1.05V, this is for spm firmware
@@ -1570,7 +1736,7 @@ static int mt_cpufreq_pdrv_probe(struct platform_device *pdev)
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "PMIC_WRAP_DVFS_WDATA5: 0x%x\n", dvfs_read(PMIC_WRAP_DVFS_WDATA5));
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "PMIC_WRAP_DVFS_WDATA6: 0x%x\n", dvfs_read(PMIC_WRAP_DVFS_WDATA6));
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "PMIC_WRAP_DVFS_WDATA7: 0x%x\n", dvfs_read(PMIC_WRAP_DVFS_WDATA7));
-    
+
     mt_cpufreq_ready = true;
 
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "mediatek cpufreq initialized\n");
@@ -1578,6 +1744,9 @@ static int mt_cpufreq_pdrv_probe(struct platform_device *pdev)
     return ret;
 }
 
+/***************************************
+* this function should never be called
+****************************************/
 static int mt_cpufreq_pdrv_remove(struct platform_device *pdev)
 {
     cpufreq_unregister_driver(&mt_cpufreq_driver);
@@ -1587,40 +1756,40 @@ static int mt_cpufreq_pdrv_remove(struct platform_device *pdev)
 static int mt_cpufreq_suspend(struct device *device)
 {
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "mt_cpufreq_suspend\n");
-    
+
     mt65xx_reg_sync_writel(STARTUP_AUXADC, PMIC_WRAP_DVFS_ADR4);
     mt65xx_reg_sync_writel(STARTUP_AUXADC, PMIC_WRAP_DVFS_ADR5);
-    
+
     mt65xx_reg_sync_writel(0xE0, PMIC_WRAP_DVFS_WDATA4);
     mt65xx_reg_sync_writel(0xF0, PMIC_WRAP_DVFS_WDATA5);
-    
+
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "PMIC_WRAP_DVFS_WDATA3: 0x%x\n", dvfs_read(PMIC_WRAP_DVFS_WDATA3));
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "PMIC_WRAP_DVFS_WDATA4: 0x%x\n", dvfs_read(PMIC_WRAP_DVFS_WDATA4));
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "PMIC_WRAP_DVFS_WDATA5: 0x%x\n", dvfs_read(PMIC_WRAP_DVFS_WDATA5));
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "PMIC_WRAP_DVFS_WDATA6: 0x%x\n", dvfs_read(PMIC_WRAP_DVFS_WDATA6));
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "PMIC_WRAP_DVFS_WDATA7: 0x%x\n", dvfs_read(PMIC_WRAP_DVFS_WDATA7));
-    
+
     return 0;
 }
 
 static int mt_cpufreq_resume(struct device *device)
 {
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "mt_cpufreq_resume\n");
-    
+
     mt65xx_reg_sync_writel(VPROC_VOSEL_ON, PMIC_WRAP_DVFS_ADR3);
     mt65xx_reg_sync_writel(VPROC_VOSEL_ON, PMIC_WRAP_DVFS_ADR4);
     mt65xx_reg_sync_writel(VPROC_VOSEL_ON, PMIC_WRAP_DVFS_ADR5);
-    
+
     mt65xx_reg_sync_writel(VOLT_TO_PMIC_VAL(spm_pmic_config[0].cpufreq_volt), PMIC_WRAP_DVFS_WDATA3); // 1.15V up + variation
     mt65xx_reg_sync_writel(VOLT_TO_PMIC_VAL(spm_pmic_config[1].cpufreq_volt), PMIC_WRAP_DVFS_WDATA4); // 1.15V up + variation
     mt65xx_reg_sync_writel(VOLT_TO_PMIC_VAL(spm_pmic_config[2].cpufreq_volt), PMIC_WRAP_DVFS_WDATA5); // 1.15V up + variation
-    
+
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "PMIC_WRAP_DVFS_WDATA3: 0x%x\n", dvfs_read(PMIC_WRAP_DVFS_WDATA3));
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "PMIC_WRAP_DVFS_WDATA4: 0x%x\n", dvfs_read(PMIC_WRAP_DVFS_WDATA4));
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "PMIC_WRAP_DVFS_WDATA5: 0x%x\n", dvfs_read(PMIC_WRAP_DVFS_WDATA5));
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "PMIC_WRAP_DVFS_WDATA6: 0x%x\n", dvfs_read(PMIC_WRAP_DVFS_WDATA6));
     xlog_printk(ANDROID_LOG_INFO, "Power/DVFS", "PMIC_WRAP_DVFS_WDATA7: 0x%x\n", dvfs_read(PMIC_WRAP_DVFS_WDATA7));
-    
+
     return 0;
 }
 
@@ -1649,6 +1818,9 @@ static struct platform_driver mt_cpufreq_pdrv = {
     },
 };
 
+/***********************************************************
+* cpufreq initialization to register cpufreq platform driver
+************************************************************/
 static int __init mt_cpufreq_pdrv_init(void)
 {
     int ret = 0;
@@ -1710,7 +1882,7 @@ static int __init mt_cpufreq_pdrv_init(void)
             mt_entry->read_proc = mt_cpufreq_get_power_budget;
             mt_entry->write_proc = mt_cpufreq_set_power_budget;
         }
-        
+
         mt_entry = create_proc_entry("usb_raise_freq", S_IRUGO | S_IWUSR | S_IWGRP, mt_cpufreq_dir);
         if (mt_entry)
         {
@@ -1728,7 +1900,6 @@ static int __init mt_cpufreq_pdrv_init(void)
     else
     {
         xlog_printk(ANDROID_LOG_ERROR, "Power/DVFS", "cpufreq driver registration done\n");
-        xlog_printk(ANDROID_LOG_ERROR, "Power/DVFS", "g_cpufreq_get_ptp_level = %d\n", g_cpufreq_get_ptp_level);
         return 0;
     }
 }

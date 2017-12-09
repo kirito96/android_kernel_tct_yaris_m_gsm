@@ -35,9 +35,9 @@
 
 #include <asm/cacheflush.h>
 #include <asm/io.h>
-#include "val_types.h"
-#include "val_api.h"
-#include "hal_types.h"
+#include "val_types_private.h"
+#include "hal_types_private.h"
+#include "val_api_private.h"
 #include "val_log.h"
 #include "mt_irq.h"
 #include "mt_smi.h" 
@@ -177,8 +177,22 @@ extern unsigned long get_cpu_load(int cpu);
 //  HW LOCK
 #undef VENC_BASE
 #define VENC_BASE  0x14016000
+#define VENC_REGION (0x1000)
 #undef VDEC_BASE
 #define VDEC_BASE  0x14017000
+#define VDEC_REGION (0x2000)
+
+#define HW_BASE 0x7fff000
+#define HW_REGION (0x2000)
+
+//Ckgen
+#define HW_TABLET_BASE 0x10000000
+#define HW_TABLET_REGION (0x1000)
+
+//dram
+#define HW_TABLET_BASE2 0x10004000
+#define HW_TABLET_REGION2 (0x1000)
+
 #define VENC_IRQ_ACK_addr         VENC_BASE + 0x678 
 #define DEC_VDEC_INT_STA_ADDR     VDEC_BASE + 0x10
 #define DEC_VDEC_INT_ACK_ADDR     VDEC_BASE + 0xc
@@ -1789,7 +1803,12 @@ static long mflexvideo_unlocked_ioctl(struct file *file, unsigned int cmd, unsig
                     spin_unlock_irqrestore(&VcodecHWLock, ulFlagsVcodecHWLock);
                 }
             }
-            
+            else if (VAL_RESULT_RESTARTSYS == eValHWLockRet)
+            {
+                MFV_LOGE("[WARNING] mediaserver is signaled and need to restart system call!!\n");
+                return -ERESTARTSYS;
+            }
+
             //mutex_lock(&VcodecHWLock);
             spin_lock_irqsave(&VcodecHWLock, ulFlagsVcodecHWLock);
 
@@ -2251,8 +2270,58 @@ static long mflexvideo_unlocked_ioctl(struct file *file, unsigned int cmd, unsig
             gu4ISRCount++;
             spin_unlock_irqrestore(&ISRCountLock, ulFlagsISR);
             
+            // unlock HW
+			spin_lock_irqsave(&VcodecHWLock, ulFlagsVcodecHWLock);
+
+#if 1   //VCODEC_MULTI_THREAD
+		    for (u4I = 0; u4I < grVcodecHWLock.u4VCodecThreadNum; u4I++)
+		    {
+		        if (grVcodecHWLock.u4VCodecThreadID[u4I] == current->pid)
+		        {
+		            for (u4I = 0; u4I < VCODEC_THREAD_MAX_NUM; u4I++)
+		            {
+		                grVcodecHWLock.u4VCodecThreadID[u4I] = -1;
+		            }
+		            grVcodecHWLock.u4VCodecThreadNum = VCODEC_THREAD_MAX_NUM;
+		            grVcodecHWLock.rLockedTime.u4Sec = 0;
+		            grVcodecHWLock.rLockedTime.u4uSec = 0;
+		            disable_irq_nosync(MT_VENC_IRQ_ID); 
+		            disable_irq_nosync(MT_VDEC_IRQ_ID);                     
+
+		            eValHWLockRet = eVideoSetEvent(&MT6572_HWLockEvent, sizeof(VAL_EVENT_T));
+		            if(VAL_RESULT_NO_ERROR != eValHWLockRet)
+		            {
+		                MFV_LOGE("[MFV][ERROR] ISR set MT6572_HWLockEvent error\n");
+		            }
+		            break;
+		        }
+		    }
+#else
+		    //if ((grVcodecHWLock.u4LockHWTID1 == current->pid) || (grVcodecHWLock.u4LockHWTID2 == current->pid)) //normal case
+		    //{
+		        grVcodecHWLock.u4LockHWTID1 = -1;
+		        grVcodecHWLock.u4LockHWTID2 = -1;
+		        grVcodecHWLock.rLockedTime.u4Sec = 0;
+		        grVcodecHWLock.rLockedTime.u4uSec = 0;
+		        disable_irq_nosync(MT_VENC_IRQ_ID); 
+		        disable_irq_nosync(MT_VDEC_IRQ_ID);
+
+		        eValHWLockRet = eVideoSetEvent(&MT6575_HWLockEvent, sizeof(VAL_EVENT_T));
+		        if(VAL_RESULT_NO_ERROR != eValHWLockRet)
+		        {
+		            MFV_LOGE("[MFV][ERROR] ISR set MT6575_HWLockEvent error\n");
+		        }
+		    //}
+#endif        
+		    spin_unlock_irqrestore(&VcodecHWLock, ulFlagsVcodecHWLock);			
+            
             return -2;
             //bIsrEventInit = VAL_FALSE;
+        }
+        else if (VAL_RESULT_RESTARTSYS == eValHWLockRet)
+        {
+            MFV_LOGE("[WARNING] mediaserver is signaled and need to restart system call!!\n");
+            return -ERESTARTSYS;
         }
             
         MFV_LOGD("[MT6572] VCODEC_WAITISR - tid = %d\n", current->pid);
@@ -2736,6 +2805,9 @@ static int MT6572_Vcodec_write(struct file *filp, const char __user *buf, size_t
 
 static int MT6572_Vcodec_mmap(struct file *file, struct vm_area_struct *vma)
 {
+    VAL_UINT32_T u4I = 0;
+	long length;
+	unsigned int pfn;
 	
     MFV_LOGD("[MT6572_vcodec_mmap] \n");
 
@@ -2743,6 +2815,39 @@ static int MT6572_Vcodec_mmap(struct file *file, struct vm_area_struct *vma)
 	    (unsigned int)vma->vm_start, (unsigned int)vma->vm_pgoff, (unsigned int)vma->vm_end, (unsigned int)vma->vm_page_prot );
 		
     vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);            
+
+	
+	length = vma->vm_end - vma->vm_start;
+	pfn = vma->vm_pgoff<<PAGE_SHIFT;
+	
+	if(((length > VENC_REGION) || (pfn < VENC_BASE) || (pfn > VENC_BASE+VENC_REGION)) &&
+	   ((length > VDEC_REGION) || (pfn < VDEC_BASE) || (pfn > VDEC_BASE+VDEC_REGION)) &&
+	   ((length > HW_REGION) || (pfn < HW_BASE) || (pfn > HW_BASE+HW_REGION)) &&
+           ((length > HW_TABLET_REGION) || (pfn < HW_TABLET_BASE) || (pfn > HW_TABLET_BASE+HW_TABLET_REGION)) &&
+           ((length > HW_TABLET_REGION2) || (pfn < HW_TABLET_BASE2) || (pfn > HW_TABLET_BASE2+HW_TABLET_REGION2))
+      )
+	{
+	    VAL_UINT32_T u4Addr, u4Size;
+	    for(u4I = 0; u4I < VCODEC_MULTIPLE_INSTANCE_NUM_x_10; u4I++)
+        {
+            if ((grNonCacheMemoryList[u4I].u4KVA != 0xffffffff) && (grNonCacheMemoryList[u4I].u4KPA != 0xffffffff))
+            {
+                u4Addr = grNonCacheMemoryList[u4I].u4KPA;
+				u4Size = (grNonCacheMemoryList[u4I].u4Size + 0x1000 -1) & ~(0x1000-1);
+                if((length == u4Size) && (pfn == u4Addr))
+                {
+                    MFV_LOGD(" cache idx %d \n", u4I);
+                    break;
+                }
+            }
+	    }
+
+		if (u4I == VCODEC_MULTIPLE_INSTANCE_NUM_x_10)
+		{
+		    MFV_LOGE("[ERROR] mmap region error: Length(0x%x), pfn(0x%x)\n", length, pfn);
+		    return -EAGAIN;
+		}
+	}	 
 
     if (remap_pfn_range(vma, vma->vm_start, vma->vm_pgoff, vma->vm_end - vma->vm_start, vma->vm_page_prot)) 
     {

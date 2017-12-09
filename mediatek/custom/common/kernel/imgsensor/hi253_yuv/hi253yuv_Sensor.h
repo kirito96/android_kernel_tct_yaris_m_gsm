@@ -56,15 +56,7 @@
 #define HI253_FRAME_RATE_UNIT         10
 #define HI253_FPS(x)                  (HI253_FRAME_RATE_UNIT * (x))
 #define HI253_MAX_FPS                 (HI253_FRAME_RATE_UNIT * 30)
-//zhao.li@tcl Add for zsd mode Bug 466783
-typedef enum {
-    SENSOR_MODE_INIT = 0,
-    SENSOR_MODE_PREVIEW,
-    SENSOR_MODE_VIDEO,
-    SENSOR_MODE_ZSD,
-    SENSOR_MODE_CAPTURE
-} HI253_SENSOR_MODE;
-//zhao.li@tcl Add for zsd mode Bug 466783 end
+
 UINT32 HI253Open(void);
 UINT32 HI253GetResolution(MSDK_SENSOR_RESOLUTION_INFO_STRUCT *pSensorResolution);
 UINT32 HI253GetInfo(MSDK_SCENARIO_ID_ENUM ScenarioId, MSDK_SENSOR_INFO_STRUCT *pSensorInfo, MSDK_SENSOR_CONFIG_STRUCT *pSensorConfigData);

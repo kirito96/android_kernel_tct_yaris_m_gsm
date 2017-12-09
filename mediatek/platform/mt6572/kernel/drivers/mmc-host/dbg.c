@@ -29,7 +29,7 @@
 #include <mach/mt_gpio.h>
 
 #if defined(GPIO_SDHC_EINT_PIN)
-extern msdc_disable_eint_while_suspend;
+extern int msdc_disable_eint_while_suspend;
 #endif
 
 #ifdef MTK_IO_PERFORMANCE_DEBUG
@@ -124,21 +124,33 @@ u32 dma_size[HOST_MAX_NUM]={
     512,
     512
 };
+
+u32 msdc_perf_dbg[HOST_MAX_NUM]={
+    0,
+    0
+};
+
 msdc_mode drv_mode[HOST_MAX_NUM]={
     MODE_SIZE_DEP, /* using DMA or not depend on the size */
     MODE_SIZE_DEP
 };
+
 unsigned char msdc_clock_src[HOST_MAX_NUM]={
     0,
     0
 };
 
-//BEGIN Light for adjusting clock divisor
 unsigned int msdc_clock_divisor[HOST_MAX_NUM]={
     0,
     0
 };
-//END Light
+
+unsigned char msdc_clock_ddr_sdr_select[HOST_MAX_NUM]={
+    1,
+    1
+};
+
+int msdc_enable_print_all_msdc_send_stop=0;
 
 drv_mod msdc_drv_mode[HOST_MAX_NUM];
 
@@ -167,6 +179,12 @@ u32 msdc_base[HOST_MAX_NUM]={
 #endif
 };
 
+//BEGIN MET
+u32 msdc_enable_met_log[HOST_MAX_NUM]={
+    0,
+    0
+};
+//END
 
 /* for driver profile */
 #define TICKS_ONE_MS  (13000)
@@ -211,7 +229,7 @@ extern u32  msdc_get_tune(struct msdc_host *host);
 extern void msdc_set_tune(struct msdc_host *host,u32 value);
 #endif
 
-void msdc_dump_reg(int id)
+static void msdc_dump_reg(int id)
 {
     u32 base = msdc_base[id];
 
@@ -248,7 +266,7 @@ void msdc_dump_reg(int id)
     printk(KERN_ERR "[SD_Debug][Host%d]Reg[9C] DMA_CFG        = 0x%.8x\n", id,sdr_read32(base + 0x9C));
     printk(KERN_ERR "[SD_Debug][Host%d]Reg[A0] SW_DBG_SEL     = 0x%.8x\n", id,sdr_read32(base + 0xA0));
     printk(KERN_ERR "[SD_Debug][Host%d]Reg[A4] SW_DBG_OUT     = 0x%.8x\n", id,sdr_read32(base + 0xA4));
-    printk(KERN_ERR "[SD_Debug][Host%d]Reg[A4] DMA_LEN        = 0x%.8x\n", id,sdr_read32(base + 0xA8));
+    printk(KERN_ERR "[SD_Debug][Host%d]Reg[A8] DMA_LEN        = 0x%.8x\n", id,sdr_read32(base + 0xA8));
     printk(KERN_ERR "[SD_Debug][Host%d]Reg[B0] PATCH_BIT0     = 0x%.8x\n", id,sdr_read32(base + 0xB0));
     printk(KERN_ERR "[SD_Debug][Host%d]Reg[B4] PATCH_BIT1     = 0x%.8x\n", id,sdr_read32(base + 0xB4));
     printk(KERN_ERR "[SD_Debug][Host%d]Reg[E0] SD_PAD_CTL0    = 0x%.8x\n", id,msdc_dump_padctl0(id));
@@ -261,7 +279,7 @@ void msdc_dump_reg(int id)
     printk(KERN_ERR "[SD_Debug][Host%d]Rg[100] MAIN_VER       = 0x%.8x\n", id,sdr_read32(base + 0x100));
     printk(KERN_ERR "[SD_Debug][Host%d]Rg[104] ECO_VER        = 0x%.8x\n", id,sdr_read32(base + 0x104));
 }
-void msdc_set_field(unsigned int address,unsigned int start_bit,unsigned int len,unsigned int value)
+static void msdc_set_field(unsigned int address,unsigned int start_bit,unsigned int len,unsigned int value)
 {
     unsigned long field;
     if(start_bit > 31 || start_bit < 0|| len > 32 || len <= 0)
@@ -274,7 +292,7 @@ void msdc_set_field(unsigned int address,unsigned int start_bit,unsigned int len
         printk("[****SD_Debug****]Modified:0x%x (0x%x)\n",address,sdr_read32(address));
     }
 }
-void msdc_get_field(unsigned int address,unsigned int start_bit,unsigned int len,unsigned int value)
+static void msdc_get_field(unsigned int address,unsigned int start_bit,unsigned int len,unsigned int value)
 {
     unsigned long field;
     if(start_bit > 31 || start_bit < 0|| len > 32 || len <= 0)
@@ -285,7 +303,7 @@ void msdc_get_field(unsigned int address,unsigned int start_bit,unsigned int len
         printk("[****SD_Debug****]Reg:0x%x start_bit(%d)len(%d)(0x%x)\n",address,start_bit,len,value);
     }
 }
-void msdc_init_gpt(void)
+static void msdc_init_gpt(void)
 {
 #if 0
     GPT_CONFIG config;
@@ -362,16 +380,16 @@ void msdc_sdio_profile(struct sdio_profile* result)
         cmd = &result->cmd53_tx_byte[i];
         if (cmd->count) {
             printk("sdio<%6d><%3dB>_Tx_<%9d><%9d><%6d><%6d>_<%9dB><%2dM>\n", cmd->count, i, cmd->tot_tc,
-                 cmd->max_tc, cmd->min_tc, cmd->tot_tc/cmd->count,
-                 cmd->tot_bytes, (cmd->tot_bytes/10)*13 / (cmd->tot_tc/10));
+                cmd->max_tc, cmd->min_tc, cmd->tot_tc/cmd->count,
+                cmd->tot_bytes, (cmd->tot_bytes/10)*13 / (cmd->tot_tc/10));
         }
     }
     for (i=0; i<100; i++) {
         cmd = &result->cmd53_tx_blk[i];
         if (cmd->count) {
             printk("sdio<%6d><%3d>B_Tx_<%9d><%9d><%6d><%6d>_<%9dB><%2dM>\n", cmd->count, i, cmd->tot_tc,
-                 cmd->max_tc, cmd->min_tc, cmd->tot_tc/cmd->count,
-                 cmd->tot_bytes, (cmd->tot_bytes/10)*13 / (cmd->tot_tc/10));
+                cmd->max_tc, cmd->min_tc, cmd->tot_tc/cmd->count,
+                cmd->tot_bytes, (cmd->tot_bytes/10)*13 / (cmd->tot_tc/10));
         }
     }
 
@@ -398,8 +416,8 @@ void msdc_performance(u32 opcode, u32 sizes, u32 bRx, u32 ticks)
         } else {
             block = sizes / 512;
             if (block >= 99) {
-               printk("cmd53 error blocks\n");
-               while(1);
+                printk("cmd53 error blocks\n");
+                while(1);
             }
             cmd = bRx ?  &result->cmd53_rx_blk[block] : &result->cmd53_tx_blk[block];
         }
@@ -598,9 +616,9 @@ static int sd_multi_rw_compare(int host_num, uint address, int count)
             }
         }
         if(error)
-           printk("============ cpu[%d] pid[%d]: FAILED the %d time compare ============\n", task_cpu(current), current->pid, i);
+            printk("============ cpu[%d] pid[%d]: FAILED the %d time compare ============\n", task_cpu(current), current->pid, i);
         else
-           printk("============ cpu[%d] pid[%d]: FINISH the %d time compare ============\n", task_cpu(current), current->pid, i);
+            printk("============ cpu[%d] pid[%d]: FINISH the %d time compare ============\n", task_cpu(current), current->pid, i);
     }
 
     if(i == count)
@@ -615,74 +633,74 @@ static int sd_multi_rw_compare(int host_num, uint address, int count)
 
 static uint smp_address_on_sd[MAX_THREAD_NUM_FOR_SMP] =
 {
-  0x2000,
-  0x20000,
-  0x200000,
-  0x2000000,
-  0x2200000,
-  0x2400000,
-  0x2800000,
-  0x2c00000,
-  0x4000000,
-  0x4200000,
-  0x4400000,
-  0x4800000,
-  0x4c00000,
-  0x8000000,
-  0x8200000,
-  0x8400000,
-  0x8800000,
-  0x8c00000,
-  0xc000000,
-  0xc200000
+    0x2000,
+    0x20000,
+    0x200000,
+    0x2000000,
+    0x2200000,
+    0x2400000,
+    0x2800000,
+    0x2c00000,
+    0x4000000,
+    0x4200000,
+    0x4400000,
+    0x4800000,
+    0x4c00000,
+    0x8000000,
+    0x8200000,
+    0x8400000,
+    0x8800000,
+    0x8c00000,
+    0xc000000,
+    0xc200000
 };
 
 static uint smp_address_on_mmc[MAX_THREAD_NUM_FOR_SMP] =
 {
-  0x200,
-  0x2000,
-  0x20000,
-  0x200000,
-  0x2000000,
-  0x2200000,
-  0x2400000,
-  0x2800000,
-  0x2c00000,
-  0x4000000,
-  0x4200000,
-  0x4400000,
-  0x4800000,
-  0x4c00000,
-  0x8000000,
-  0x8200000,
-  0x8400000,
-  0x8800000,
-  0x8c00000,
-  0xc000000,
+    0x200,
+    0x2000,
+    0x20000,
+    0x200000,
+    0x2000000,
+    0x2200000,
+    0x2400000,
+    0x2800000,
+    0x2c00000,
+    0x4000000,
+    0x4200000,
+    0x4400000,
+    0x4800000,
+    0x4c00000,
+    0x8000000,
+    0x8200000,
+    0x8400000,
+    0x8800000,
+    0x8c00000,
+    0xc000000,
 };
 
 static uint smp_address_on_sd_combo[MAX_THREAD_NUM_FOR_SMP] =
 {
-  0x2000,
-  0x20000,
-  0x200000,
-  0x2000000,
-  0x2200000,
-  0x2400000,
-  0x2800000,
-  0x2c00000,
-  0x4000000,
-  0x4200000,
-  0x4400000,
-  0x4800000,
-  0x4c00000,
-  0x8000000,
-  0x8200000,
-  0x8400000,
-  0x8800000,
-  0x8c00000,
-  0xc000000,
-  0xc200000
+    0x2000,
+    0x20000,
+    0x200000,
+    0x2000000,
+    0x2200000,
+    0x2400000,
+    0x2800000,
+    0x2c00000,
+    0x4000000,
+    0x4200000,
+    0x4400000,
+    0x4800000,
+    0x4c00000,
+    0x8000000,
+    0x8200000,
+    0x8400000,
+    0x8800000,
+    0x8c00000,
+    0xc000000,
+    0xc200000
 };
 struct write_read_data{
     int host_id;        //the target host you want to do SMP test on.
@@ -713,86 +731,86 @@ static int write_read_thread(void* ptr)
  */
 static int smp_test_on_one_host(int thread_num, int host_id, int count, int multi_address)
 {
-   int i=0, ret=0;
-   char thread_name[128];
-   struct msdc_host *host_ctl;
+    int i=0, ret=0;
+    char thread_name[128];
+    struct msdc_host *host_ctl;
 
-   printk("============================[%s] start ================================\n\n", __func__);
-   printk(" host %d run %d thread, each thread run %d RW comparison\n", host_id, thread_num, count);
-   if(host_id >= HOST_MAX_NUM || host_id < 0)
-   {
-      printk(" bad host id: %d\n", host_id);
-      ret = -1;
-      goto out;
-   }
+    printk("============================[%s] start ================================\n\n", __func__);
+    printk(" host %d run %d thread, each thread run %d RW comparison\n", host_id, thread_num, count);
+    if(host_id >= HOST_MAX_NUM || host_id < 0)
+    {
+        printk(" bad host id: %d\n", host_id);
+        ret = -1;
+        goto out;
+    }
 
-   if(thread_num > MAX_THREAD_NUM_FOR_SMP)// && (multi_address != 0))
-   {
-      printk(" too much thread for SMP test, thread_num=%d\n", thread_num);
-      ret = -1;
-      goto out;
-   }
+    if(thread_num > MAX_THREAD_NUM_FOR_SMP)// && (multi_address != 0))
+    {
+        printk(" too much thread for SMP test, thread_num=%d\n", thread_num);
+        ret = -1;
+        goto out;
+    }
 
-   host_ctl = mtk_msdc_host[host_id];
-   if(!host_ctl || !host_ctl->mmc || !host_ctl->mmc->card)
-   {
-      printk(" there is no card initialized in host[%d]\n",host_id);
-      ret = -1;
-      goto out;
-   }
+    host_ctl = mtk_msdc_host[host_id];
+    if(!host_ctl || !host_ctl->mmc || !host_ctl->mmc->card)
+    {
+        printk(" there is no card initialized in host[%d]\n",host_id);
+        ret = -1;
+        goto out;
+    }
 
 
-   for(i=0; i<thread_num; i++)
-   {
-       switch(host_ctl->mmc->card->type)
-       {
-         case MMC_TYPE_MMC:
-            if(!multi_address)
-               wr_data[host_id][i].start_address = COMPARE_ADDRESS_MMC;
-            else
-               wr_data[host_id][i].start_address = smp_address_on_mmc[i];
-            if(i == 0)
-               printk(" MSDC[%d], MMC:\n", host_id);
-            break;
-         case MMC_TYPE_SD:
-            if(!multi_address)
-               wr_data[host_id][i].start_address = COMPARE_ADDRESS_SD;
-            else
-               wr_data[host_id][i].start_address = smp_address_on_sd[i];
-            if(i == 0)
-               printk(" MSDC[%d], SD:\n", host_id);
-            break;
-         case MMC_TYPE_SDIO:
-            if(i == 0)
-            {
-               printk(" MSDC[%d], SDIO:\n", host_id);
-               printk("   please manually trigger wifi application instead of write/read something on SDIO card\n");
-            }
-            ret = -1;
-            goto out;
-         case MMC_TYPE_SD_COMBO:
-            if(!multi_address)
-               wr_data[host_id][i].start_address = COMPARE_ADDRESS_SD_COMBO;
-            else
-               wr_data[host_id][i].start_address = smp_address_on_sd_combo[i];
-            if(i == 0)
-               printk(" MSDC[%d], SD_COMBO:\n", host_id);
-            break;
-         default:
-            if(i == 0)
-               printk(" MSDC[%d], cannot recognize this card\n", host_id);
-            ret = -1;
-            goto out;
-       }
-       wr_data[host_id][i].host_id = host_id;
-       wr_data[host_id][i].count = count;
-       sprintf(thread_name, "msdc_H%d_T%d", host_id, i);
-       kthread_run(write_read_thread, &wr_data[host_id][i], thread_name);
-       printk("   start thread: %s, at address 0x%x\n", thread_name, wr_data[host_id][i].start_address);
-   }
+    for(i=0; i<thread_num; i++)
+    {
+        switch(host_ctl->mmc->card->type)
+        {
+            case MMC_TYPE_MMC:
+                if(!multi_address)
+                    wr_data[host_id][i].start_address = COMPARE_ADDRESS_MMC;
+                else
+                    wr_data[host_id][i].start_address = smp_address_on_mmc[i];
+                if(i == 0)
+                    printk(" MSDC[%d], MMC:\n", host_id);
+                break;
+            case MMC_TYPE_SD:
+                if(!multi_address)
+                    wr_data[host_id][i].start_address = COMPARE_ADDRESS_SD;
+                else
+                    wr_data[host_id][i].start_address = smp_address_on_sd[i];
+                if(i == 0)
+                    printk(" MSDC[%d], SD:\n", host_id);
+                break;
+            case MMC_TYPE_SDIO:
+                if(i == 0)
+                {
+                    printk(" MSDC[%d], SDIO:\n", host_id);
+                    printk("   please manually trigger wifi application instead of write/read something on SDIO card\n");
+                }
+                ret = -1;
+                goto out;
+            case MMC_TYPE_SD_COMBO:
+                if(!multi_address)
+                    wr_data[host_id][i].start_address = COMPARE_ADDRESS_SD_COMBO;
+                else
+                    wr_data[host_id][i].start_address = smp_address_on_sd_combo[i];
+                if(i == 0)
+                    printk(" MSDC[%d], SD_COMBO:\n", host_id);
+                break;
+            default:
+                if(i == 0)
+                    printk(" MSDC[%d], cannot recognize this card\n", host_id);
+                ret = -1;
+                goto out;
+        }
+        wr_data[host_id][i].host_id = host_id;
+        wr_data[host_id][i].count = count;
+        sprintf(thread_name, "msdc_H%d_T%d", host_id, i);
+        kthread_run(write_read_thread, &wr_data[host_id][i], thread_name);
+        printk("   start thread: %s, at address 0x%x\n", thread_name, wr_data[host_id][i].start_address);
+    }
 out:
-   printk("============================[%s] end ================================\n\n", __func__);
-   return ret;
+    printk("============================[%s] end ================================\n\n", __func__);
+    return ret;
 }
 
 /*
@@ -804,88 +822,88 @@ out:
  */
 static int smp_test_on_all_host(int thread_num, int count, int multi_address)
 {
-   int i=0;
-   int j=0;
-   int ret=0;
-   char thread_name[128];
-   struct msdc_host *host_ctl;
+    int i=0;
+    int j=0;
+    int ret=0;
+    char thread_name[128];
+    struct msdc_host *host_ctl;
 
-   printk("============================[%s] start ================================\n\n", __func__);
-   printk(" each host run %d thread, each thread run %d RW comparison\n", thread_num, count);
-   if(thread_num > MAX_THREAD_NUM_FOR_SMP) //&& (multi_address != 0))
-   {
-      printk(" too much thread for SMP test, thread_num=%d\n", thread_num);
-      ret = -1;
-      goto out;
-   }
+    printk("============================[%s] start ================================\n\n", __func__);
+    printk(" each host run %d thread, each thread run %d RW comparison\n", thread_num, count);
+    if(thread_num > MAX_THREAD_NUM_FOR_SMP) //&& (multi_address != 0))
+    {
+        printk(" too much thread for SMP test, thread_num=%d\n", thread_num);
+        ret = -1;
+        goto out;
+    }
 
-   for(i=0; i<HOST_MAX_NUM; i++)
-   {
-      host_ctl = mtk_msdc_host[i];
-      if(!host_ctl || !host_ctl->mmc || !host_ctl->mmc->card)
-      {
-         printk(" MSDC[%d], no card is initialized\n", i);
-         continue;
-      }
+    for(i=0; i<HOST_MAX_NUM; i++)
+    {
+        host_ctl = mtk_msdc_host[i];
+        if(!host_ctl || !host_ctl->mmc || !host_ctl->mmc->card)
+        {
+            printk(" MSDC[%d], no card is initialized\n", i);
+            continue;
+        }
 
-      if(host_ctl->mmc->card->type == MMC_TYPE_SDIO)
-      {
-         printk(" MSDC[%d], SDIO, please manually trigger wifi application instead of write/read something on SDIO card\n", i);
-         continue;
-      }
+        if(host_ctl->mmc->card->type == MMC_TYPE_SDIO)
+        {
+            printk(" MSDC[%d], SDIO, please manually trigger wifi application instead of write/read something on SDIO card\n", i);
+            continue;
+        }
 
-      for(j=0; j<thread_num; j++)
-      {
-         wr_data[i][j].host_id = i;
-         wr_data[i][j].count = count;
-         switch(host_ctl->mmc->card->type)
-         {
-            case MMC_TYPE_MMC:
-               if(!multi_address)
-                  wr_data[i][j].start_address = COMPARE_ADDRESS_MMC;
-               else
-                  wr_data[i][j].start_address = smp_address_on_mmc[i];
-               if(j == 0)
-                  printk(" MSDC[%d], MMC:\n ", i);
-               break;
-            case MMC_TYPE_SD:
-               if(!multi_address)
-                  wr_data[i][j].start_address = COMPARE_ADDRESS_SD;
-               else
-                  wr_data[i][j].start_address = smp_address_on_sd[i];
-               if(j == 0)
-                  printk(" MSDC[%d], SD:\n", i);
-               break;
-            case MMC_TYPE_SDIO:
-               if(j == 0)
-               {
-                  printk(" MSDC[%d], SDIO:\n", i);
-                  printk("   please manually trigger wifi application instead of write/read something on SDIO card\n");
-               }
-               ret = -1;
-               goto out;
-            case MMC_TYPE_SD_COMBO:
-               if(!multi_address)
-                  wr_data[i][j].start_address = COMPARE_ADDRESS_SD_COMBO;
-               else
-                  wr_data[i][j].start_address = smp_address_on_sd_combo[i];
-               if(j == 0)
-                  printk(" MSDC[%d], SD_COMBO:\n", i);
-               break;
-            default:
-               if(j == 0)
-                  printk(" MSDC[%d], cannot recognize this card\n", i);
-               ret = -1;
-               goto out;
-         }
-         sprintf(thread_name, "msdc_H%d_T%d", i, j);
-         kthread_run(write_read_thread, &wr_data[i][j], thread_name);
-         printk("   start thread: %s, at address: 0x%x\n", thread_name, wr_data[i][j].start_address);
-      }
-   }
+        for(j=0; j<thread_num; j++)
+        {
+            wr_data[i][j].host_id = i;
+            wr_data[i][j].count = count;
+            switch(host_ctl->mmc->card->type)
+            {
+                case MMC_TYPE_MMC:
+                    if(!multi_address)
+                        wr_data[i][j].start_address = COMPARE_ADDRESS_MMC;
+                    else
+                        wr_data[i][j].start_address = smp_address_on_mmc[i];
+                    if(j == 0)
+                        printk(" MSDC[%d], MMC:\n ", i);
+                    break;
+                case MMC_TYPE_SD:
+                    if(!multi_address)
+                        wr_data[i][j].start_address = COMPARE_ADDRESS_SD;
+                    else
+                        wr_data[i][j].start_address = smp_address_on_sd[i];
+                    if(j == 0)
+                        printk(" MSDC[%d], SD:\n", i);
+                    break;
+                case MMC_TYPE_SDIO:
+                    if(j == 0)
+                    {
+                        printk(" MSDC[%d], SDIO:\n", i);
+                        printk("   please manually trigger wifi application instead of write/read something on SDIO card\n");
+                    }
+                    ret = -1;
+                    goto out;
+                case MMC_TYPE_SD_COMBO:
+                    if(!multi_address)
+                        wr_data[i][j].start_address = COMPARE_ADDRESS_SD_COMBO;
+                    else
+                        wr_data[i][j].start_address = smp_address_on_sd_combo[i];
+                    if(j == 0)
+                        printk(" MSDC[%d], SD_COMBO:\n", i);
+                    break;
+                default:
+                    if(j == 0)
+                        printk(" MSDC[%d], cannot recognize this card\n", i);
+                    ret = -1;
+                    goto out;
+            }
+            sprintf(thread_name, "msdc_H%d_T%d", i, j);
+            kthread_run(write_read_thread, &wr_data[i][j], thread_name);
+            printk("   start thread: %s, at address: 0x%x\n", thread_name, wr_data[i][j].start_address);
+        }
+    }
 out:
-   printk("============================[%s] end ================================\n\n", __func__);
-   return ret;
+    printk("============================[%s] end ================================\n\n", __func__);
+    return ret;
 }
 
 
@@ -1049,11 +1067,32 @@ static int msdc_debug_proc_write(struct file *file, const char *buf, unsigned lo
         }
         else if(id == HOST_MAX_NUM){
             sd_debug_zone[0] = sd_debug_zone[1] = zone;
-            sd_debug_zone[2] = sd_debug_zone[3] = sd_debug_zone[4] = zone;
         }
         else{
             printk("[****SD_Debug****]msdc host_id error when set debug zone\n");
         }
+
+        if ( zone & DBG_EVT_REP_STOP ) {
+            //All host use common setting for msdc_print_all_msdc_send_stop
+            msdc_enable_print_all_msdc_send_stop=1;
+        } else {
+            msdc_enable_print_all_msdc_send_stop=0;
+        }
+
+        if(id >=0 && id<=HOST_MAX_NUM-1){
+            if ( zone & DBG_EVT_PERF_DBG ) {
+                msdc_perf_dbg[id]=1;
+            } else {
+                msdc_perf_dbg[id]=0;
+            }
+
+            if ( zone & DBG_EVT_MET ) {
+                msdc_enable_met_log[id]=1;
+            } else {
+                msdc_enable_met_log[id]=0;
+            }
+        }
+
     } else if (cmd == SD_TOOL_DMA_SIZE) {
         id = p2;  mode = p3; size = p4;
         if(id >=0 && id<=HOST_MAX_NUM-1){
@@ -1087,12 +1126,12 @@ static int msdc_debug_proc_write(struct file *file, const char *buf, unsigned lo
                //Set cuurent MSDC source
                if(p3 >= 0 && p3< CLK_SRC_MAX_NUM){
                   msdc_clock_src[id] = p3;
-                  //BEGIN Light  for adjusting clock divisor
-                  if ( p4>=1 ) {
-                      msdc_clock_divisor[id] = p4;
-                      printk("[****SD_Debug****]msdc%d's clock divisor set as %d\n", id, p4);
+                  if ( p4==0 ) msdc_clock_ddr_sdr_select[id]=1;
+                  else if ( p4>0 ) msdc_clock_ddr_sdr_select[id]=2;
+                  if ( p5>=1 ) {
+                      msdc_clock_divisor[id] = p5;
+                      printk("[****SD_Debug****]msdc%d's clock divisor set as %d\n", id, p5);
                   }
-                  //END Light
                   printk("[****SD_Debug****]msdc%d's pll source changed to %d\n", id, msdc_clock_src[id]);
                   printk("[****SD_Debug****]to enable the above settings, please suspend and resume the phone again\n");
                }else {
@@ -1207,7 +1246,7 @@ static int msdc_debug_proc_write(struct file *file, const char *buf, unsigned lo
                          msdc_set_driving(host,host->hw,1);
                      }
                      #endif
-                    printk("[****SD_Debug****]clk_drv=%d, cmd_drv=%d, dat_drv=%d\n", p3, p4, p5);
+                     printk("[****SD_Debug****]clk_drv=%d, cmd_drv=%d, dat_drv=%d\n", p3, p4, p5);
                 }
             }else if(p1 == 1){
                 printk("[****SD_Debug****]msdc%d: clk_drv=%d, cmd_drv=%d, dat_drv=%d\n", id, msdc_drv_mode[id].clk_drv, msdc_drv_mode[id].cmd_drv, msdc_drv_mode[id].dat_drv);
@@ -1216,16 +1255,15 @@ static int msdc_debug_proc_write(struct file *file, const char *buf, unsigned lo
     }
     else if(cmd == SD_TOOL_ENABLE_SLEW_RATE){
         id = p1;
-        host = mtk_msdc_host[id];
         if(id >= HOST_MAX_NUM || id < 0)
             printk("[****SD_Debug****]msdc host_id error when modify msdc sr\n");
         else{
-
+            host = mtk_msdc_host[id];
             if((unsigned char)p2 > 1 || (unsigned char)p3 > 1 ||(unsigned char)p4 > 1)
                 printk("[****SD_Debug****]Some sr value was not right(correct:0(disable),1(enable))\n");
             else{
                 #ifndef FPGA_PLATFORM
-                    msdc_set_sr(host,p2,p3,p4);
+                msdc_set_sr(host,p2,p3,p4);
                 #endif
                 printk("[****SD_Debug****]clk_sr=%d, cmd_sr=%d, dat_sr=%d\n", p2, p3, p4);
             }
@@ -1243,7 +1281,7 @@ static int msdc_debug_proc_write(struct file *file, const char *buf, unsigned lo
                 printk("[****SD_Debug****]Some rd/td value was not right(rd:0~0x3F,td:0~0xF)\n");
             }else{
                 #ifndef FPGA_PLATFORM
-                    msdc_set_rdtdsel_dbg(host,p2,p3);
+                msdc_set_rdtdsel_dbg(host,p2,p3);
                 #endif
                 printk("[****SD_Debug****]rd/td=%d, value=%d\n", p2, p3);
             }
@@ -1256,7 +1294,7 @@ static int msdc_debug_proc_write(struct file *file, const char *buf, unsigned lo
             printk("[****SD_Debug****]msdc host_id error when enable/disable msdc smt\n");
         }else{
             #ifndef FPGA_PLATFORM
-                msdc_set_smt(host,p2);
+            msdc_set_smt(host,p2);
             #endif
             printk("[****SD_Debug****]smt=%d\n",p2);
         }
@@ -1302,24 +1340,24 @@ static int msdc_debug_proc_write(struct file *file, const char *buf, unsigned lo
         compare_count = p2;
         if(id >= HOST_MAX_NUM || id < 0)
         {
-           printk("[****SD_Debug****]: bad host id: %d\n", id);
-           return 0;
+            printk("[****SD_Debug****]: bad host id: %d\n", id);
+            return 0;
         }
         if(compare_count < 0)
         {
-           printk("[****SD_Debug****]: bad compare count: %d\n", compare_count);
-           return 0;
+            printk("[****SD_Debug****]: bad compare count: %d\n", compare_count);
+            return 0;
         }
 
         if(id == 0) //for msdc0
         {
 #ifdef MTK_EMMC_SUPPORT
-           sd_multi_rw_compare(0, COMPARE_ADDRESS_MMC, compare_count);//test the address 0 of eMMC card, since there a little memory.
+            sd_multi_rw_compare(0, COMPARE_ADDRESS_MMC, compare_count);//test the address 0 of eMMC card, since there a little memory.
 #else
-           sd_multi_rw_compare(0, COMPARE_ADDRESS_SD, compare_count); //test a larger address of SD card
+            sd_multi_rw_compare(0, COMPARE_ADDRESS_SD, compare_count); //test a larger address of SD card
 #endif
         }else {
-           sd_multi_rw_compare(id, COMPARE_ADDRESS_SD, compare_count);
+            sd_multi_rw_compare(id, COMPARE_ADDRESS_SD, compare_count);
         }
     }
     else if (cmd == SMP_TEST_ON_ONE_HOST){
@@ -1397,6 +1435,7 @@ static int msdc_debug_proc_write(struct file *file, const char *buf, unsigned lo
                         default            : break;
                     }
                 }
+                #if 0 //Remove the 2 section since MR2 does not define MMC_CAP_MAX_CURRENT_XXX and MMC_CAP_SET_XPC_YYY
                 if(current_limit != 0){
                     switch(current_limit){
                         case MAX_CURRENT_200 : msdc_host_mode[id] |= MMC_CAP_MAX_CURRENT_200;
@@ -1428,6 +1467,7 @@ static int msdc_debug_proc_write(struct file *file, const char *buf, unsigned lo
                         default                    : break;
                     }
                 }
+                #endif
                 printk("[****SD_Debug****]to enable the above settings, please suspend and resume the phone again\n");
 
             }else {
@@ -1451,6 +1491,7 @@ static int msdc_debug_proc_write(struct file *file, const char *buf, unsigned lo
                    if(msdc_host_mode[id] & MMC_CAP_DRIVER_TYPE_D) printk("D, ");
                    printk("\n");
                 }
+                #if 0
                 {
                    printk("[****SD_Debug****]      current limit: ");
                    if(msdc_host_mode[id] & MMC_CAP_MAX_CURRENT_200) printk("200mA, ");
@@ -1468,6 +1509,7 @@ static int msdc_debug_proc_write(struct file *file, const char *buf, unsigned lo
                    if(!(msdc_host_mode[id] & (MMC_CAP_SET_XPC_330 | MMC_CAP_SET_XPC_300 | MMC_CAP_SET_XPC_180))) printk("N/A");
                    printk("\n");
                 }
+                #endif
             }
         }
     }
@@ -1486,7 +1528,7 @@ static int msdc_debug_proc_write(struct file *file, const char *buf, unsigned lo
             }else if (dma_status == -1){
                 printk("No data transaction or the device is not present until now\n");
             }
-    
+
             if(dma_status > 0)
             {
                 dma_address = msdc_get_dma_address(id);
@@ -1494,10 +1536,10 @@ static int msdc_debug_proc_write(struct file *file, const char *buf, unsigned lo
                     printk(">>>> msdc%d: \n", id);
                     p_dma_address = dma_address;
                     while (p_dma_address){
-                       printk(">>>>     addr=0x%x, size=%d\n", p_dma_address->start_address, p_dma_address->size);
-                       if(p_dma_address->end)
-                           break;
-                       p_dma_address = p_dma_address->next;
+                        printk(">>>>     addr=0x%x, size=%d\n", p_dma_address->start_address, p_dma_address->size);
+                        if(p_dma_address->end)
+                            break;
+                        p_dma_address = p_dma_address->next;
                     }
                 }else {
                     printk(">>>> msdc%d: BD count=0\n", id);
@@ -1610,19 +1652,26 @@ static int msdc_tune_flag_proc_read(char *page, char **start, off_t off, int cou
 
 static int msdc_debug_proc_read_FT(char *page, char **start, off_t off, int count, int *eof, void *data)
 {
+#if !defined(CONFIG_MTK_WCN_CMB_SDIO_SLOT)
+    char *p = page;
+
+    p += sprintf(p, "\n=========================================\n");
+    p += sprintf(p, "There is no WCN SDIO SLOT. \n");
+    p += sprintf(p, "=========================================\n\n");
+    return 0;
+#else
     char *p = page;
     int len = 0;
     int msdc_id =0;
-    unsigned int base;
+    unsigned int base=MSDC_0_BASE;
     unsigned char  cmd_edge;
     unsigned char  data_edge;
-    unsigned char  clk_drv1,clk_drv2,cmd_drv1,cmd_drv2,dat_drv1,dat_drv2;
+    unsigned char  clk_drv1=0,clk_drv2=0;
+    //unsigned cmd_drv1,cmd_drv2,dat_drv1,dat_drv2;
     u32 cur_rxdly0;
     u8 u8_dat0, u8_dat1, u8_dat2, u8_dat3;
     u8 u8_wdat, u8_cmddat;
     u8 u8_DDLSEL;
-
-#if defined(CONFIG_MTK_WCN_CMB_SDIO_SLOT)
 
     if(CONFIG_MTK_WCN_CMB_SDIO_SLOT == 0)
     {
@@ -1648,14 +1697,8 @@ static int msdc_debug_proc_read_FT(char *page, char **start, off_t off, int coun
         msdc_id = 3;
     }
     #endif
-#else
-    p += sprintf(p, "\n=========================================\n");
-    p += sprintf(p, "There is no WCN SDIO SLOT. \n");
-    p += sprintf(p, "=========================================\n\n");
-    return 0;
-#endif
-    //cool mark.
-    //enable_clock(PERI_MSDC0_PDN + msdc_id, "SD");
+
+    enable_clock(msdc_cg_clk_id[msdc_id], "SD");
 
     sdr_get_field((base+0x04), MSDC_IOCON_RSPL, cmd_edge);
     sdr_get_field((base+0x04), MSDC_IOCON_DSPL, data_edge);
@@ -1689,9 +1732,7 @@ static int msdc_debug_proc_read_FT(char *page, char **start, off_t off, int coun
 
     p += sprintf(p, "\n=========================================\n");
 
-#if defined(CONFIG_MTK_WCN_CMB_SDIO_SLOT)
     p += sprintf(p, "(1) WCN SDIO SLOT is at msdc<%d>\n",CONFIG_MTK_WCN_CMB_SDIO_SLOT);
-#endif
 
     p += sprintf(p, "-----------------------------------------\n");
     p += sprintf(p, "(2) clk settings \n");
@@ -1699,7 +1740,7 @@ static int msdc_debug_proc_read_FT(char *page, char **start, off_t off, int coun
 
     p += sprintf(p, "-----------------------------------------\n");
     p += sprintf(p, "(3) settings of driving current \n");
-    
+
     p += sprintf(p, "driving1(clk, cmd, dat0~dat3) is  <%d>\n", clk_drv1);
     if ( msdc_id==0 ) {
         p += sprintf(p, "driving1(dat4~dat7) is  <%d>\n", clk_drv2);
@@ -1733,16 +1774,18 @@ static int msdc_debug_proc_read_FT(char *page, char **start, off_t off, int coun
         len = 0;
 
     return len < count ? len : count;
+#endif
 }
 
 static int msdc_debug_proc_write_FT(struct file *file, const char *buf, unsigned long count, void *data)
 {
+#if defined(CONFIG_MTK_WCN_CMB_SDIO_SLOT)
     int ret;
 
     int i_case=0, i_par1=-1, i_par2=-1, i_clk=0, i_driving=0, i_edge=0, i_data=0, i_delay=0;
     u32 cur_rxdly0;
     u8 u8_dat0, u8_dat1, u8_dat2, u8_dat3;
-    unsigned int base;
+    unsigned int base=MSDC_0_BASE;
     if (count == 0)return -1;
     if(count > 255)count = 255;
 
@@ -1759,7 +1802,6 @@ static int msdc_debug_proc_write_FT(struct file *file, const char *buf, unsigned
 
     printk("i_case=%d i_par1=%d i_par2=%d\n", i_case, i_par1, i_par2);
 
-#if defined(CONFIG_MTK_WCN_CMB_SDIO_SLOT)
     if(CONFIG_MTK_WCN_CMB_SDIO_SLOT == 0)
         base = MSDC_0_BASE;
     if(CONFIG_MTK_WCN_CMB_SDIO_SLOT == 1)
@@ -1772,9 +1814,6 @@ static int msdc_debug_proc_write_FT(struct file *file, const char *buf, unsigned
     if(CONFIG_MTK_WCN_CMB_SDIO_SLOT == 3)
         base = MSDC_3_BASE;
     #endif
-#else
-    return -1;
-#endif
 
     if (i_case==1)  //set clk
     {
@@ -1837,7 +1876,7 @@ static int msdc_debug_proc_write_FT(struct file *file, const char *buf, unsigned
         } else if (i_data==4) {
             //write data
             sdr_set_field((base + 0xec), MSDC_PAD_TUNE_DATWRDLY, i_delay);
-        } else if (i_data==5) { 
+        } else if (i_data==5) {
             //cmd data
             sdr_set_field((base + 0xec), MSDC_PAD_TUNE_CMDRRDLY, i_delay);
         } else {
@@ -1876,6 +1915,10 @@ static int msdc_debug_proc_write_FT(struct file *file, const char *buf, unsigned
     }
 
     return 1;
+
+#else
+    return -1;
+#endif
 }
 
 static int msdc_tune_proc_read(char *page, char **start, off_t off, int count, int *eof, void *data)
@@ -1986,30 +2029,30 @@ int msdc_debug_proc_init(void)
     prEntry = create_proc_entry("msdc_debug", 0660, 0);
     if(prEntry)
     {
-       prEntry->read_proc  = msdc_debug_proc_read;
-       prEntry->write_proc = msdc_debug_proc_write;
-       printk("[%s]: successfully create /proc/msdc_debug\n", __func__);
+        prEntry->read_proc  = msdc_debug_proc_read;
+        prEntry->write_proc = msdc_debug_proc_write;
+        printk("[%s]: successfully create /proc/msdc_debug\n", __func__);
     }else{
-       printk("[%s]: failed to create /proc/msdc_debug\n", __func__);
+        printk("[%s]: failed to create /proc/msdc_debug\n", __func__);
     }
 
     prEntry = create_proc_entry("msdc_help", 0660, 0);
     if(prEntry)
     {
-       prEntry->read_proc = msdc_help_proc_read;
-       printk("[%s]: successfully create /proc/msdc_help\n", __func__);
+        prEntry->read_proc = msdc_help_proc_read;
+        printk("[%s]: successfully create /proc/msdc_help\n", __func__);
     }else{
-       printk("[%s]: failed to create /proc/msdc_help\n", __func__);
+        printk("[%s]: failed to create /proc/msdc_help\n", __func__);
     }
 
     prEntry = create_proc_entry("msdc_FT", 0660, 0);
-        if(prEntry)
+    if(prEntry)
     {
-       prEntry->read_proc  = msdc_debug_proc_read_FT;
-       prEntry->write_proc = msdc_debug_proc_write_FT;
-       printk("[%s]: successfully create /proc/msdc_FT\n", __func__);
+        prEntry->read_proc  = msdc_debug_proc_read_FT;
+        prEntry->write_proc = msdc_debug_proc_write_FT;
+        printk("[%s]: successfully create /proc/msdc_FT\n", __func__);
     }else{
-       printk("[%s]: failed to create /proc/msdc_FT\n", __func__);
+        printk("[%s]: failed to create /proc/msdc_FT\n", __func__);
     }
 
     memset(msdc_drv_mode,0,sizeof(msdc_drv_mode));

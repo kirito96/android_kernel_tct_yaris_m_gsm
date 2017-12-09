@@ -2,7 +2,7 @@
 #include <linux/mm.h>
 #include <linux/mm_types.h>
 #include <linux/module.h>
-#include <linux/autoconf.h>
+#include <generated/autoconf.h>
 #include <linux/init.h>
 #include <linux/types.h>
 #include <linux/cdev.h>
@@ -46,27 +46,22 @@
 
 #include "ddp_drv.h"
 #include "ddp_reg.h"
+#include "ddp_hal.h"
 #include "ddp_path.h"
 #include "ddp_debug.h"
 #include "ddp_color.h"
-#include "ddp_bls.h"
-#include "disp_drv.h"
-
-#include "ddp_rot.h"
+#include "disp_drv_ddp.h"
 #include "ddp_wdma.h"
 #include "ddp_cmdq.h"
+#include "ddp_bls.h"
 
 //#include <asm/tcm.h>
 
-//#define DDP_GAMMA_SUPPORT
+#define DDP_GAMMA_SUPPORT
 
 
 unsigned int dbg_log = 0;
 unsigned int irq_log = 0;
-#define DISP_WRN(string, args...) if(dbg_log) printk("[DSS]"string,##args)
-#define DISP_MSG(string, args...) if(0) printk("[DSS]"string,##args)
-#define DISP_ERR(string, args...) if(dbg_log) printk("[DSS]error:"string,##args)
-#define DISP_IRQ(string, args...) if(irq_log) printk("[DSS]"string,##args)
 #define DISP_DEVNAME "mtk_disp"
 // device and driver
 static dev_t disp_devno;
@@ -110,7 +105,6 @@ typedef struct
     pid_t open_pid;
     pid_t open_tgid;
     struct list_head testList;
-    unsigned int u4LockedMutex;
     unsigned int u4LockedResource;
     unsigned int u4Clock;
     spinlock_t node_lock;
@@ -121,7 +115,6 @@ static DDP_IRQ_CALLBACK g_disp_irq_table[DISP_MODULE_MAX][DISP_MAX_IRQ_CALLBACK]
 
 disp_irq_struct g_disp_irq;
 static DECLARE_WAIT_QUEUE_HEAD(g_disp_irq_done_queue);
-static DECLARE_WAIT_QUEUE_HEAD(gMutexWaitQueue);
 
 // cmdq thread
 
@@ -135,11 +128,6 @@ wait_queue_head_t cmq_wait_queue[CMDQ_THREAD_NUM];
 //unsigned char cmq_status[CMDQ_THREAD_NUM];
 static wait_queue_head_t cmq_exec_wait_queue;
 unsigned char cmq_exec_status = 1;
-
-// Hardware Mutex Variables
-#define ENGINE_MUTEX_NUM 8
-spinlock_t gMutexLock;
-int mutex_used[ENGINE_MUTEX_NUM] = {1, 0, 1, 1, 0, 0, 0, 0};    // 0 for FB, 1 for Bitblt, 2 for HDMI, 3 for BLS
 
 //G2d Variables
 spinlock_t gResourceLock;
@@ -161,8 +149,10 @@ static unsigned long u4UpdateFlag = 0;
 //Register update lock
 spinlock_t gRegisterUpdateLock;
 spinlock_t gPowerOperateLock;
+#ifdef DDP_82_72_TODO
 //Clock gate management
 static unsigned long g_u4ClockOnTbl = 0;
+#endif
 
 //PQ variables
 extern UINT32 fb_width;
@@ -181,41 +171,79 @@ DISPLAY_TDSHP_T *get_TDSHP_index(void)
 }
 
 
+// internal function
+static int disp_wait_intr(DISP_MODULE_ENUM module, unsigned int timeout_ms);
+#if 0
+static int disp_set_overlay_roi(int layer, int x, int y, int w, int h, int pitch);
+static int disp_set_overlay_addr(int layer, unsigned int addr, DpColorFormat fmt);
+static int disp_set_overlay(int layer, int enable);
+static int disp_is_dp_framework_run(void);
+static int disp_set_mutex_status(int enable);
+#endif
+static int disp_get_mutex_status(void);
+static int disp_set_needupdate(DISP_MODULE_ENUM eModule , unsigned long u4En);
+static void disp_power_off(DISP_MODULE_ENUM eModule , unsigned int * pu4Record);
+static void disp_power_on(DISP_MODULE_ENUM eModule , unsigned int * pu4Record);
 extern void DpEngine_COLORonConfig(unsigned int srcWidth,unsigned int srcHeight);
 extern void DpEngine_COLORonInit(void);
 
 extern void cmdqForceFreeAll(int cmdqThread);
 extern void cmdqForceFree_SW(int taskID);
 
+#if 0
+struct disp_path_config_struct
+{
+    DISP_MODULE_ENUM srcModule;
+    unsigned int addr; 
+    unsigned int inFormat; 
+    unsigned int pitch;
+    struct DISP_REGION srcROI;        // ROI
 
+    unsigned int layer;
+    bool layer_en;
+    enum OVL_LAYER_SOURCE source; 
+    struct DISP_REGION bgROI;         // background ROI
+    unsigned int bgColor;  // background color
+    unsigned int key;     // color key
+    bool aen;             // alpha enable
+    unsigned char alpha;
+
+    DISP_MODULE_ENUM dstModule;
+    unsigned int outFormat; 
+    unsigned int dstAddr;  // only take effect when dstModule=DISP_MODULE_WDMA1
+};
+int disp_path_enable();
+int disp_path_config(struct disp_path_config_struct* pConfig);
+#endif
 
 unsigned int* pRegBackup = NULL;
 
 //-------------------------------------------------------------------------------//
 // functions
+#if 0
 static void cmdq_ion_init(void)
 {
 
     //ION
-        DISP_MSG("DISP ION: ion_client_create 1:%x",(unsigned int)g_ion_device);
+        DDP_DRV_DBG("DISP ION: ion_client_create 1:%x",(unsigned int)g_ion_device);
 
-        cmdqIONClient = ion_client_create(g_ion_device,-1, "cmdq");
-        DISP_MSG("DISP ION: ion_client_create cmdqIONClient...%x.\n", (unsigned int)cmdqIONClient);
+        cmdqIONClient = ion_client_create(g_ion_device, "cmdq");
+        DDP_DRV_DBG("DISP ION: ion_client_create cmdqIONClient...%x.\n", (unsigned int)cmdqIONClient);
         if (IS_ERR_OR_NULL(cmdqIONClient))
         {
-            DISP_ERR("DISP ION: Couldn't create ion client\n");
+            DDP_DRV_ERR("DISP ION: Couldn't create ion client\n");
         }
 
-        DISP_MSG("DISP ION: Create ion client done\n");
+        DDP_DRV_DBG("DISP ION: Create ion client done\n");
         
         cmdqIONHandle = ion_alloc(cmdqIONClient, CMDQ_ION_BUFFER_SIZE, 4, ION_HEAP_MULTIMEDIA_MASK, 0);
         
         if (IS_ERR_OR_NULL(cmdqIONHandle))
         {
-            DISP_ERR("DISP ION: Couldn't alloc ion buffer\n");
+            DDP_DRV_ERR("DISP ION: Couldn't alloc ion buffer\n");
         }
 
-        DISP_MSG("DISP ION:  ion alloc done\n");
+        DDP_DRV_DBG("DISP ION:  ion alloc done\n");
 
         mm_data.mm_cmd = ION_MM_CONFIG_BUFFER;
         mm_data.config_buffer_param.handle = cmdqIONHandle;
@@ -223,27 +251,27 @@ static void cmdq_ion_init(void)
         mm_data.config_buffer_param.security = 0;
         mm_data.config_buffer_param.coherent = 0;
 
-        if(ion_kernel_ioctl(cmdqIONClient, ION_CMD_MULTIMEDIA, &mm_data))
+        if(ion_kernel_ioctl(cmdqIONClient, ION_CMD_MULTIMEDIA, (unsigned long)&mm_data))
         {
-            DISP_ERR("DISP ION: Couldn't config ion buffer\n");
+            DDP_DRV_ERR("DISP ION: Couldn't config ion buffer\n");
         }
 
-        DISP_MSG("DISP ION:  ion config done\n");
+        DDP_DRV_DBG("DISP ION:  ion config done\n");
 
         cmdq_pBuffer = ion_map_kernel(cmdqIONClient, cmdqIONHandle);
         if(IS_ERR_OR_NULL(cmdq_pBuffer))
         {        
-            DISP_ERR("DISP ION: Couldn't get ion buffer VA\n");
+            DDP_DRV_ERR("DISP ION: Couldn't get ion buffer VA\n");
         }
 
-        DISP_MSG("DISP ION:  ion VA done\n");
+        DDP_DRV_DBG("DISP ION:  ion VA done\n");
 
-        if(ion_phys(cmdqIONClient,cmdqIONHandle, &cmdq_pa, &cmdq_pa_len))
+        if(ion_phys(cmdqIONClient,cmdqIONHandle, (unsigned long)&cmdq_pa, &cmdq_pa_len))
         {
-            DISP_ERR("DISP ION: Couldn't get ion buffer MVA\n");
+            DDP_DRV_ERR("DISP ION: Couldn't get ion buffer MVA\n");
         }
 
-        DISP_MSG("DISP ION:  ion MVA done\n");
+        DDP_DRV_DBG("DISP ION:  ion MVA done\n");
 
         m4uPort.ePortID = M4U_PORT_CMDQ;
         m4uPort.Virtuality = 1;
@@ -253,26 +281,26 @@ static void cmdq_ion_init(void)
         //m4uPort.Domain = 3;
         m4u_config_port(&m4uPort);
 
-        DISP_MSG("DISP ION:  Config MVA port done\n");
+        DDP_DRV_DBG("DISP ION:  Config MVA port done\n");
         
         //ION TEST
-        DISP_MSG("CMDQ ION buffer VA: 0x%lx MVA: 0x%x \n", (unsigned long)cmdq_pBuffer, (unsigned int)cmdq_pa);
+        DDP_DRV_DBG("CMDQ ION buffer VA: 0x%lx MVA: 0x%x \n", (unsigned long)cmdq_pBuffer, (unsigned int)cmdq_pa);
 
         cmdqBufferTbl_init((unsigned long) cmdq_pBuffer, (unsigned int) cmdq_pa);
 
 }
+#endif
 
 
 void cmdq_ion_flush(void)
 {
-
     sys_data.sys_cmd = ION_SYS_CACHE_SYNC;
     sys_data.cache_sync_param.handle = cmdqIONHandle;
     sys_data.cache_sync_param.sync_type = ION_CACHE_FLUSH_ALL;
 
-    if(ion_kernel_ioctl(cmdqIONClient, ION_CMD_SYSTEM ,&sys_data))
+    if(ion_kernel_ioctl(cmdqIONClient, ION_CMD_SYSTEM ,(unsigned long)&sys_data))
     {
-        DISP_ERR("CMDQ ION flush fail\n");
+        DDP_DRV_ERR("CMDQ ION flush fail\n");
     }
 }
 
@@ -283,12 +311,12 @@ static void cmdq_dma_init(void)
 
     if(!cmdq_pBuffer)
     {
-        DISP_MSG("dma_alloc_coherent error!  dma memory not available.\n");
-        return false;
+        DDP_DRV_ERR("dma_alloc_coherent error!  dma memory not available.\n");
+        return;
     }
 
     memset((void*)cmdq_pBuffer, 0, CMDQ_ION_BUFFER_SIZE);
-    DISP_MSG("dma_alloc_coherent success VA:%x PA:%x \n", (unsigned int)cmdq_pBuffer, (unsigned int)cmdq_pa);
+    DDP_DRV_DBG("dma_alloc_coherent success VA:%x PA:%x \n", (unsigned int)cmdq_pBuffer, (unsigned int)cmdq_pa);
 
 
     cmdqBufferTbl_init((unsigned long) cmdq_pBuffer, (unsigned int) cmdq_pa);
@@ -321,47 +349,11 @@ unsigned int disp_ms2jiffies(unsigned long ms)
     return ((ms*HZ + 512) >> 10);
 }
 
-#if 1
-int disp_lock_mutex(void)
-{
-    int id = -1;
-    int i;
-    spin_lock(&gMutexLock);
-
-    for(i = 0 ; i < ENGINE_MUTEX_NUM ; i++)
-        if(mutex_used[i] == 0)
-        {
-            id = i;
-            mutex_used[i] = 1;
-            //DISP_REG_SET_FIELD((1 << i) , DISP_REG_CONFIG_MUTEX_INTEN , 1);
-            break;
-        }
-    spin_unlock(&gMutexLock);
-
-    return id;
-}
-
-int disp_unlock_mutex(int id)
-{
-    if(id < 0 && id >= ENGINE_MUTEX_NUM) 
-        return -1;
-
-    spin_lock(&gMutexLock);
-    
-    mutex_used[id] = 0;
-    //DISP_REG_SET_FIELD((1 << id) , DISP_REG_CONFIG_MUTEX_INTEN , 0);
-    
-    spin_unlock(&gMutexLock);
-
-    return 0;
-}
-#endif //0
-
 int disp_lock_cmdq_thread(void)
 {
     int i=0;
 
-    printk("disp_lock_cmdq_thread()called \n");
+    DDP_DRV_INFO("disp_lock_cmdq_thread()called \n");
     
     spin_lock(&gCmdqLock);
     for (i = 0; i < CMDQ_THREAD_NUM; i++)
@@ -374,7 +366,7 @@ int disp_lock_cmdq_thread(void)
     } 
     spin_unlock(&gCmdqLock);
 
-    printk("disp_lock_cmdq_thread(), i=%d \n", i);
+    DDP_DRV_INFO("disp_lock_cmdq_thread(), i=%d \n", i);
 
     return (i>=CMDQ_THREAD_NUM)? -1 : i;
     
@@ -393,13 +385,12 @@ int disp_unlock_cmdq_thread(unsigned int idx)
 }
 
 // if return is not 0, should wait again
-int disp_wait_intr(DISP_MODULE_ENUM module, unsigned int timeout_ms)
+static int disp_wait_intr(DISP_MODULE_ENUM module, unsigned int timeout_ms)
 {
     int ret;
     unsigned long flags;
 
     unsigned long long end_time = 0;
-    unsigned long long start_time = sched_clock();
         
     MMProfileLogEx(DDP_MMP_Events.WAIT_INTR, MMProfileFlagStart, 0, module);
     // wait until irq done or timeout
@@ -416,7 +407,7 @@ int disp_wait_intr(DISP_MODULE_ENUM module, unsigned int timeout_ms)
         DDP_DRV_ERR("Wait Done Timeout! pid=%d, module=%d \n", current->pid ,module);
         if(module==DISP_MODULE_WDMA0)
         {
-            printk("======== WDMA0 timeout, dump all registers! \n");
+            DDP_DRV_ERR("======== WDMA0 timeout, dump all registers! \n");
             disp_dump_reg(DISP_MODULE_WDMA0);
             disp_dump_reg(DISP_MODULE_CONFIG);
         }
@@ -547,10 +538,7 @@ unsigned int cnt_ovl_eof = 1;
 static /*__tcmfunc*/ irqreturn_t disp_irq_handler(int irq, void *dev_id)
 {
     unsigned long reg_val; 
-    unsigned long index;
-    unsigned long value;
     int i;
-    struct timeval tv;
     int taskid;
     extern int cmdqThreadTaskList[CMDQ_THREAD_NUM][CMDQ_THREAD_LIST_LENGTH];
     extern unsigned int cmdqThreadTaskList_R[CMDQ_THREAD_NUM]; 
@@ -762,7 +750,7 @@ static /*__tcmfunc*/ irqreturn_t disp_irq_handler(int irq, void *dev_id)
 #else
             if(reg_val&0xFF00) // udpate timeout intr triggered
             {
-                unsigned int reg = 0, delay_cnt = 0;
+                unsigned int reg = 0;
 
                  if((DISP_REG_GET(DISP_REG_CONFIG_MUTEX_INTSTA) & (1<<(gMutexID+8))) == (1<<(gMutexID+8)))
                  {
@@ -816,7 +804,7 @@ static /*__tcmfunc*/ irqreturn_t disp_irq_handler(int irq, void *dev_id)
                     //printk("\n\n!!!!!!!!!!!!!!!!!!!!!CMQ Thread %d Complete Task %d!!!!!!!!!!!!!!!!!!!\n\n\n", i, taskid);
                     if(reg_val & (1 << 1))
                     {
-                        DISP_ERR("\n\n\n!!!!!!!!!!!!!!!IRQ: CMQ %d Time out! !!!!!!!!!!!!!!!!\n\n\n", i);
+                        DDP_DRV_ERR("\n\n\n!!!!!!!!!!!!!!!IRQ: CMQ %d Time out! !!!!!!!!!!!!!!!!\n\n\n", i);
                         spin_lock(&gCmdqMgrLock);
                         cmdqForceFreeAll(i);
                         smp_wmb();
@@ -825,7 +813,7 @@ static /*__tcmfunc*/ irqreturn_t disp_irq_handler(int irq, void *dev_id)
                     }
                     else if(reg_val & (1 << 4))
                     {
-                        DISP_ERR("IRQ: CMQ thread%d Invalid Command Instruction! \n", i);    
+                        DDP_DRV_ERR("IRQ: CMQ thread%d Invalid Command Instruction! \n", i);                        
                         spin_lock(&gCmdqMgrLock);
                         cmdqForceFreeAll(i);
                         smp_wmb();
@@ -834,10 +822,25 @@ static /*__tcmfunc*/ irqreturn_t disp_irq_handler(int irq, void *dev_id)
                     }
                     else if(reg_val == 0x1)// Normal EOF end
                     {
+                        unsigned long long end_time = 0;
+                        unsigned long long start_time = sched_clock();
+                        unsigned long cost = 0;
+   	
                         spin_lock(&gCmdqMgrLock);
+                        //CMDQ_CHECK_TIME(spin_lock_gCmdqMgrLock);
+                        
                         cmdqThreadComplete(i, true); //Thread i complete!
+
+                        CMDQ_CHECK_TIME(cmdqThreadComplete);
+                        
                         smp_wmb();
+
+                        //CMDQ_CHECK_TIME(smp_wmb);
+                        
                         wake_up_interruptible(&cmq_wait_queue[i]);
+
+                        //CMDQ_CHECK_TIME(wake_up_interruptible);
+                        
                         spin_unlock(&gCmdqMgrLock);
                     }     
 //                    cmq_status[i] = 1;
@@ -872,10 +875,13 @@ static /*__tcmfunc*/ irqreturn_t disp_irq_handler(int irq, void *dev_id)
 }
 
 
-void disp_power_on(DISP_MODULE_ENUM eModule , unsigned int * pu4Record)
+static void disp_power_on(DISP_MODULE_ENUM eModule , unsigned int * pu4Record)
 {  
     unsigned long flag;
+#ifdef DDP_82_72_TODO
     unsigned int ret = 0;
+#endif
+
     spin_lock_irqsave(&gPowerOperateLock , flag);
 
 #ifdef DDP_82_72_TODO
@@ -918,10 +924,13 @@ void disp_power_on(DISP_MODULE_ENUM eModule , unsigned int * pu4Record)
     spin_unlock_irqrestore(&gPowerOperateLock , flag);
 }
 
-void disp_power_off(DISP_MODULE_ENUM eModule , unsigned int * pu4Record)
+static void disp_power_off(DISP_MODULE_ENUM eModule , unsigned int * pu4Record)
 {  
     unsigned long flag;
+#ifdef DDP_82_72_TODO
     unsigned int ret = 0;
+#endif
+
     spin_lock_irqsave(&gPowerOperateLock , flag);
     
 #ifdef DDP_82_72_TODO
@@ -971,7 +980,7 @@ void disp_power_off(DISP_MODULE_ENUM eModule , unsigned int * pu4Record)
 
 unsigned int inAddr=0, outAddr=0;
 
-int disp_set_needupdate(DISP_MODULE_ENUM eModule , unsigned long u4En)
+static int disp_set_needupdate(DISP_MODULE_ENUM eModule , unsigned long u4En)
 {
     unsigned long flag;
     spin_lock_irqsave(&gRegisterUpdateLock , flag);
@@ -1041,13 +1050,13 @@ int CheckColorUpdateFunc(int i4NotUsed)
 int ConfColorFunc(int i4NotUsed)
 {
 #if defined(DDP_GAMMA_SUPPORT)
-    DISP_MSG("ConfColorFunc: BLS_EN=0x%x, bls_gamma_dirty=%d\n", DISP_REG_GET(DISP_REG_BLS_EN), bls_gamma_dirty);
+    DDP_DRV_DBG("ConfColorFunc: BLS_EN=0x%x, bls_gamma_dirty=%d\n", DISP_REG_GET(DISP_REG_BLS_EN), bls_gamma_dirty);
     if(bls_gamma_dirty != 0)
     {
         // disable BLS
         if (DISP_REG_GET(DISP_REG_BLS_EN) & 0x1)
         {
-            DISP_MSG("ConfColorFunc: Disable BLS\n");
+            DDP_DRV_DBG("ConfColorFunc: Disable BLS\n");
             DISP_REG_SET(DISP_REG_BLS_EN, 0x00010000);
         }
     }
@@ -1066,7 +1075,7 @@ int ConfColorFunc(int i4NotUsed)
         DISP_REG_SET(DISP_REG_BLS_EN, 0x00010001);
         disp_set_needupdate(DISP_MODULE_COLOR , 0);
     }
-    DISP_MSG("ConfColorFunc done: BLS_EN=0x%x, bls_gamma_dirty=%d\n", DISP_REG_GET(DISP_REG_BLS_EN), bls_gamma_dirty);
+    DDP_DRV_DBG("ConfColorFunc done: BLS_EN=0x%x, bls_gamma_dirty=%d\n", DISP_REG_GET(DISP_REG_BLS_EN), bls_gamma_dirty);
 
     return 0;
 
@@ -1086,15 +1095,36 @@ int ConfColorFunc(int i4NotUsed)
 #endif
 }
 
+int disp_color_set_pq_param(void* arg)
+{
+    DISP_PQ_PARAM * pq_param;
+    
+    DISP_RegisterExTriggerSource(CheckColorUpdateFunc, ConfColorFunc);
+
+    GetUpdateMutex();
+
+    pq_param = get_Color_config();
+    if(copy_from_user(pq_param, (void *)arg, sizeof(DISP_PQ_PARAM)))
+    {
+        DDP_DRV_ERR("disp driver : DISP_IOCTL_SET_PQPARAM Copy from user failed\n");
+        ReleaseUpdateMutex();
+        return -EFAULT;            
+    }
+
+    ReleaseUpdateMutex();
+
+    disp_set_needupdate(DISP_MODULE_COLOR, 1);
+    
+    return 0;
+}
+
 
 static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
     DISP_WRITE_REG wParams;
     DISP_READ_REG rParams;
-    DISP_EXEC_COMMAND cParams;
     unsigned int ret = 0;
     unsigned int value;
-    int taskID;
     DISP_MODULE_ENUM module;
     DISP_OVL_INFO ovl_info;
     DISP_PQ_PARAM * pq_param;
@@ -1107,10 +1137,9 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
     int layer, mutex_id;
     disp_wait_irq_struct wait_irq_struct;
     unsigned long lcmindex = 0;
-    cmdq_buff_t * pCmdqAddr;
-    unsigned long flags;
-    struct timeval tv;
-    int count;
+#if defined(DDP_GAMMA_SUPPORT)
+    int count = 0;
+#endif
 
 #if defined(MTK_AAL_SUPPORT)
     DISP_AAL_PARAM * aal_param;
@@ -1143,78 +1172,6 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
 
     switch(cmd)
     {   
-
-
-        case DISP_IOCTL_RESOURCE_REQUIRE:
-
-            DISP_MSG("\n=========DISP_IOCTL_RESOURCE_REQUIRE start!==========\n");
-
-            spin_lock_irqsave(&gCmdqMgrLock,flags);
-            taskID = cmdqResource_required();
-            spin_unlock_irqrestore(&gCmdqMgrLock,flags);
-            
-            copy_to_user((void*)arg, &taskID , sizeof(int)); 
-
-  
-            DISP_MSG("\n=========DISP_IOCTL_RESOURCE_REQUIRE taskID:%d==========\n",taskID);
-            
-            break;
-            
-        case DISP_IOCTL_EXEC_COMMAND:
-
-            //CS++++++++++++++++++++++++++++++++++++++++++++++++++
-    
-           //spin_lock_irqsave(&gCmdqMgrLock,flags); 
-            
-            do_gettimeofday(&tv);
-            
-            if(copy_from_user(&cParams, (void *)arg, sizeof(DISP_EXEC_COMMAND)))
-            {
-                DISP_WRN("disp driver : Copy from user error\n");
-           //     spin_unlock_irqrestore(&gCmdqMgrLock,flags);              
-                return -EFAULT;
-            }
-            printk(KERN_DEBUG "==========DISP_IOCTL_EXEC_COMMAND Task: %d start at SEC: %d MS: %d===========\n",cParams.taskID, tv.tv_sec, tv.tv_usec);
-
-            //Get Related buffer VA/MVA
-
-            pCmdqAddr = cmdqBufAddr(cParams.taskID);
-            if(NULL == pCmdqAddr)
-            {
-                DISP_ERR("CmdQ buf address is NULL in DISP_IOCTL_EXEC_COMMAND ioctl\n");
-                cmdqForceFree_SW(cParams.taskID);
-                return -EFAULT;
-            }
-
-            DISP_MSG("CMDQ task %x buffer VA: 0x%lx MVA: 0x%x \n", pCmdqAddr->Owner, pCmdqAddr->VA, pCmdqAddr->MVA);
-
-            printk(KERN_DEBUG "==========DISP_IOCTL_EXEC_COMMAND Params: FrameBase = 0x%08x, size = %x ===========\n",cParams.pFrameBaseSW, cParams.blockSize);
-
-            copy_from_user((unsigned long*)(pCmdqAddr->VA) ,cParams.pFrameBaseSW, cParams.blockSize);
-
-            //spin_unlock_irqrestore(&gCmdqMgrLock,flags);
-
-            //CS--------------------------------------------------
-            
-/*
-            //ION Flush
-*/
-           // cmdq_ion_flush(); //FIXME!
-
-            if (false == cmdqTaskAssigned(cParams.taskID, cParams.priority, cParams.engineFlag, cParams.blockSize))
-            {
-                do_gettimeofday(&tv);
-                printk(KERN_DEBUG "==========DISP_IOCTL_EXECUTE_COMMANDS Task: %d fail at SEC: %d MS: %d===========\n",cParams.taskID, tv.tv_sec, tv.tv_usec);
-                return -EFAULT;
-            }
-
-            do_gettimeofday(&tv);
-            printk(KERN_DEBUG "==========DISP_IOCTL_EXEC_COMMAND Task: %d done at SEC: %d MS: %d===========\n",cParams.taskID, tv.tv_sec, tv.tv_usec);
-            
-            
-            break;
-            
-
         case DISP_IOCTL_WRITE_REG:
             
             if(copy_from_user(&wParams, (void *)arg, sizeof(DISP_WRITE_REG )))
@@ -1293,7 +1250,7 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             break;  
 
         case DISP_IOCTL_LOCK_THREAD:
-            printk("DISP_IOCTL_LOCK_THREAD! \n");
+            DDP_DRV_DBG("DISP_IOCTL_LOCK_THREAD! \n");
             value = disp_lock_cmdq_thread();  
             if (copy_to_user((void*)arg, &value , sizeof(unsigned int)))
             {
@@ -1398,46 +1355,6 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             }            
             break;
 
-        case DISP_IOCTL_LOCK_MUTEX:
-        {
-            wait_event_interruptible_timeout(
-            gMutexWaitQueue, 
-            (mutex_id = disp_lock_mutex()) != -1, 
-            disp_ms2jiffies(200) );             
-
-            if((-1) != mutex_id)
-            {
-                spin_lock(&pNode->node_lock);
-                pNode->u4LockedMutex |= (1 << mutex_id);
-                spin_unlock(&pNode->node_lock);
-            }
-            
-            if(copy_to_user((void *)arg, &mutex_id, sizeof(int)))
-            {
-                DDP_DRV_ERR("disp driver : Copy to user error (mutex)\n");
-                return -EFAULT;            
-            }
-            break;
-        }
-        case DISP_IOCTL_UNLOCK_MUTEX:
-            if(copy_from_user(&mutex_id, (void*)arg , sizeof(int)))
-            {
-                DDP_DRV_ERR("DISP_IOCTL_UNLOCK_MUTEX, copy_from_user failed\n");
-                return -EFAULT;
-            }
-            disp_unlock_mutex(mutex_id);
-
-            if((-1) != mutex_id)
-            {
-                spin_lock(&pNode->node_lock);
-                pNode->u4LockedMutex &= ~(1 << mutex_id);
-                spin_unlock(&pNode->node_lock);
-            }
-
-            wake_up_interruptible(&gMutexWaitQueue);             
-
-            break;
-
         case DISP_IOCTL_SYNC_REG:
             mb();
             break;
@@ -1454,12 +1371,12 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             if( (value&0xffff0000) !=0)
             {
                 disable_irq(value&0xff);
-                printk("disable_irq %d \n", value&0xff);
+                DDP_DRV_INFO("disable_irq %d \n", value&0xff);
             }
             else
             {
                 DISP_REGISTER_IRQ(value&0xff);
-                printk("enable irq: %d \n", value&0xff);
+                DDP_DRV_INFO("enable irq: %d \n", value&0xff);
             }            
             break; 
 
@@ -1522,12 +1439,12 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
 
         case DISP_IOCTL_AAL_EVENTCTL:
 #if !defined(MTK_AAL_SUPPORT)
-            printk("Invalid operation DISP_IOCTL_AAL_EVENTCTL since AAL is not turned on, in %s\n" , __FUNCTION__);
+            DDP_DRV_ERR("Invalid operation DISP_IOCTL_AAL_EVENTCTL since AAL is not turned on, in %s\n" , __FUNCTION__);
             return -EFAULT;
 #else
             if(copy_from_user(&value, (void *)arg, sizeof(int)))
             {
-                printk("disp driver : DISP_IOCTL_AAL_EVENTCTL Copy from user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_AAL_EVENTCTL Copy from user failed\n");
                 return -EFAULT;            
             }
             disp_set_aal_alarm(value);
@@ -1538,13 +1455,13 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
 
         case DISP_IOCTL_GET_AALSTATISTICS:
 #if !defined(MTK_AAL_SUPPORT)
-            printk("Invalid operation DISP_IOCTL_GET_AALSTATISTICS since AAL is not turned on, in %s\n" , __FUNCTION__);
+            DDP_DRV_ERR("Invalid operation DISP_IOCTL_GET_AALSTATISTICS since AAL is not turned on, in %s\n" , __FUNCTION__);
             return -EFAULT;
 #else
             // 1. Wait till new interrupt comes
             if(disp_wait_hist_update(60))
             {
-                printk("disp driver : DISP_IOCTL_GET_AALSTATISTICS wait time out\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_GET_AALSTATISTICS wait time out\n");
                 return -EFAULT;
             }
 
@@ -1552,7 +1469,7 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             disp_set_hist_readlock(1);
             if(copy_to_user((void*)arg, (void *)(disp_get_hist_ptr()) , sizeof(DISP_AAL_STATISTICS)))
             {
-                printk("disp driver : DISP_IOCTL_GET_AALSTATISTICS Copy to user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_GET_AALSTATISTICS Copy to user failed\n");
                 return -EFAULT;
             }
             disp_set_hist_readlock(0);
@@ -1562,7 +1479,7 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
 
         case DISP_IOCTL_SET_AALPARAM:
 #if !defined(MTK_AAL_SUPPORT)
-            printk("Invalid operation : DISP_IOCTL_SET_AALPARAM since AAL is not turned on, in %s\n" , __FUNCTION__);
+            DDP_DRV_ERR("Invalid operation : DISP_IOCTL_SET_AALPARAM since AAL is not turned on, in %s\n" , __FUNCTION__);
             return -EFAULT;
 #else
 //            disp_set_needupdate(DISP_MODULE_BLS , 0);
@@ -1573,7 +1490,7 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
 
             if(copy_from_user(aal_param , (void *)arg, sizeof(DISP_AAL_PARAM)))
             {
-                printk("disp driver : DISP_IOCTL_SET_AALPARAM Copy from user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_SET_AALPARAM Copy from user failed\n");
                 return -EFAULT;            
             }
 
@@ -1583,20 +1500,7 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
 
         case DISP_IOCTL_SET_PQPARAM:
 
-            DISP_RegisterExTriggerSource(CheckColorUpdateFunc , ConfColorFunc);
-
-            GetUpdateMutex();
-
-            pq_param = get_Color_config();
-            if(copy_from_user(pq_param, (void *)arg, sizeof(DISP_PQ_PARAM)))
-            {
-                printk("disp driver : DISP_IOCTL_SET_PQPARAM Copy from user failed\n");
-                return -EFAULT;            
-            }
-
-            ReleaseUpdateMutex();
-
-            disp_set_needupdate(DISP_MODULE_COLOR, 1);
+            ret = disp_color_set_pq_param((void*)arg);
 
             break;
 
@@ -1605,18 +1509,19 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             pq_index = get_Color_index();
             if(copy_from_user(pq_index, (void *)arg, sizeof(DISPLAY_PQ_T)))
             {
-                printk("disp driver : DISP_IOCTL_SET_PQINDEX Copy from user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_SET_PQINDEX Copy from user failed\n");
                 return -EFAULT;
             }
 
             break;    
             
         case DISP_IOCTL_GET_PQPARAM:
-            
+            // this is duplicated to cmdq_proc_unlocked_ioctl
+            // be careful when modify the definition
             pq_param = get_Color_config();
             if(copy_to_user((void *)arg, pq_param, sizeof(DISP_PQ_PARAM)))
             {
-                printk("disp driver : DISP_IOCTL_GET_PQPARAM Copy to user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_GET_PQPARAM Copy to user failed\n");
                 return -EFAULT;            
             }
 
@@ -1627,32 +1532,33 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             tdshp_index = get_TDSHP_index();
             if(copy_from_user(tdshp_index, (void *)arg, sizeof(DISPLAY_TDSHP_T)))
             {
-                printk("disp driver : DISP_IOCTL_SET_TDSHPINDEX Copy from user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_SET_TDSHPINDEX Copy from user failed\n");
                 return -EFAULT;
             }
         
             break;           
         
         case DISP_IOCTL_GET_TDSHPINDEX:
-            
-                tdshp_index = get_TDSHP_index();
-                if(copy_to_user((void *)arg, tdshp_index, sizeof(DISPLAY_TDSHP_T)))
-                {
-                    printk("disp driver : DISP_IOCTL_GET_TDSHPINDEX Copy to user failed\n");
-                    return -EFAULT;            
-                }
-        
-                break;       
+            // this is duplicated to cmdq_proc_unlocked_ioctl
+            // be careful when modify the definition
+            tdshp_index = get_TDSHP_index();
+            if(copy_to_user((void *)arg, tdshp_index, sizeof(DISPLAY_TDSHP_T)))
+            {
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_GET_TDSHPINDEX Copy to user failed\n");
+                return -EFAULT;            
+            }
+    
+            break;       
         
          case DISP_IOCTL_SET_GAMMALUT:
         
 #if defined(DDP_GAMMA_SUPPORT)
-            DISP_MSG("DISP_IOCTL_SET_GAMMALUT\n");
+            DDP_DRV_DBG("DISP_IOCTL_SET_GAMMALUT\n");
             
             gamma_index = get_gamma_index();
             if(copy_from_user(gamma_index, (void *)arg, sizeof(DISPLAY_GAMMA_T)))
             {
-                printk("disp driver : DISP_IOCTL_SET_GAMMALUT Copy from user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_SET_GAMMALUT Copy from user failed\n");
                 return -EFAULT;
             }
 
@@ -1664,12 +1570,11 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
 
             disp_set_needupdate(DISP_MODULE_COLOR, 1);
 
-            count = 0;
             while(DISP_REG_GET(DISP_REG_BLS_EN) & 0x1) {
                 msleep(1);
                 count++;
                 if (count > 1000) {
-                    DISP_ERR("fail to disable BLS (0x%x)\n", DISP_REG_GET(DISP_REG_BLS_EN));
+                    DDP_DRV_ERR("fail to disable BLS (0x%x)\n", DISP_REG_GET(DISP_REG_BLS_EN));
                 }
             }
 
@@ -1689,7 +1594,7 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             gamma_index = get_gamma_index();
             if(copy_from_user(gamma_index, (void *)arg, sizeof(DISPLAY_GAMMA_T)))
             {
-                printk("disp driver : DISP_IOCTL_SET_GAMMALUT Copy from user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_SET_GAMMALUT Copy from user failed\n");
                 return -EFAULT;
             }
         
@@ -1701,7 +1606,7 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
          case DISP_IOCTL_SET_CLKON:
             if(copy_from_user(&module, (void *)arg, sizeof(DISP_MODULE_ENUM)))
             {
-                printk("disp driver : DISP_IOCTL_SET_CLKON Copy from user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_SET_CLKON Copy from user failed\n");
                 return -EFAULT;            
             }
 
@@ -1711,7 +1616,7 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
         case DISP_IOCTL_SET_CLKOFF:
             if(copy_from_user(&module, (void *)arg, sizeof(DISP_MODULE_ENUM)))
             {
-                printk("disp driver : DISP_IOCTL_SET_CLKOFF Copy from user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_SET_CLKOFF Copy from user failed\n");
                 return -EFAULT;            
             }
 
@@ -1723,11 +1628,11 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
 #if defined(DDP_GAMMA_SUPPORT)
             if(copy_from_user(&value, (void *)arg, sizeof(int)))
             {
-                printk("disp driver : DISP_IOCTL_MUTEX_CONTROL Copy from user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_MUTEX_CONTROL Copy from user failed\n");
                 return -EFAULT;            
             }
 
-            DISP_MSG("DISP_IOCTL_MUTEX_CONTROL: %d, BLS_EN = %d\n", value, DISP_REG_GET(DISP_REG_BLS_EN));
+            DDP_DRV_DBG("DISP_IOCTL_MUTEX_CONTROL: %d, BLS_EN = %d\n", value, DISP_REG_GET(DISP_REG_BLS_EN));
 
             if(value == 1)
             {
@@ -1745,7 +1650,7 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
                     msleep(1);
                     count++;
                     if (count > 1000) {
-                        DISP_ERR("fail to disable BLS (0x%x)\n", DISP_REG_GET(DISP_REG_BLS_EN));
+                        DDP_DRV_ERR("fail to disable BLS (0x%x)\n", DISP_REG_GET(DISP_REG_BLS_EN));
                     }
                 }
                 
@@ -1763,18 +1668,18 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             }
             else
             {
-                printk("disp driver : DISP_IOCTL_MUTEX_CONTROL invalid control\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_MUTEX_CONTROL invalid control\n");
                 return -EFAULT;            
             }
 
-            DISP_MSG("DISP_IOCTL_MUTEX_CONTROL done: %d, BLS_EN = %d\n", value, DISP_REG_GET(DISP_REG_BLS_EN));
+            DDP_DRV_DBG("DISP_IOCTL_MUTEX_CONTROL done: %d, BLS_EN = %d\n", value, DISP_REG_GET(DISP_REG_BLS_EN));
             
             break;    
 
 #else
             if(copy_from_user(&value, (void *)arg, sizeof(int)))
             {
-                printk("disp driver : DISP_IOCTL_MUTEX_CONTROL Copy from user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_MUTEX_CONTROL Copy from user failed\n");
                 return -EFAULT;            
             }
             
@@ -1793,7 +1698,7 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             }
             else
             {
-                printk("disp driver : DISP_IOCTL_MUTEX_CONTROL invalid control\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_MUTEX_CONTROL invalid control\n");
                 return -EFAULT;            
             }
             
@@ -1805,7 +1710,7 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
                 lcmindex = DISP_GetLCMIndex();
                 if(copy_to_user((void *)arg, &lcmindex, sizeof(unsigned long)))
                 {
-                    printk("disp driver : DISP_IOCTL_GET_LCMINDEX Copy to user failed\n");
+                    DDP_DRV_ERR("disp driver : DISP_IOCTL_GET_LCMINDEX Copy to user failed\n");
                     return -EFAULT;            
                 }
 
@@ -1818,7 +1723,7 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             pq_cam_param = get_Color_Cam_config();
             if(copy_from_user(pq_cam_param, (void *)arg, sizeof(DISP_PQ_PARAM)))
             {
-                printk("disp driver : DISP_IOCTL_SET_PQ_CAM_PARAM Copy from user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_SET_PQ_CAM_PARAM Copy from user failed\n");
                 return -EFAULT;            
             }
 
@@ -1829,7 +1734,7 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             pq_cam_param = get_Color_Cam_config();
             if(copy_to_user((void *)arg, pq_cam_param, sizeof(DISP_PQ_PARAM)))
             {
-                printk("disp driver : DISP_IOCTL_GET_PQ_CAM_PARAM Copy to user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_GET_PQ_CAM_PARAM Copy to user failed\n");
                 return -EFAULT;            
             }
             
@@ -1840,7 +1745,7 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             pq_gal_param = get_Color_Gal_config();
             if(copy_from_user(pq_gal_param, (void *)arg, sizeof(DISP_PQ_PARAM)))
             {
-                printk("disp driver : DISP_IOCTL_SET_PQ_GAL_PARAM Copy from user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_SET_PQ_GAL_PARAM Copy from user failed\n");
                 return -EFAULT;            
             }
             
@@ -1851,7 +1756,7 @@ static long disp_unlocked_ioctl(struct file *file, unsigned int cmd, unsigned lo
             pq_gal_param = get_Color_Gal_config();
             if(copy_to_user((void *)arg, pq_gal_param, sizeof(DISP_PQ_PARAM)))
             {
-                printk("disp driver : DISP_IOCTL_GET_PQ_GAL_PARAM Copy to user failed\n");
+                DDP_DRV_ERR("disp driver : DISP_IOCTL_GET_PQ_GAL_PARAM Copy to user failed\n");
                 return -EFAULT;            
             }
             
@@ -1945,7 +1850,6 @@ static int disp_open(struct inode *inode, struct file *file)
     pNode->open_pid = current->pid;
     pNode->open_tgid = current->tgid;
     INIT_LIST_HEAD(&(pNode->testList));
-    pNode->u4LockedMutex = 0;
     pNode->u4LockedResource = 0;
     pNode->u4Clock = 0;
     spin_lock_init(&pNode->node_lock);
@@ -1969,22 +1873,6 @@ static int disp_release(struct inode *inode, struct file *file)
 
     spin_lock(&pNode->node_lock);
 
-    if(pNode->u4LockedMutex)
-    {
-        DDP_DRV_ERR("Proccess terminated[Mutex] ! :%s , mutex:%u\n" 
-            , current->comm , pNode->u4LockedMutex);
-
-        for(index = 0 ; index < ENGINE_MUTEX_NUM ; index += 1)
-        {
-            if((1 << index) & pNode->u4LockedMutex)
-            {
-                disp_unlock_mutex(index);
-                DDP_DRV_DBG("unlock index = %d ,mutex_used[ %d %d %d %d ]\n",index,mutex_used[0],mutex_used[1] ,mutex_used[2],mutex_used[3]);
-            }
-        }
-        
-    } 
-
     if(pNode->u4LockedResource)
     {
         DDP_DRV_ERR("Proccess terminated[REsource] ! :%s , resource:%d\n" 
@@ -2007,6 +1895,8 @@ static int disp_release(struct inode *inode, struct file *file)
             }
         }
     }
+
+    cmdqTerminated();
 
     spin_unlock(&pNode->node_lock);
 
@@ -2118,8 +2008,6 @@ static int disp_probe(struct platform_device *pdev)
     }
     wake_up_process(disp_irq_log_task);
    
-    
-    spin_lock_init(&gMutexLock);
     spin_lock_init(&gCmdqMgrLock);
     
     DDP_DRV_INFO("DISP Probe Done\n");
@@ -2148,6 +2036,11 @@ static void disp_shutdown(struct platform_device *pdev)
 /* PM suspend */
 static int disp_suspend(struct platform_device *pdev, pm_message_t mesg)
 {
+    DDP_DRV_INFO("\n\n\n!!!!!!!disp_suspend: cmdqForceFreeAll !!!!!!!!!!!\n\n\n");
+
+    //Only Thread 0 available in 6572
+    cmdqForceFreeAll(0);
+
     return 0;
 }
 
@@ -2244,7 +2137,8 @@ static void __exit disp_exit(void)
     DDP_DRV_INFO("Done\n");
 }
 
-int disp_set_overlay_roi(int layer, int x, int y, int w, int h, int pitch)
+#if 0
+static int disp_set_overlay_roi(int layer, int x, int y, int w, int h, int pitch)
 {
     // DDP_DRV_INFO(" disp_set_overlay_roi %d\n", layer );
     
@@ -2262,7 +2156,7 @@ int disp_set_overlay_roi(int layer, int x, int y, int w, int h, int pitch)
     return 0;
 }
 
-int disp_set_overlay_addr(int layer, unsigned int addr, DDP_OVL_FORMAT fmt)
+static int disp_set_overlay_addr(int layer, unsigned int addr, DpColorFormat fmt)
 {
     // DDP_DRV_INFO(" disp_set_overlay_addr %d\n", layer );
     if(layer < 0 || layer >= DDP_OVL_LAYER_MUN) return -1;
@@ -2270,15 +2164,14 @@ int disp_set_overlay_addr(int layer, unsigned int addr, DDP_OVL_FORMAT fmt)
     spin_lock(&gOvlLock);
 
     disp_layer_info[layer].addr = addr;
-    if(fmt != DDP_NONE_FMT)
-        disp_layer_info[layer].fmt = fmt;
+    disp_layer_info[layer].fmt = fmt;
     
     spin_unlock(&gOvlLock);
 
     return 0;
 }
 
-int disp_set_overlay(int layer, int enable)
+static int disp_set_overlay(int layer, int enable)
 {
     // DDP_DRV_INFO(" disp_set_overlay %d %d\n", layer, enable );
     if(layer < 0 || layer >= DDP_OVL_LAYER_MUN) return -1;
@@ -2295,13 +2188,13 @@ int disp_set_overlay(int layer, int enable)
     return 0;
 }
 
-int disp_is_dp_framework_run()
+static int disp_is_dp_framework_run()
 {
     // DDP_DRV_INFO(" disp_is_dp_framework_run " );
     return disp_run_dp_framework;
 }
 
-int disp_set_mutex_status(int enable)
+static int disp_set_mutex_status(int enable)
 {
     // DDP_DRV_INFO(" disp_set_mutex_status %d\n", enable );
     spin_lock(&gOvlLock);
@@ -2311,16 +2204,15 @@ int disp_set_mutex_status(int enable)
     spin_unlock(&gOvlLock);
     return 0;
 }
+#endif
 
-int disp_get_mutex_status()
+static int disp_get_mutex_status()
 {
     return disp_mutex_status;
 }
 
 int disp_dump_reg(DISP_MODULE_ENUM module)
-    {
-      unsigned int size;
-        unsigned int reg_base;
+{
         unsigned int index;
 
         switch(module)
@@ -2718,9 +2610,18 @@ void disp_m4u_dump_reg(void)
     disp_dump_reg(DISP_MODULE_CONFIG);
 
     // dump mdp info
-    dumpMDPRegInfo();
+    //dumpMDPRegInfo();
 }
- 
+
+int disp_module_clock_on(DISP_MODULE_ENUM module, char* caller_name)
+{
+    return 0;
+}
+
+int disp_module_clock_off(DISP_MODULE_ENUM module, char* caller_name)
+{
+    return 0;
+}
 
 
 module_init(disp_init);

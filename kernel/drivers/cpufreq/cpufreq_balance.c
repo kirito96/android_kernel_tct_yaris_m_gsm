@@ -22,10 +22,14 @@
 #include <linux/tick.h>
 #include <linux/ktime.h>
 #include <linux/sched.h>
-
+#include <linux/input.h>
+#include <linux/slab.h>
+#include <linux/sched.h>
+#include <linux/kthread.h>
 
 extern unsigned int get_normal_max_freq(void);
 extern unsigned int mt_dvfs_power_dispatch_safe(void);
+extern int mt_gpufreq_target(int idx);
 /*
  * dbs is used in this file as a shortform for demandbased switching
  * It helps to keep variable names smaller, simpler
@@ -61,6 +65,7 @@ extern unsigned int mt_dvfs_power_dispatch_safe(void);
 #define DEF_CPU_PERSIST_COUNT   (10)
 
 //#define DEBUG_LOG
+#define INPUT_BOOST             (1)
 
 /*
  * The polling frequency of this governor depends on the capability of
@@ -109,6 +114,10 @@ static int g_thermal_count = 0;
 static void hp_work_handler(struct work_struct *work);
 static struct delayed_work hp_work;
 
+#if INPUT_BOOST
+static struct task_struct *freq_up_task;
+#endif
+
 #endif
 
 static int cpu_loading = 0;
@@ -152,7 +161,7 @@ static DEFINE_MUTEX(dbs_mutex);
  */
 static DEFINE_MUTEX(hp_mutex);
 
-DEFINE_MUTEX(hp_onoff_mutex);
+DEFINE_MUTEX(bl_onoff_mutex);
 
 static struct dbs_tuners {
     unsigned int sampling_rate;
@@ -170,7 +179,10 @@ static struct dbs_tuners {
     unsigned int thermal_dispatch_avg_times;
     unsigned int cpu_num_limit;
     unsigned int cpu_num_base;
-    unsigned int cpu_hotplug_disable;
+    unsigned int is_cpu_hotplug_disable;
+#if INPUT_BOOST
+    unsigned int cpu_input_boost_enable;
+#endif
 } dbs_tuners_ins = {
     .od_threshold = DEF_FREQUENCY_OD_THRESHOLD,
     .up_threshold = DEF_FREQUENCY_UP_THRESHOLD,
@@ -185,7 +197,10 @@ static struct dbs_tuners {
     .thermal_dispatch_avg_times = THERMAL_DISPATCH_AVG_TIMES,
     .cpu_num_limit = 1,
     .cpu_num_base = 1,
-    .cpu_hotplug_disable = 1,
+    .is_cpu_hotplug_disable = 1,
+#if INPUT_BOOST
+    .cpu_input_boost_enable = 1,
+#endif
 };
 
 static void dbs_freq_increase(struct cpufreq_policy *p, unsigned int freq);
@@ -232,6 +247,27 @@ static inline cputime64_t get_cpu_iowait_time(unsigned int cpu, cputime64_t *wal
 		return 0;
 
 	return iowait_time;
+}
+
+void force_two_core(void)
+{
+    bool raise_freq = false;
+
+    mutex_lock(&hp_mutex);
+    g_cpu_down_count = 0;
+    g_cpu_down_sum_load = 0;
+    if (num_online_cpus() < dbs_tuners_ins.cpu_num_limit) {
+        raise_freq = true;
+        g_next_hp_action = 1;
+        schedule_delayed_work_on(0, &hp_work, 0);
+    }
+    mutex_unlock(&hp_mutex);
+
+    if (raise_freq == true) {
+	wake_up_process(freq_up_task);
+    }
+
+    mt_gpufreq_target(0);
 }
 
 /*
@@ -337,7 +373,10 @@ show_one(cpu_down_avg_times, cpu_down_avg_times);
 show_one(thermal_dispatch_avg_times, thermal_dispatch_avg_times);
 show_one(cpu_num_limit, cpu_num_limit);
 show_one(cpu_num_base, cpu_num_base);
-show_one(cpu_hotplug_disable, cpu_hotplug_disable);
+show_one(is_cpu_hotplug_disable, is_cpu_hotplug_disable);
+#if INPUT_BOOST
+show_one(cpu_input_boost_enable, cpu_input_boost_enable);
+#endif
 
 /**
  * update_sampling_rate - update sampling rate effective immediately if needed.
@@ -617,7 +656,7 @@ static ssize_t store_cpu_num_base(struct kobject *a, struct attribute *b,
 	bool raise_freq = false;
 	int ret;
 	struct cpufreq_policy *policy;
-	
+
 	policy = cpufreq_cpu_get(0);
 	ret = sscanf(buf, "%u", &input);
 
@@ -629,23 +668,44 @@ static ssize_t store_cpu_num_base(struct kobject *a, struct attribute *b,
 		schedule_delayed_work_on(0, &hp_work, 0);
 	}
 	mutex_unlock(&hp_mutex);
-	
+
 	if(raise_freq == true)
 		dbs_freq_increase(policy, policy->max);
-	
+
 	return count;
 }
 
-static ssize_t store_cpu_hotplug_disable(struct kobject *a, struct attribute *b,
+static ssize_t store_is_cpu_hotplug_disable(struct kobject *a, struct attribute *b,
 				    const char *buf, size_t count)
 {
 	unsigned int input;
 	int ret;
 	ret = sscanf(buf, "%u", &input);
 
-	dbs_tuners_ins.cpu_hotplug_disable = input;
+	dbs_tuners_ins.is_cpu_hotplug_disable = input;
 	return count;
 }
+
+#if INPUT_BOOST
+static ssize_t store_cpu_input_boost_enable(struct kobject *a, struct attribute *b,
+				    const char *buf, size_t count)
+{
+	unsigned int input;
+	int ret;
+	ret = sscanf(buf, "%u", &input);
+
+	if (ret != 1 || input > 1 ||
+		input < 0) {
+		return -EINVAL;
+	}
+
+	mutex_lock(&hp_mutex);
+	dbs_tuners_ins.cpu_input_boost_enable = input;
+	mutex_unlock(&hp_mutex);
+
+	return count;
+}
+#endif
 
 define_one_global_rw(sampling_rate);
 define_one_global_rw(io_is_busy);
@@ -662,7 +722,10 @@ define_one_global_rw(cpu_down_avg_times);
 define_one_global_rw(thermal_dispatch_avg_times);
 define_one_global_rw(cpu_num_limit);
 define_one_global_rw(cpu_num_base);
-define_one_global_rw(cpu_hotplug_disable);
+define_one_global_rw(is_cpu_hotplug_disable);
+#if INPUT_BOOST
+define_one_global_rw(cpu_input_boost_enable);
+#endif
 
 static struct attribute *dbs_attributes[] = {
     &sampling_rate_min.attr,
@@ -681,7 +744,10 @@ static struct attribute *dbs_attributes[] = {
     &thermal_dispatch_avg_times.attr,
     &cpu_num_limit.attr,
     &cpu_num_base.attr,
-    &cpu_hotplug_disable.attr,
+    &is_cpu_hotplug_disable.attr,
+#if INPUT_BOOST
+    &cpu_input_boost_enable.attr,
+#endif
     NULL
 };
 
@@ -708,19 +774,19 @@ static void dbs_freq_increase(struct cpufreq_policy *p, unsigned int freq)
 			CPUFREQ_RELATION_L : CPUFREQ_RELATION_H);
 }
 
-int mt_cpufreq_cur_load()
+int mt_cpufreq_cur_load(void)
 {
     return cpu_loading;
 }
 EXPORT_SYMBOL(mt_cpufreq_cur_load);
 
-void hp_disable_cpu_hp(int disable)
+void hp_set_dynamic_cpu_hotplug_enable(int enable)
 {
 	mutex_lock(&hp_mutex);
-	dbs_tuners_ins.cpu_hotplug_disable = disable;
+	dbs_tuners_ins.is_cpu_hotplug_disable = !enable;
 	mutex_unlock(&hp_mutex);
 }
-EXPORT_SYMBOL(hp_disable_cpu_hp);
+EXPORT_SYMBOL(hp_set_dynamic_cpu_hotplug_enable);
 
 void hp_limited_cpu_num(int num)
 {
@@ -741,12 +807,12 @@ EXPORT_SYMBOL(hp_based_cpu_num);
 
 static void hp_work_handler(struct work_struct *work)
 {
-	if (mutex_trylock(&hp_onoff_mutex))
+	if (mutex_trylock(&bl_onoff_mutex))
 	{
-		if (!dbs_tuners_ins.cpu_hotplug_disable)
+		if (!dbs_tuners_ins.is_cpu_hotplug_disable)
 		{
 			int onlines_cpu_n = num_online_cpus();
-			
+
 			if (g_next_hp_action) // turn on CPU
 			{
 				if (onlines_cpu_n < num_possible_cpus())
@@ -754,7 +820,7 @@ static void hp_work_handler(struct work_struct *work)
 					printk("hp_work_handler: cpu_up(%d) kick off\n", onlines_cpu_n);
 					cpu_up(onlines_cpu_n);
 					printk("hp_work_handler: cpu_up(%d) completion\n", onlines_cpu_n);
-		
+
 					dbs_ignore = 0; // force trigger frequency scaling
 				}
 			}
@@ -765,12 +831,12 @@ static void hp_work_handler(struct work_struct *work)
 					printk("hp_work_handler: cpu_down(%d) kick off\n", (onlines_cpu_n - 1));
 					cpu_down((onlines_cpu_n - 1));
 					printk("hp_work_handler: cpu_down(%d) completion\n", (onlines_cpu_n - 1));
-		
+
 					dbs_ignore = 0; // force trigger frequency scaling
 				}
 			}
 		}
-		mutex_unlock(&hp_onoff_mutex);
+		mutex_unlock(&bl_onoff_mutex);
 	}
 }
 
@@ -868,7 +934,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		load_freq = load * freq_avg;
 		if (load_freq > max_load_freq)
 			max_load_freq = load_freq;
-			
+
 		#ifdef DEBUG_LOG
 		printk("dbs_check_cpu: cpu = %d\n", j);
 		printk("dbs_check_cpu: wall_time = %d, idle_time = %d, load = %d\n", wall_time, idle_time, load);
@@ -974,7 +1040,7 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 hp_check:
 
 	/* If Hot Plug policy disable, return directly */
-	if (dbs_tuners_ins.cpu_hotplug_disable)
+	if (dbs_tuners_ins.is_cpu_hotplug_disable)
 		return;
 
 	#ifdef CONFIG_SMP
@@ -991,7 +1057,7 @@ hp_check:
 		g_cpu_up_sum_load += cpus_sum_load;
 		if (g_cpu_up_count == dbs_tuners_ins.cpu_up_avg_times) {
 			g_cpu_up_sum_load /= dbs_tuners_ins.cpu_up_avg_times;
-			if (g_cpu_up_sum_load > 
+			if (g_cpu_up_sum_load >
 				(dbs_tuners_ins.cpu_up_threshold * num_online_cpus())) {
 				#ifdef DEBUG_LOG
 				printk("dbs_check_cpu: g_cpu_up_sum_load = %d\n", g_cpu_up_sum_load);
@@ -1016,7 +1082,7 @@ hp_check:
 		g_cpu_down_sum_load += cpus_sum_load;
 		if (g_cpu_down_count == dbs_tuners_ins.cpu_down_avg_times) {
 			g_cpu_down_sum_load /= dbs_tuners_ins.cpu_down_avg_times;
-			if (g_cpu_down_sum_load < 
+			if (g_cpu_down_sum_load <
 				((dbs_tuners_ins.cpu_up_threshold - dbs_tuners_ins.cpu_down_differential) * (num_online_cpus() - 1))) {
 				if (num_online_cpus() > dbs_tuners_ins.cpu_num_base) {
 				#ifdef DEBUG_LOG
@@ -1040,7 +1106,7 @@ hp_check:
 	mutex_unlock(&hp_mutex);
 	#endif
 	// need to retrieve dbs_freq_increase out of hp_mutex
-	// in case of self-deadlock 
+	// in case of self-deadlock
 	if(raise_freq == true)
 		dbs_freq_increase(policy, policy->max);
 
@@ -1127,6 +1193,83 @@ static int should_io_be_busy(void)
 	return 1; // io wait time should be subtracted from idle time
 }
 
+#if INPUT_BOOST
+static void dbs_input_event(struct input_handle *handle, unsigned int type,
+		unsigned int code, int value)
+{
+	if ((type == EV_KEY) && (code == BTN_TOUCH) && (value == 1) && (dbs_tuners_ins.cpu_input_boost_enable))
+	{
+		force_two_core();
+	}
+}
+
+static int dbs_input_connect(struct input_handler *handler,
+		struct input_dev *dev, const struct input_device_id *id)
+{
+	struct input_handle *handle;
+	int error;
+
+	handle = kzalloc(sizeof(struct input_handle), GFP_KERNEL);
+	if (!handle)
+		return -ENOMEM;
+
+	handle->dev = dev;
+	handle->handler = handler;
+	handle->name = "cpufreq_balance";
+
+	error = input_register_handle(handle);
+	if (error)
+		goto err2;
+
+	error = input_open_device(handle);
+	if (error)
+		goto err1;
+
+	return 0;
+err1:
+	input_unregister_handle(handle);
+err2:
+	kfree(handle);
+	return error;
+}
+
+static void dbs_input_disconnect(struct input_handle *handle)
+{
+	input_close_device(handle);
+	input_unregister_handle(handle);
+	kfree(handle);
+}
+
+static const struct input_device_id dbs_ids[] = {
+        {
+                .flags = INPUT_DEVICE_ID_MATCH_EVBIT |
+                         INPUT_DEVICE_ID_MATCH_ABSBIT,
+                .evbit = { BIT_MASK(EV_ABS) },
+                .absbit = { [BIT_WORD(ABS_MT_POSITION_X)] =
+                            BIT_MASK(ABS_MT_POSITION_X) |
+                            BIT_MASK(ABS_MT_POSITION_Y) },
+        }, /* multi-touch touchscreen */
+        {
+                .flags = INPUT_DEVICE_ID_MATCH_KEYBIT |
+                         INPUT_DEVICE_ID_MATCH_ABSBIT,
+                .keybit = { [BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH) },
+                .absbit = { [BIT_WORD(ABS_X)] =
+                            BIT_MASK(ABS_X) | BIT_MASK(ABS_Y) },
+        }, /* touchpad */
+        { },
+};
+
+static struct input_handler dbs_input_handler = {
+	.event		= dbs_input_event,
+	.connect	= dbs_input_connect,
+	.disconnect	= dbs_input_disconnect,
+	.name		= "cpufreq_balance",
+	.id_table	= dbs_ids,
+};
+#endif //#ifdef CONFIG_HOTPLUG_CPU
+
+
+
 static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 				   unsigned int event)
 {
@@ -1184,13 +1327,17 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 				max(min_sampling_rate,
 				    latency * LATENCY_MULTIPLIER);
 			dbs_tuners_ins.io_is_busy = should_io_be_busy();
-			
+
 			#ifdef DEBUG_LOG
 			printk("cpufreq_governor_dbs: min_sampling_rate = %d\n", min_sampling_rate);
 			printk("cpufreq_governor_dbs: dbs_tuners_ins.sampling_rate = %d\n", dbs_tuners_ins.sampling_rate);
 			printk("cpufreq_governor_dbs: dbs_tuners_ins.io_is_busy = %d\n", dbs_tuners_ins.io_is_busy);
 			#endif
 		}
+#if INPUT_BOOST
+		if (!cpu)
+			rc = input_register_handler(&dbs_input_handler);
+#endif
 		mutex_unlock(&dbs_mutex);
 
 		mutex_init(&this_dbs_info->timer_mutex);
@@ -1203,6 +1350,11 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		mutex_lock(&dbs_mutex);
 		mutex_destroy(&this_dbs_info->timer_mutex);
 		dbs_enable--;
+#if INPUT_BOOST
+		if (!cpu)
+			input_unregister_handler(&dbs_input_handler);
+
+#endif
 		mutex_unlock(&dbs_mutex);
 		if (!dbs_enable)
 			sysfs_remove_group(cpufreq_global_kobject,
@@ -1229,10 +1381,35 @@ static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 	return cpus_sum_load;
 }*/
 
+#if INPUT_BOOST
+static int touch_freq_up_task(void *data)
+{
+	struct cpufreq_policy *policy;
+
+	while (1) {
+		policy = cpufreq_cpu_get(0);
+		dbs_freq_increase(policy, policy->max);
+		cpufreq_cpu_put(policy);
+
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule();
+
+		if (kthread_should_stop())
+			break;
+	}
+
+	return 0;
+}
+#endif
+
 static int __init cpufreq_gov_dbs_init(void)
 {
 	u64 idle_time;
 	int cpu = get_cpu();
+
+	#if INPUT_BOOST
+	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
+	#endif
 
 	idle_time = get_cpu_idle_time_us(cpu, NULL);
 	put_cpu();
@@ -1261,10 +1438,21 @@ static int __init cpufreq_gov_dbs_init(void)
 	dbs_tuners_ins.cpu_num_base = 1;
 
 	if (dbs_tuners_ins.cpu_num_limit > 1)
-		dbs_tuners_ins.cpu_hotplug_disable = 0;
+		dbs_tuners_ins.is_cpu_hotplug_disable = 0;
 
 	#ifdef CONFIG_SMP
 	INIT_DELAYED_WORK_DEFERRABLE(&hp_work, hp_work_handler);
+	#endif
+
+
+	#if INPUT_BOOST
+	freq_up_task = kthread_create(touch_freq_up_task, NULL,
+		"touch_freq_up_task");
+	if (IS_ERR(freq_up_task))
+		return PTR_ERR(freq_up_task);
+
+	sched_setscheduler_nocheck(freq_up_task, SCHED_FIFO, &param);
+	get_task_struct(freq_up_task);
 	#endif
 
 	#ifdef DEBUG_LOG
@@ -1279,8 +1467,11 @@ static int __init cpufreq_gov_dbs_init(void)
 	printk("cpufreq_gov_dbs_init: dbs_tuners_ins.thermal_di_avg_times = %d\n", dbs_tuners_ins.thermal_dispatch_avg_times);
 	printk("cpufreq_gov_dbs_init: dbs_tuners_ins.cpu_num_limit = %d\n", dbs_tuners_ins.cpu_num_limit);
 	printk("cpufreq_gov_dbs_init: dbs_tuners_ins.cpu_num_base = %d\n", dbs_tuners_ins.cpu_num_base);
-	printk("cpufreq_gov_dbs_init: dbs_tuners_ins.cpu_hotplug_disable = %d\n", dbs_tuners_ins.cpu_hotplug_disable);
-	#endif 
+	printk("cpufreq_gov_dbs_init: dbs_tuners_ins.is_cpu_hotplug_disable = %d\n", dbs_tuners_ins.is_cpu_hotplug_disable);
+	#if INPUT_BOOST
+	printk("cpufreq_gov_dbs_init: dbs_tuners_ins.cpu_input_boost_enable = %d\n", dbs_tuners_ins.cpu_input_boost_enable);
+	#endif /* INPUT_BOOST */
+	#endif /* DEBUG_LOG */
 
 	return cpufreq_register_governor(&cpufreq_gov_balance);
 }
@@ -1292,6 +1483,11 @@ static void __exit cpufreq_gov_dbs_exit(void)
 	#endif
 
 	cpufreq_unregister_governor(&cpufreq_gov_balance);
+
+	#if INPUT_BOOST
+	kthread_stop(freq_up_task);
+	put_task_struct(freq_up_task);
+	#endif
 }
 
 

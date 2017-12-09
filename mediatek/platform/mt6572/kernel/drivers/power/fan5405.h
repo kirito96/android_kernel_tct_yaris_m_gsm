@@ -172,8 +172,5 @@ extern void fan5405_set_v_safe(kal_uint32 val);
 extern void fan5405_dump_register(void);
 extern kal_uint32 fan5405_config_interface_liao (kal_uint8 RegNum, kal_uint8 val);
 
-extern kal_uint32 fan5405_read_interface (kal_uint8 RegNum, kal_uint8 *val, kal_uint8 MASK, kal_uint8 SHIFT);
-extern kal_uint32 fan5405_config_interface (kal_uint8 RegNum, kal_uint8 val, kal_uint8 MASK, kal_uint8 SHIFT);
-
 #endif // _fan5405_SW_H_
 

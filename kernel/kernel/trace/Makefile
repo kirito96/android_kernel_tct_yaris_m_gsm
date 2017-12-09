@@ -1,12 +1,6 @@
 
 # Do not instrument the tracer itself:
 
-ifeq ($(MTK_INTERNAL), yes)
-ifeq ($(MTK_USE_RESERVED_EXT_MEM), yes)
-KBUILD_CFLAGS += -DMTK_USE_RESERVED_EXT_MEM
-endif
-endif
-
 ifdef CONFIG_FUNCTION_TRACER
 ORIG_CFLAGS := $(KBUILD_CFLAGS)
 KBUILD_CFLAGS = $(subst -pg,,$(ORIG_CFLAGS))
@@ -67,5 +61,6 @@ endif
 ifeq ($(CONFIG_TRACING),y)
 obj-$(CONFIG_KGDB_KDB) += trace_kdb.o
 endif
+obj-$(CONFIG_GPU_TRACEPOINTS) += gpu-traces.o
 
 libftrace-y := ftrace.o

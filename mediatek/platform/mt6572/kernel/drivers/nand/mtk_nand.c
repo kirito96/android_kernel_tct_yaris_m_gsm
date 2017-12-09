@@ -1,3 +1,16 @@
+/******************************************************************************
+* mtk_nand.c - MTK NAND Flash Device Driver
+ *
+* Copyright 2009-2012 MediaTek Co.,Ltd.
+ *
+* DESCRIPTION:
+* 	This file provid the other drivers nand relative functions
+ *
+* modification history
+* ----------------------------------------
+* v3.0, 11 Feb 2010, mtk
+* ----------------------------------------
+******************************************************************************/
 
 #include <linux/slab.h>
 #include <linux/init.h>
@@ -130,13 +143,20 @@ do {	\
 #define OOB_PER_SECTOR      (16)
 #define OOB_AVAI_PER_SECTOR (8)
 
-#ifndef PART_SIZE_BMTPOOL
-#define BMT_POOL_SIZE       (80)
+#if defined(MTK_COMBO_NAND_SUPPORT)
+	// BMT_POOL_SIZE is not used anymore
 #else
-#define BMT_POOL_SIZE (PART_SIZE_BMTPOOL)
+	#ifndef PART_SIZE_BMTPOOL
+	#define BMT_POOL_SIZE (80)
+	#else
+	#define BMT_POOL_SIZE (PART_SIZE_BMTPOOL)
+	#endif
 #endif
 
 #define PMT_POOL_SIZE	(2)
+/*******************************************************************************
+ * Gloable Varible Definition
+ *******************************************************************************/
 struct nand_perf_log
 {
     unsigned int ReadPageCount;
@@ -228,7 +248,7 @@ BOOL g_bHwEcc = false;
 
 
 static u8 *local_buffer_16_align;   // 16 byte aligned buffer, for HW issue
-static u8 local_buffer[4096 + 16];
+__attribute__((aligned(64))) static u8 local_buffer[4096 + 16];
 
 extern void nand_release_device(struct mtd_info *mtd);
 extern int nand_get_device(struct nand_chip *chip, struct mtd_info *mtd, int new_state);
@@ -532,6 +552,23 @@ static int nfi_flush_log(char *s)
     return re;
 }
 #endif
+/******************************************************************************
+ * mtk_nand_irq_handler
+ *
+ * DESCRIPTION:
+ *   NAND interrupt handler!
+ *
+ * PARAMETERS:
+ *   int irq
+ *   void *dev_id
+ *
+ * RETURNS:
+ *   IRQ_HANDLED : Successfully handle the IRQ
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 /* Modified for TCM used */
 static irqreturn_t mtk_nand_irq_handler(int irqno, void *dev_id)
 {
@@ -545,6 +582,22 @@ static irqreturn_t mtk_nand_irq_handler(int irqno, void *dev_id)
     return IRQ_HANDLED;
 }
 
+/******************************************************************************
+ * ECC_Config
+ *
+ * DESCRIPTION:
+ *   Configure HW ECC!
+ *
+ * PARAMETERS:
+ *   struct mtk_nand_host_hw *hw
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void ECC_Config(struct mtk_nand_host_hw *hw,u32 ecc_bit)
 {
     u32 u4ENCODESize;
@@ -599,6 +652,22 @@ static void ECC_Config(struct mtk_nand_host_hw *hw,u32 ecc_bit)
 #endif
 }
 
+/******************************************************************************
+ * ECC_Decode_Start
+ *
+ * DESCRIPTION:
+ *   HW ECC Decode Start !
+ *
+ * PARAMETERS:
+ *   None
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void ECC_Decode_Start(void)
 {
     /* wait for device returning idle */
@@ -606,6 +675,22 @@ static void ECC_Decode_Start(void)
     DRV_WriteReg16(ECC_DECCON_REG16, DEC_EN);
 }
 
+/******************************************************************************
+ * ECC_Decode_End
+ *
+ * DESCRIPTION:
+ *   HW ECC Decode End !
+ *
+ * PARAMETERS:
+ *   None
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void ECC_Decode_End(void)
 {
     /* wait for device returning idle */
@@ -613,6 +698,22 @@ static void ECC_Decode_End(void)
     DRV_WriteReg16(ECC_DECCON_REG16, DEC_DE);
 }
 
+/******************************************************************************
+ * ECC_Encode_Start
+ *
+ * DESCRIPTION:
+ *   HW ECC Encode Start !
+ *
+ * PARAMETERS:
+ *   None
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void ECC_Encode_Start(void)
 {
     /* wait for device returning idle */
@@ -621,6 +722,22 @@ static void ECC_Encode_Start(void)
     DRV_WriteReg16(ECC_ENCCON_REG16, ENC_EN);
 }
 
+/******************************************************************************
+ * ECC_Encode_End
+ *
+ * DESCRIPTION:
+ *   HW ECC Encode End !
+ *
+ * PARAMETERS:
+ *   None
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void ECC_Encode_End(void)
 {
     /* wait for device returning idle */
@@ -679,6 +796,25 @@ static bool return_fake_buf(u8 * data_buf, u32 page_size, u32 sec_num,u32 u4Page
 	return ret;
 }
 
+/******************************************************************************
+ * mtk_nand_check_bch_error
+ *
+ * DESCRIPTION:
+ *   Check BCH error or not !
+ *
+ * PARAMETERS:
+ *   struct mtd_info *mtd
+ *	 u8* pDataBuf
+ *	 u32 u4SecIndex
+ *	 u32 u4PageAddr
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static bool mtk_nand_check_bch_error(struct mtd_info *mtd, u8 * pDataBuf,u8 * spareBuf,u32 u4SecIndex, u32 u4PageAddr)
 {
     bool ret = true;
@@ -719,32 +855,37 @@ static bool mtk_nand_check_bch_error(struct mtd_info *mtd, u8 * pDataBuf,u8 * sp
                 u4ErrNum = DRV_Reg32(ECC_DECENUM1_REG32) >> ((i - 4) * 5);
             }
             u4ErrNum &= 0x1F;
-			failed_sec =0;
 
             if (0x1F == u4ErrNum)
             {
-				failed_sec++;
+								failed_sec++;
                 ret = false;
                 xlog_printk(ANDROID_LOG_WARN,"NFI", "UnCorrectable ECC errors at PageAddr=%d, Sector=%d\n", u4PageAddr, i);
             } else
             {
-				if (u4ErrNum)
+								if (u4ErrNum)
                 {
-					correct_count += u4ErrNum;
-                xlog_printk(ANDROID_LOG_INFO,"NFI"," In kernel Correct %d ECC error(s) at PageAddr=%d, Sector=%d\n", u4ErrNum, u4PageAddr, i);
-				}
+									correct_count += u4ErrNum;
+                	xlog_printk(ANDROID_LOG_INFO,"NFI"," In kernel Correct %d ECC error(s) at PageAddr=%d, Sector=%d\n", u4ErrNum, u4PageAddr, i);
+								}
             }
         }
-if(ret == false){
-		if(is_empty_page(spareBuf,sec_num) && return_fake_buf(pDataBuf,page_size,sec_num,u4PageAddr)){
-			ret=true;
-			xlog_printk(ANDROID_LOG_INFO,"NFI", "empty page have few filped bit(s) , fake buffer returned\n");
-			memset(pDataBuf,0xff,page_size);
-			memset(spareBuf,0xff,sec_num*8);
-			failed_sec=0;
-		}
-	}
-	mtd->ecc_stats.failed+=failed_sec;
+				if(ret == false){
+					if(is_empty_page(spareBuf,sec_num) && return_fake_buf(pDataBuf,page_size,sec_num,u4PageAddr)){
+						ret=true;
+						xlog_printk(ANDROID_LOG_INFO,"NFI", "empty page have few filped bit(s) , fake buffer returned\n");
+						memset(pDataBuf,0xff,page_size);
+						memset(spareBuf,0xff,sec_num*8);
+						failed_sec=0;
+					}
+					else
+					{
+					// always report 0xFF to do workaround ECC uncorrectable caused by bit flip.
+						memset(pDataBuf,0xff,page_size);
+						memset(spareBuf,0xff,sec_num*8);			
+					}
+				}
+				mtd->ecc_stats.failed+=failed_sec;
         if (correct_count > 2 && ret)
         {
             mtd->ecc_stats.corrected++;
@@ -811,6 +952,22 @@ if(ret == false){
     return ret;
 }
 
+/******************************************************************************
+ * mtk_nand_RFIFOValidSize
+ *
+ * DESCRIPTION:
+ *   Check the Read FIFO data bytes !
+ *
+ * PARAMETERS:
+ *   u16 u2Size
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static bool mtk_nand_RFIFOValidSize(u16 u2Size)
 {
     u32 timeout = 0xFFFF;
@@ -825,6 +982,22 @@ static bool mtk_nand_RFIFOValidSize(u16 u2Size)
     return true;
 }
 
+/******************************************************************************
+ * mtk_nand_WFIFOValidSize
+ *
+ * DESCRIPTION:
+ *   Check the Write FIFO data bytes !
+ *
+ * PARAMETERS:
+ *   u16 u2Size
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static bool mtk_nand_WFIFOValidSize(u16 u2Size)
 {
     u32 timeout = 0xFFFF;
@@ -839,6 +1012,22 @@ static bool mtk_nand_WFIFOValidSize(u16 u2Size)
     return true;
 }
 
+/******************************************************************************
+ * mtk_nand_status_ready
+ *
+ * DESCRIPTION:
+ *   Indicate the NAND device is ready or not !
+ *
+ * PARAMETERS:
+ *   u32 u4Status
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static bool mtk_nand_status_ready(u32 u4Status)
 {
     u32 timeout = 0xFFFF;
@@ -853,6 +1042,22 @@ static bool mtk_nand_status_ready(u32 u4Status)
     return true;
 }
 
+/******************************************************************************
+ * mtk_nand_reset
+ *
+ * DESCRIPTION:
+ *   Reset the NAND device hardware component !
+ *
+ * PARAMETERS:
+ *   struct mtk_nand_host *host (Initial setting data)
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static bool mtk_nand_reset(void)
 {
     // HW recommended reset flow
@@ -877,6 +1082,22 @@ static bool mtk_nand_reset(void)
     return mtk_nand_status_ready(STA_NFI_FSM_MASK | STA_NAND_BUSY) && mtk_nand_RFIFOValidSize(0) && mtk_nand_WFIFOValidSize(0);
 }
 
+/******************************************************************************
+ * mtk_nand_set_mode
+ *
+ * DESCRIPTION:
+ *    Set the oepration mode !
+ *
+ * PARAMETERS:
+ *   u16 u2OpMode (read/write)
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void mtk_nand_set_mode(u16 u2OpMode)
 {
     u16 u2Mode = DRV_Reg16(NFI_CNFG_REG16);
@@ -885,6 +1106,22 @@ static void mtk_nand_set_mode(u16 u2OpMode)
     DRV_WriteReg16(NFI_CNFG_REG16, u2Mode);
 }
 
+/******************************************************************************
+ * mtk_nand_set_autoformat
+ *
+ * DESCRIPTION:
+ *    Enable/Disable hardware autoformat !
+ *
+ * PARAMETERS:
+ *   bool bEnable (Enable/Disable)
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void mtk_nand_set_autoformat(bool bEnable)
 {
     if (bEnable)
@@ -896,6 +1133,22 @@ static void mtk_nand_set_autoformat(bool bEnable)
     }
 }
 
+/******************************************************************************
+ * mtk_nand_configure_fdm
+ *
+ * DESCRIPTION:
+ *   Configure the FDM data size !
+ *
+ * PARAMETERS:
+ *   u16 u2FDMSize
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void mtk_nand_configure_fdm(u16 u2FDMSize)
 {
     NFI_CLN_REG16(NFI_PAGEFMT_REG16, PAGEFMT_FDM_MASK | PAGEFMT_FDM_ECC_MASK);
@@ -920,6 +1173,22 @@ static bool mtk_nand_pio_ready(void)
     return true;
 }
 
+/******************************************************************************
+ * mtk_nand_set_command
+ *
+ * DESCRIPTION:
+ *    Send hardware commands to NAND devices !
+ *
+ * PARAMETERS:
+ *   u16 command
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static bool mtk_nand_set_command(u16 command)
 {
     /* Write command to device */
@@ -928,6 +1197,22 @@ static bool mtk_nand_set_command(u16 command)
     return mtk_nand_status_ready(STA_CMD_STATE);
 }
 
+/******************************************************************************
+ * mtk_nand_set_address
+ *
+ * DESCRIPTION:
+ *    Set the hardware address register !
+ *
+ * PARAMETERS:
+ *   struct nand_chip *nand, u32 u4RowAddr
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static bool mtk_nand_set_address(u32 u4ColAddr, u32 u4RowAddr, u16 u2ColNOB, u16 u2RowNOB)
 {
     /* fill cycle addr */
@@ -938,6 +1223,22 @@ static bool mtk_nand_set_address(u32 u4ColAddr, u32 u4RowAddr, u16 u2ColNOB, u16
     return mtk_nand_status_ready(STA_ADDR_STATE);
 }
 
+/******************************************************************************
+ * mtk_nand_check_RW_count
+ *
+ * DESCRIPTION:
+ *    Check the RW how many sectors !
+ *
+ * PARAMETERS:
+ *   u16 u2WriteSize
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static bool mtk_nand_check_RW_count(u16 u2WriteSize)
 {
     u32 timeout = 0xFFFF;
@@ -955,6 +1256,22 @@ static bool mtk_nand_check_RW_count(u16 u2WriteSize)
     return true;
 }
 
+/******************************************************************************
+ * mtk_nand_ready_for_read
+ *
+ * DESCRIPTION:
+ *    Prepare hardware environment for read !
+ *
+ * PARAMETERS:
+ *   struct nand_chip *nand, u32 u4RowAddr
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static bool mtk_nand_ready_for_read(struct nand_chip *nand, u32 u4RowAddr, u32 u4ColAddr, bool full, u8 * buf)
 {
     /* Reset NFI HW internal state machine and flush NFI in/out FIFO */
@@ -1055,6 +1372,22 @@ static bool mtk_nand_ready_for_read(struct nand_chip *nand, u32 u4RowAddr, u32 u
     return bRet;
 }
 
+/******************************************************************************
+ * mtk_nand_ready_for_write
+ *
+ * DESCRIPTION:
+ *    Prepare hardware environment for write !
+ *
+ * PARAMETERS:
+ *   struct nand_chip *nand, u32 u4RowAddr
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static bool mtk_nand_ready_for_write(struct nand_chip *nand, u32 u4RowAddr, u32 col_addr, bool full, u8 * buf)
 {
     bool bRet = false;
@@ -1165,6 +1498,22 @@ static bool mtk_nand_check_dececc_done(u32 u4SecNum)
     return true;
 }
 
+/******************************************************************************
+ * mtk_nand_read_page_data
+ *
+ * DESCRIPTION:
+ *   Fill the page data into buffer !
+ *
+ * PARAMETERS:
+ *   u8* pDataBuf, u32 u4Size
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static bool mtk_nand_dma_read_data(struct mtd_info *mtd, u8 * buf, u32 length)
 {
     int interrupt_en = g_i4Interrupt;
@@ -1174,7 +1523,12 @@ static bool mtk_nand_dma_read_data(struct mtd_info *mtd, u8 * buf, u32 length)
 
     struct timeval stimer,etimer;
     do_gettimeofday(&stimer);
-
+		if(virt_addr_valid(buf)==0)
+		{
+			// DMA should only use low memory
+			dump_stack();
+			BUG_ON(1);
+		}
     sg_init_one(&sg, buf, length);
     dma_map_sg(&(mtd->dev), &sg, 1, dir);
 
@@ -1335,6 +1689,22 @@ static bool mtk_nand_read_page_data(struct mtd_info *mtd, u8 * pDataBuf, u32 u4S
 #endif
 }
 
+/******************************************************************************
+ * mtk_nand_write_page_data
+ *
+ * DESCRIPTION:
+ *   Fill the page data into buffer !
+ *
+ * PARAMETERS:
+ *   u8* pDataBuf, u32 u4Size
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static bool mtk_nand_dma_write_data(struct mtd_info *mtd, u8 * pDataBuf, u32 u4Size)
 {
     int i4Interrupt = 0;        //g_i4Interrupt;
@@ -1344,6 +1714,12 @@ static bool mtk_nand_dma_write_data(struct mtd_info *mtd, u8 * pDataBuf, u32 u4S
     struct timeval stimer,etimer;
     do_gettimeofday(&stimer);
 
+		if(virt_addr_valid(pDataBuf)==0)
+		{
+			// DMA should only use low memory
+			dump_stack();
+			BUG_ON(1);
+		}
     sg_init_one(&sg, pDataBuf, u4Size);
     dma_map_sg(&(mtd->dev), &sg, 1, dir);
 
@@ -1474,6 +1850,22 @@ static bool mtk_nand_write_page_data(struct mtd_info *mtd, u8 * buf, u32 size)
 #endif
 }
 
+/******************************************************************************
+ * mtk_nand_read_fdm_data
+ *
+ * DESCRIPTION:
+ *   Read a fdm data !
+ *
+ * PARAMETERS:
+ *   u8* pDataBuf, u32 u4SecNum
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void mtk_nand_read_fdm_data(u8 * pDataBuf, u32 u4SecNum)
 {
     u32 i;
@@ -1491,6 +1883,22 @@ static void mtk_nand_read_fdm_data(u8 * pDataBuf, u32 u4SecNum)
     }
 }
 
+/******************************************************************************
+ * mtk_nand_write_fdm_data
+ *
+ * DESCRIPTION:
+ *   Write a fdm data !
+ *
+ * PARAMETERS:
+ *   u8* pDataBuf, u32 u4SecNum
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static u8 fdm_buf[64];
 static void mtk_nand_write_fdm_data(struct nand_chip *chip, u8 * pDataBuf, u32 u4SecNum)
 {
@@ -1528,6 +1936,22 @@ static void mtk_nand_write_fdm_data(struct nand_chip *chip, u8 * pDataBuf, u32 u
     }
 }
 
+/******************************************************************************
+ * mtk_nand_stop_read
+ *
+ * DESCRIPTION:
+ *   Stop read operation !
+ *
+ * PARAMETERS:
+ *   None
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void mtk_nand_stop_read(void)
 {
     NFI_CLN_REG16(NFI_CON_REG16, CON_NFI_BRD);
@@ -1539,6 +1963,22 @@ static void mtk_nand_stop_read(void)
     DRV_WriteReg16(NFI_INTR_EN_REG16, 0);
 }
 
+/******************************************************************************
+ * mtk_nand_stop_write
+ *
+ * DESCRIPTION:
+ *   Stop write operation !
+ *
+ * PARAMETERS:
+ *   None
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void mtk_nand_stop_write(void)
 {
     NFI_CLN_REG16(NFI_CON_REG16, CON_NFI_BWR);
@@ -1549,6 +1989,23 @@ static void mtk_nand_stop_write(void)
     DRV_WriteReg16(NFI_INTR_EN_REG16, 0);
 }
 
+/******************************************************************************
+ * mtk_nand_exec_read_page
+ *
+ * DESCRIPTION:
+ *   Read a page data !
+ *
+ * PARAMETERS:
+ *   struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize,
+ *   u8* pPageBuf, u8* pFDMBuf
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 bool mtk_nand_exec_read_page(struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize, u8 * pPageBuf, u8 * pFDMBuf)
 {
     u8 *buf;
@@ -1565,7 +2022,7 @@ bool mtk_nand_exec_read_page(struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize
 #endif
     PFM_BEGIN(pfm_time_read);
 
-    if (((u32) pPageBuf % 16) && local_buffer_16_align)
+    if (((u32) pPageBuf % 16) && local_buffer_16_align)    
     {
         buf = local_buffer_16_align;
     } else
@@ -1605,6 +2062,23 @@ bool mtk_nand_exec_read_page(struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize
     return bRet;
 }
 
+/******************************************************************************
+ * mtk_nand_exec_write_page
+ *
+ * DESCRIPTION:
+ *   Write a page data !
+ *
+ * PARAMETERS:
+ *   struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize,
+ *   u8* pPageBuf, u8* pFDMBuf
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 int mtk_nand_exec_write_page(struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize, u8 * pPageBuf, u8 * pFDMBuf)
 {
     struct nand_chip *chip = mtd->priv;
@@ -1630,7 +2104,7 @@ int mtk_nand_exec_write_page(struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize
     struct timeval pfm_time_write;
 #endif
     PFM_BEGIN(pfm_time_write);
-    if (((u32) pPageBuf % 16) && local_buffer_16_align)
+    if (((u32) pPageBuf % 16) && local_buffer_16_align)    
     {
         printk(KERN_INFO "Data buffer not 16 bytes aligned: %p\n", pPageBuf);
         memcpy(local_buffer_16_align, pPageBuf, mtd->writesize);
@@ -1665,6 +2139,11 @@ int mtk_nand_exec_write_page(struct mtd_info *mtd, u32 u4RowAddr, u32 u4PageSize
         return 0;
 }
 
+/******************************************************************************
+ *
+ * Write a page to a logical address
+ *
+ *****************************************************************************/
 static int mtk_nand_write_page(struct mtd_info *mtd, struct nand_chip *chip, const u8 * buf, int page, int cached, int raw)
 {
     int page_per_block = 1 << (chip->phys_erase_shift - chip->page_shift);
@@ -1705,7 +2184,52 @@ static int mtk_nand_write_page(struct mtd_info *mtd, struct nand_chip *chip, con
 }
 
 //-------------------------------------------------------------------------------
+/*
+static void mtk_nand_command_sp(
+	struct mtd_info *mtd, unsigned int command, int column, int page_addr)
+{
+	g_u4ColAddr	= column;
+	g_u4RowAddr	= page_addr;
 
+	switch(command)
+	{
+	case NAND_CMD_STATUS:
+		break;
+
+	case NAND_CMD_READID:
+		break;
+
+	case NAND_CMD_RESET:
+		break;
+
+	case NAND_CMD_RNDOUT:
+	case NAND_CMD_RNDOUTSTART:
+	case NAND_CMD_RNDIN:
+	case NAND_CMD_CACHEDPROG:
+	case NAND_CMD_STATUS_MULTI:
+	default:
+		break;
+	}
+
+}
+*/
+
+/******************************************************************************
+ * mtk_nand_command_bp
+ *
+ * DESCRIPTION:
+ *   Handle the commands from MTD !
+ *
+ * PARAMETERS:
+ *   struct mtd_info *mtd, unsigned int command, int column, int page_addr
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void mtk_nand_command_bp(struct mtd_info *mtd, unsigned int command, int column, int page_addr)
 {
     struct nand_chip *nand = mtd->priv;
@@ -1814,6 +2338,22 @@ static void mtk_nand_command_bp(struct mtd_info *mtd, unsigned int command, int 
     }
 }
 
+/******************************************************************************
+ * mtk_nand_select_chip
+ *
+ * DESCRIPTION:
+ *   Select a chip !
+ *
+ * PARAMETERS:
+ *   struct mtd_info *mtd, int chip
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void mtk_nand_select_chip(struct mtd_info *mtd, int chip)
 {
     if (chip == -1 && false == g_bInitDone)
@@ -1879,6 +2419,22 @@ static void mtk_nand_select_chip(struct mtd_info *mtd, int chip)
     }
 }
 
+/******************************************************************************
+ * mtk_nand_read_byte
+ *
+ * DESCRIPTION:
+ *   Read a byte of data !
+ *
+ * PARAMETERS:
+ *   struct mtd_info *mtd
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static uint8_t mtk_nand_read_byte(struct mtd_info *mtd)
 {
 #if 0
@@ -1930,6 +2486,22 @@ static uint8_t mtk_nand_read_byte(struct mtd_info *mtd)
     return retval;
 }
 
+/******************************************************************************
+ * mtk_nand_read_buf
+ *
+ * DESCRIPTION:
+ *   Read NAND data !
+ *
+ * PARAMETERS:
+ *   struct mtd_info *mtd, uint8_t *buf, int len
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void mtk_nand_read_buf(struct mtd_info *mtd, uint8_t * buf, int len)
 {
     struct nand_chip *nand = (struct nand_chip *)mtd->priv;
@@ -1967,6 +2539,22 @@ static void mtk_nand_read_buf(struct mtd_info *mtd, uint8_t * buf, int len)
     pkCMD->u4ColAddr += len;
 }
 
+/******************************************************************************
+ * mtk_nand_write_buf
+ *
+ * DESCRIPTION:
+ *   Write NAND data !
+ *
+ * PARAMETERS:
+ *   struct mtd_info *mtd, const uint8_t *buf, int len
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void mtk_nand_write_buf(struct mtd_info *mtd, const uint8_t * buf, int len)
 {
     struct NAND_CMD *pkCMD = &g_kCMD;
@@ -1992,13 +2580,45 @@ static void mtk_nand_write_buf(struct mtd_info *mtd, const uint8_t * buf, int le
     pkCMD->u4ColAddr += len;
 }
 
+/******************************************************************************
+ * mtk_nand_write_page_hwecc
+ *
+ * DESCRIPTION:
+ *   Write NAND data with hardware ecc !
+ *
+ * PARAMETERS:
+ *   struct mtd_info *mtd, struct nand_chip *chip, const uint8_t *buf
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void mtk_nand_write_page_hwecc(struct mtd_info *mtd, struct nand_chip *chip, const uint8_t * buf)
 {
     mtk_nand_write_buf(mtd, buf, mtd->writesize);
     mtk_nand_write_buf(mtd, chip->oob_poi, mtd->oobsize);
 }
 
-static int mtk_nand_read_page_hwecc(struct mtd_info *mtd, struct nand_chip *chip, uint8_t * buf, int page)
+/******************************************************************************
+ * mtk_nand_read_page_hwecc
+ *
+ * DESCRIPTION:
+ *   Read NAND data with hardware ecc !
+ *
+ * PARAMETERS:
+ *   struct mtd_info *mtd, struct nand_chip *chip, uint8_t *buf
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
+static int mtk_nand_read_page_hwecc(struct mtd_info *mtd, struct nand_chip *chip, uint8_t * buf, int page)	                 
 {
 #if 0
     mtk_nand_read_buf(mtd, buf, mtd->writesize);
@@ -2017,6 +2637,11 @@ static int mtk_nand_read_page_hwecc(struct mtd_info *mtd, struct nand_chip *chip
     return 0;
 }
 
+/******************************************************************************
+ *
+ * Read a page to a logical address
+ *
+ *****************************************************************************/
 static int mtk_nand_read_page(struct mtd_info *mtd, struct nand_chip *chip, u8 * buf, int page)
 {
     int page_per_block = 1 << (chip->phys_erase_shift - chip->page_shift);
@@ -2038,6 +2663,11 @@ static int mtk_nand_read_page(struct mtd_info *mtd, struct nand_chip *chip, u8 *
     return 0;
 }
 
+/******************************************************************************
+ *
+ * Erase a block at a logical address
+ *
+ *****************************************************************************/
 int mtk_nand_erase_hw(struct mtd_info *mtd, int page)
 {
     struct nand_chip *chip = (struct nand_chip *)mtd->priv;
@@ -2061,7 +2691,9 @@ int mtk_nand_erase_hw(struct mtd_info *mtd, int page)
 
 static int mtk_nand_erase(struct mtd_info *mtd, int page)
 {
+		
     // get mapping
+    int status ;
     struct nand_chip *chip = mtd->priv;
     int page_per_block = 1 << (chip->phys_erase_shift - chip->page_shift);
     int page_in_block = page % page_per_block;
@@ -2071,7 +2703,7 @@ static int mtk_nand_erase(struct mtd_info *mtd, int page)
     struct timeval stimer,etimer;
     do_gettimeofday(&stimer);
 
-    int status = mtk_nand_erase_hw(mtd, page_in_block + page_per_block * mapped_block);
+    status = mtk_nand_erase_hw(mtd, page_in_block + page_per_block * mapped_block);
 
     if (status & NAND_STATUS_FAIL)
     {
@@ -2092,6 +2724,23 @@ static int mtk_nand_erase(struct mtd_info *mtd, int page)
     return 0;
 }
 
+/******************************************************************************
+ * mtk_nand_read_multi_page_cache
+ *
+ * description:
+ *   read multi page data using cache read
+ *
+ * parameters:
+ *   struct mtd_info *mtd, struct nand_chip *chip, int page, struct mtd_oob_ops *ops
+ *
+ * returns:
+ *   none
+ *
+ * notes:
+ *   only available for nand flash support cache read.
+ *   read main data only.
+ *
+ *****************************************************************************/
 #if 0
 static int mtk_nand_read_multi_page_cache(struct mtd_info *mtd, struct nand_chip *chip, int page, struct mtd_oob_ops *ops)
 {
@@ -2164,6 +2813,25 @@ static int mtk_nand_read_multi_page_cache(struct mtd_info *mtd, struct nand_chip
 }
 #endif
 
+/******************************************************************************
+ * mtk_nand_read_oob_raw
+ *
+ * DESCRIPTION:
+ *   Read oob data
+ *
+ * PARAMETERS:
+ *   struct mtd_info *mtd, const uint8_t *buf, int addr, int len
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   this function read raw oob data out of flash, so need to re-organise
+ *   data format before using.
+ *   len should be times of 8, call this after nand_get_device.
+ *   Should notice, this function read data without ECC protection.
+ *
+ *****************************************************************************/
 static int mtk_nand_read_oob_raw(struct mtd_info *mtd, uint8_t * buf, int page_addr, int len)
 {
     struct nand_chip *chip = (struct nand_chip *)mtd->priv;
@@ -2503,9 +3171,8 @@ int mtk_nand_read_oob_hw(struct mtd_info *mtd, struct nand_chip *chip, int page)
     }
 
     return 0;
-}
-
-static int mtk_nand_read_oob(struct mtd_info *mtd, struct nand_chip *chip, int page, int sndcmd)
+}	
+static int mtk_nand_read_oob(struct mtd_info *mtd, struct nand_chip *chip, int page,int sndcmd)								
 {
     int page_per_block = 1 << (chip->phys_erase_shift - chip->page_shift);
     int block = page / page_per_block;
@@ -2514,7 +3181,7 @@ static int mtk_nand_read_oob(struct mtd_info *mtd, struct nand_chip *chip, int p
 
     mtk_nand_read_oob_hw(mtd, chip, page_in_block + mapped_block * page_per_block);
 
-    return 0;                   // the return value is sndcmd
+    return 0;                   
 }
 
 int mtk_nand_block_bad_hw(struct mtd_info *mtd, loff_t ofs)
@@ -2585,6 +3252,22 @@ static int mtk_nand_block_bad(struct mtd_info *mtd, loff_t ofs, int getchip)
 
     return ret;
 }
+/******************************************************************************
+ * mtk_nand_init_size
+ *
+ * DESCRIPTION:
+ *   initialize the pagesize, oobsize, blocksize
+ *
+ * PARAMETERS:
+ *   struct mtd_info *mtd, struct nand_chip *this, u8 *id_data
+ *
+ * RETURNS:
+ *   Buswidth
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 
 static int mtk_nand_init_size(struct mtd_info *mtd, struct nand_chip *this, u8 *id_data)
 {
@@ -2608,6 +3291,22 @@ static int mtk_nand_init_size(struct mtd_info *mtd, struct nand_chip *this, u8 *
 
 }
 
+/******************************************************************************
+ * mtk_nand_verify_buf
+ *
+ * DESCRIPTION:
+ *   Verify the NAND write data is correct or not !
+ *
+ * PARAMETERS:
+ *   struct mtd_info *mtd, const uint8_t *buf, int len
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 #ifdef CONFIG_MTD_NAND_VERIFY_WRITE
 
 char gacBuf[4096 + 128];
@@ -2668,6 +3367,22 @@ static int mtk_nand_verify_buf(struct mtd_info *mtd, const uint8_t * buf, int le
 }
 #endif
 
+/******************************************************************************
+ * mtk_nand_init_hw
+ *
+ * DESCRIPTION:
+ *   Initial NAND device hardware component !
+ *
+ * PARAMETERS:
+ *   struct mtk_nand_host *host (Initial setting data)
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void mtk_nand_init_hw(struct mtk_nand_host *host)
 {
     struct mtk_nand_host_hw *hw = host->hw;
@@ -2717,6 +3432,22 @@ static int mtk_nand_dev_ready(struct mtd_info *mtd)
     return !(DRV_Reg32(NFI_STA_REG32) & STA_NAND_BUSY);
 }
 
+/******************************************************************************
+ * mtk_nand_proc_read
+ *
+ * DESCRIPTION:
+ *   Read the proc file to get the interrupt scheme setting !
+ *
+ * PARAMETERS:
+ *   char *page, char **start, off_t off, int count, int *eof, void *data
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static int mtk_nand_proc_read(char *page, char **start, off_t off, int count, int *eof, void *data)
 {
 	char 	*p = page;
@@ -2775,13 +3506,29 @@ static int mtk_nand_proc_read(char *page, char **start, off_t off, int count, in
     return len < count ? len : count;
 }
 
+/******************************************************************************
+ * mtk_nand_proc_write
+ *
+ * DESCRIPTION:
+ *   Write the proc file to set the interrupt scheme !
+ *
+ * PARAMETERS:
+ *   struct file* file, const char* buffer,	unsigned long count, void *data
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static int mtk_nand_proc_write(struct file *file, const char *buffer, unsigned long count, void *data)
 {
     struct mtd_info *mtd = &host->mtd;
     char buf[16];
     char cmd;
     int value;
-    int len = count, n;
+    int len = count;
 
     if (len >= sizeof(buf))
     {
@@ -2866,6 +3613,22 @@ static int mtk_nand_proc_write(struct file *file, const char *buffer, unsigned l
     return len;
 }
 
+/******************************************************************************
+ * mtk_nand_probe
+ *
+ * DESCRIPTION:
+ *   register the nand device file operations !
+ *
+ * PARAMETERS:
+ *   struct platform_device *pdev : device structure
+ *
+ * RETURNS:
+ *   0 : Success
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static int mtk_nand_probe(struct platform_device *pdev)
 {
 
@@ -2942,6 +3705,7 @@ static int mtk_nand_probe(struct platform_device *pdev)
     nand_chip->ecc.layout = &nand_oob_64;
     nand_chip->ecc.size = hw->nand_ecc_size;    //2048
     nand_chip->ecc.bytes = hw->nand_ecc_bytes;  //32
+    nand_chip->ecc.strength = 4;
 
     nand_chip->options = NAND_SKIP_BBTSCAN;
 
@@ -3002,6 +3766,25 @@ static int mtk_nand_probe(struct platform_device *pdev)
     {
         nand_chip->ecc.layout = &nand_oob_16;
         hw->nand_ecc_size = 512;
+    }
+    // Set Device ECC 
+    {
+			u32 spare_per_sector = devinfo.sparesize/512;
+			u32 ecc_bit = 4;
+		
+			  if(spare_per_sector>=28){				
+					ecc_bit = 12;				
+		  	}else if(spare_per_sector>=27){		  		
+		    		ecc_bit = 8;		 		
+		  	}else if(spare_per_sector>=26){
+		  			ecc_bit = 8;
+						spare_per_sector = 26;
+		  	}else if(spare_per_sector>=16){		  		
+		    		ecc_bit = 4;				
+		  	}else{
+		    		ecc_bit = 4;
+		  	}
+		  	nand_chip->ecc.strength = ecc_bit;
     }
     nand_chip->ecc.layout->eccbytes = devinfo.sparesize-OOB_AVAI_PER_SECTOR*(devinfo.pagesize/NAND_SECTOR_SIZE);
     hw->nand_ecc_bytes = nand_chip->ecc.layout->eccbytes;
@@ -3068,13 +3851,20 @@ static int mtk_nand_probe(struct platform_device *pdev)
     }
 
     nand_chip->select_chip(mtd, 0);
-
-    nand_chip->chipsize -= (BMT_POOL_SIZE) << nand_chip->phys_erase_shift;
+    #if defined(MTK_COMBO_NAND_SUPPORT)
+    	nand_chip->chipsize -= (PART_SIZE_BMTPOOL);
+    #else
+	    nand_chip->chipsize -= (BMT_POOL_SIZE) << nand_chip->phys_erase_shift;
+    #endif
     mtd->size = nand_chip->chipsize;
 
     if (!g_bmt)
     {
+    		#if defined(MTK_COMBO_NAND_SUPPORT)
+    		if (!(g_bmt = init_bmt(nand_chip, ((PART_SIZE_BMTPOOL) >> nand_chip->phys_erase_shift))))
+    		#else    		    		
         if (!(g_bmt = init_bmt(nand_chip, BMT_POOL_SIZE)))
+        #endif
         {
             MSG(INIT, "Error: init bmt failed\n");
             return 0;
@@ -3114,10 +3904,25 @@ static int mtk_nand_probe(struct platform_device *pdev)
     nand_disable_clock();
     return err;
 }
+/******************************************************************************
+ * mtk_nand_suspend
+ *
+ * DESCRIPTION:
+ *   Suspend the nand device!
+ *
+ * PARAMETERS:
+ *   struct platform_device *pdev : device structure
+ *
+ * RETURNS:
+ *   0 : Success
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static int mtk_nand_suspend(struct platform_device *pdev, pm_message_t state)
 {
       struct mtk_nand_host *host = platform_get_drvdata(pdev);
-      struct mtd_info *mtd = &host->mtd;
       // backup register
       #ifdef CONFIG_PM
 
@@ -3152,11 +3957,25 @@ static int mtk_nand_suspend(struct platform_device *pdev, pm_message_t state)
       return 0;
 }
 
+/******************************************************************************
+ * mtk_nand_resume
+ *
+ * DESCRIPTION:
+ *   Resume the nand device!
+ *
+ * PARAMETERS:
+ *   struct platform_device *pdev : device structure
+ *
+ * RETURNS:
+ *   0 : Success
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static int mtk_nand_resume(struct platform_device *pdev)
 {
     struct mtk_nand_host *host = platform_get_drvdata(pdev);
-    struct mtd_info *mtd = &host->mtd;
-	struct nand_chip *chip = mtd->priv;
 
 #ifdef CONFIG_PM
 
@@ -3205,6 +4024,22 @@ static int mtk_nand_resume(struct platform_device *pdev)
     return 0;
 }
 
+/******************************************************************************
+ * mtk_nand_remove
+ *
+ * DESCRIPTION:
+ *   unregister the nand device file operations !
+ *
+ * PARAMETERS:
+ *   struct platform_device *pdev : device structure
+ *
+ * RETURNS:
+ *   0 : Success
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 
 static int __devexit mtk_nand_remove(struct platform_device *pdev)
 {
@@ -3220,6 +4055,9 @@ static int __devexit mtk_nand_remove(struct platform_device *pdev)
     return 0;
 }
 
+/******************************************************************************
+ * NAND OTP operations
+ * ***************************************************************************/
 #if (defined(NAND_OTP_SUPPORT) && SAMSUNG_OTP_SUPPORT)
 unsigned int samsung_OTPQueryLength(unsigned int *QLength)
 {
@@ -3622,6 +4460,9 @@ static struct miscdevice nand_otp_dev = {
 };
 #endif
 
+/******************************************************************************
+Device driver structure
+******************************************************************************/
 static struct platform_driver mtk_nand_driver = {
     .probe = mtk_nand_probe,
     .remove = mtk_nand_remove,
@@ -3633,6 +4474,22 @@ static struct platform_driver mtk_nand_driver = {
                },
 };
 
+/******************************************************************************
+ * mtk_nand_init
+ *
+ * DESCRIPTION:
+ *   Init the device driver !
+ *
+ * PARAMETERS:
+ *   None
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static int __init mtk_nand_init(void)
 {
     struct proc_dir_entry *entry;
@@ -3670,6 +4527,22 @@ static int __init mtk_nand_init(void)
     return platform_driver_register(&mtk_nand_driver);
 }
 
+/******************************************************************************
+ * mtk_nand_exit
+ *
+ * DESCRIPTION:
+ *   Free the device driver !
+ *
+ * PARAMETERS:
+ *   None
+ *
+ * RETURNS:
+ *   None
+ *
+ * NOTES:
+ *   None
+ *
+ ******************************************************************************/
 static void __exit mtk_nand_exit(void)
 {
     MSG(INIT, "MediaTek Nand driver exit, version %s\n", VERSION);

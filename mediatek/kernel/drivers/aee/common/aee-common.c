@@ -1,3 +1,4 @@
+#include <linux/bug.h>
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/aee.h>
@@ -12,44 +13,33 @@
 #include <linux/io.h>
 #include <linux/delay.h>
 #include <linux/stacktrace.h>
+#include <mach/wd_api.h>
 
 #ifdef CONFIG_SCHED_DEBUG
 extern int sysrq_sched_debug_show(void);
 #endif
 
-extern void mtk_wdt_disable(void);
-#ifdef CONFIG_LOCAL_WDT
-enum wk_wdt_type {
-	WK_WDT_LOC_TYPE,
-	WK_WDT_EXT_TYPE,
-	WK_WDT_LOC_TYPE_NOLOCK,
-	WK_WDT_EXT_TYPE_NOLOCK,	
-};
-
-extern void mpcore_wk_wdt_stop(void);
-extern void mpcore_wdt_restart(enum wk_wdt_type type);
-#endif
-
 #define AEK_LOG_TAG "aee/aek"
 #define KERNEL_REPORT_LENGTH	1024
+#define KERNEL_REPORT_NR	4
 static struct aee_kernel_api *g_aee_api = NULL;
 static char* msgbuf = NULL;
-static char* msgbuf2 = NULL;
+static char* oops_detail[KERNEL_REPORT_NR];
 
 #ifdef CONFIG_KGDB_KDB
 /* Press key to enter kdb */
 void aee_trigger_kdb(void)
 {
+	int res=0;
+	struct wd_api*wd_api = NULL;
+	res = get_wd_api(&wd_api);
 	/* disable Watchdog HW, note it will not enable WDT again when kdb return */
-	mtk_wdt_disable();
-	#ifdef CONFIG_LOCAL_WDT
-	/* disable all local WDT on some specific SMP platform */
-	#ifdef CONFIG_SMP
-	on_each_cpu((smp_call_func_t)mpcore_wk_wdt_stop, NULL, 0);
-	#else
-	mpcore_wk_wdt_stop();
-	#endif
-	#endif
+	if(res)
+	{
+		printk("aee_trigger_kdb, get wd api error\n");
+	} else {
+		wd_api->wd_disable_all();
+	}
 	
 	#ifdef CONFIG_SCHED_DEBUG
 	sysrq_sched_debug_show();
@@ -62,11 +52,13 @@ void aee_trigger_kdb(void)
 	printk(KERN_INFO "Exit KDB \n");
 	#ifdef CONFIG_LOCAL_WDT	
 	/* enable local WDT */
-	#ifdef CONFIG_SMP
-	on_each_cpu((smp_call_func_t)mpcore_wdt_restart, WK_WDT_LOC_TYPE, 0);
-	#else
-	mpcore_wdt_restart(WK_WDT_LOC_TYPE);
-	#endif
+	if(res)
+	{
+		printk("aee_trigger_kdb, get wd api error\n");
+	} else {
+		wd_api->wd_restart(WD_TYPE_NOLOCK);
+	}
+
 	#endif
 	
 }
@@ -162,19 +154,22 @@ void aee_oops_free(struct aee_oops *oops)
 	if (oops->userspace_info) {
 		kfree(oops->userspace_info);
 	}
+	if (oops->mmprofile) {
+		kfree(oops->mmprofile);
+	}
+	if (oops->mini_rdump) {
+		kfree(oops->mini_rdump);
+	}
 	kfree(oops);
 }
-
 EXPORT_SYMBOL(aee_oops_free);
 
-int aee_register_api(struct aee_kernel_api *aee_api)
+void aee_register_api(struct aee_kernel_api *aee_api)
 {
 	if (!aee_api) {
 		BUG();
 	}
-
 	g_aee_api = aee_api;
-	return 0;
 }
 EXPORT_SYMBOL(aee_register_api);
 
@@ -199,21 +194,39 @@ void aee_get_traces(char *msg)
 		snprintf(msg + offset, KERNEL_REPORT_LENGTH - offset, "[<%p>] %pS\n",(void *)trace.entries[i], (void *)trace.entries[i]);
 	}
 }
+
+static char** aee_get_detail_buffer(void) {
+	int i;
+	for (i = 0; i < KERNEL_REPORT_NR; i++) {
+		if (oops_detail[i] == NULL) {
+			oops_detail[i] = msgbuf + KERNEL_REPORT_LENGTH * i;
+			return &oops_detail[i];
+		}
+	}
+	xlog_printk(ANDROID_LOG_ERROR, AEK_LOG_TAG, "At most %d kernel warning allowed, to skip.\n", KERNEL_REPORT_NR);
+	return NULL;
+}
+
 void aee_kernel_exception_api(const char *file, const int line, const int db_opt, const char *module, const char *msg, ...)
 {
 #ifdef CONFIG_MTK_AEE_AED
+	char** pmsgbuf;
+	int offset = 0;
 	va_list args;
 
 	va_start(args, msg);
-	if (g_aee_api && g_aee_api->kernel_reportAPI && msgbuf && msgbuf2) {
-		vsnprintf(msgbuf, KERNEL_REPORT_LENGTH, msg, args);
-		snprintf(msgbuf2, KERNEL_REPORT_LENGTH, "<%s:%d> %s\nBacktrace:\n", file, line, msgbuf);
-		aee_get_traces(msgbuf2);
-		g_aee_api->kernel_reportAPI(AE_DEFECT_EXCEPTION, db_opt, module, msgbuf2);
+	pmsgbuf = aee_get_detail_buffer();
+	if (g_aee_api && g_aee_api->kernel_reportAPI && pmsgbuf) {
+		offset += snprintf(*pmsgbuf, KERNEL_REPORT_LENGTH, "<%s:%d> ", file, line);
+		offset += vsnprintf(*pmsgbuf + offset, KERNEL_REPORT_LENGTH - offset, msg, args);
+		offset += snprintf(*pmsgbuf + offset, KERNEL_REPORT_LENGTH - offset, "\nBacktrace:\n");
+		aee_get_traces(*pmsgbuf);
+		g_aee_api->kernel_reportAPI(AE_DEFECT_EXCEPTION, db_opt, module, *pmsgbuf);
 	} else {
 		xlog_printk(ANDROID_LOG_ERROR, AEK_LOG_TAG, "%s: ", module);
 		vprintk(msg, args);
 	}
+	*pmsgbuf = NULL;
 	va_end(args);
 #endif
 }
@@ -222,18 +235,23 @@ EXPORT_SYMBOL(aee_kernel_exception_api);
 void aee_kernel_warning_api(const char *file, const int line, const int db_opt, const char *module, const char *msg, ...)
 {
 #ifdef CONFIG_MTK_AEE_AED
+	char** pmsgbuf;
+	int offset = 0;
 	va_list args;
 
 	va_start(args, msg);
-	if (g_aee_api && g_aee_api->kernel_reportAPI && msgbuf && msgbuf2) {
-		vsnprintf(msgbuf, KERNEL_REPORT_LENGTH, msg, args);
-		snprintf(msgbuf2, KERNEL_REPORT_LENGTH, "<%s:%d> %s\nBacktrace:\n", file, line, msgbuf);
-		aee_get_traces(msgbuf2);
-		g_aee_api->kernel_reportAPI(AE_DEFECT_WARNING, db_opt, module, msgbuf2);
+	pmsgbuf = aee_get_detail_buffer();
+	if (g_aee_api && g_aee_api->kernel_reportAPI && pmsgbuf) {
+		offset += snprintf(*pmsgbuf, KERNEL_REPORT_LENGTH, "<%s:%d> ", file, line);
+		offset += vsnprintf(*pmsgbuf + offset, KERNEL_REPORT_LENGTH - offset, msg, args);
+		offset += snprintf(*pmsgbuf + offset, KERNEL_REPORT_LENGTH - offset, "\nBacktrace:\n");
+		aee_get_traces(*pmsgbuf);
+		g_aee_api->kernel_reportAPI(AE_DEFECT_WARNING, db_opt, module, *pmsgbuf);
 	} else {
 		xlog_printk(ANDROID_LOG_ERROR, AEK_LOG_TAG, "%s: ", module);
 		vprintk(msg, args);
 	}
+	*pmsgbuf = NULL;
 	va_end(args);
 #endif
 }
@@ -242,17 +260,21 @@ EXPORT_SYMBOL(aee_kernel_warning_api);
 void aee_kernel_reminding_api(const char *file, const int line, const int db_opt, const char *module, const char *msg, ...)
 {
 #ifdef CONFIG_MTK_AEE_AED
+	char** pmsgbuf;
+	int offset = 0;
 	va_list args;
 
 	va_start(args, msg);
-	if(g_aee_api && g_aee_api->kernel_reportAPI && msgbuf && msgbuf2) {
-		vsnprintf(msgbuf, KERNEL_REPORT_LENGTH, msg, args);
-		snprintf(msgbuf2, KERNEL_REPORT_LENGTH, "<%s:%d> %s", file, line, msgbuf);
-		g_aee_api->kernel_reportAPI(AE_DEFECT_REMINDING, db_opt, module, msgbuf2);
+	pmsgbuf = aee_get_detail_buffer();
+	if (g_aee_api && g_aee_api->kernel_reportAPI && pmsgbuf) {
+		offset += snprintf(*pmsgbuf, KERNEL_REPORT_LENGTH, "<%s:%d> ", file, line);
+		offset += vsnprintf(*pmsgbuf + offset, KERNEL_REPORT_LENGTH - offset, msg, args);
+		g_aee_api->kernel_reportAPI(AE_DEFECT_REMINDING, db_opt, module, *pmsgbuf);
 	} else {
 		xlog_printk(ANDROID_LOG_ERROR, AEK_LOG_TAG, "%s: ", module);
 		vprintk(msg, args);
 	}
+	*pmsgbuf = NULL;
 	va_end(args);
 #endif
 }
@@ -324,7 +346,7 @@ void aee_sram_printk(const char *fmt, ...)
 #endif
 }
 EXPORT_SYMBOL(aee_sram_printk);
-  
+
 static int __init aee_common_init(void)
 {
 	int ret = 0;
@@ -334,14 +356,9 @@ static int __init aee_common_init(void)
 		printk("allocate trace buffer fail:%d\n", (int)trace_entry_ptr);
 		ret = -ENOMEM;
 	}
-	msgbuf = kmalloc(KERNEL_REPORT_LENGTH, GFP_KERNEL);
+	msgbuf = kmalloc(KERNEL_REPORT_LENGTH * KERNEL_REPORT_NR, GFP_KERNEL);
 	if (!msgbuf) {
 		printk("allocate msgbuf fail \n");
-		ret = -ENOMEM;
-	}
-	msgbuf2 = kmalloc(KERNEL_REPORT_LENGTH, GFP_KERNEL);
-	if (!msgbuf2) {
-		printk("allocate msgbuf2 fail \n");
 		ret = -ENOMEM;
 	}
 	return ret;
@@ -352,8 +369,6 @@ static void __exit aee_common_exit(void)
 		kfree(trace_entry_ptr);
 	if (msgbuf)
 		kfree(msgbuf);
-	if (msgbuf2)
-		kfree(msgbuf2);
 }
 module_init(aee_common_init);
 module_exit(aee_common_exit);

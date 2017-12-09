@@ -513,6 +513,40 @@ const HI704_SENSOR_INIT_INFO HI704_Initial_Setting_Info[] =
 	{0xff, 0xff}    //End of Initial Setting
 
 };
+static void HI704_Set_VGA_mode(void)
+{
+    HI704_write_cmos_sensor(0x01, HI704_read_cmos_sensor(0x01)|0x01);   //Sleep: For Write Reg
+    HI704_write_cmos_sensor(0x03, 0x00);
+    HI704_write_cmos_sensor(0x10, 0x00);        //VGA Size
+    HI704_write_cmos_sensor(0x20, 0x00);
+    HI704_write_cmos_sensor(0x21, 0x04);
+    HI704_write_cmos_sensor(0x40, 0x01);        //HBLANK: 0x70 = 112
+    HI704_write_cmos_sensor(0x41, 0x58);
+    HI704_write_cmos_sensor(0x42, 0x00);        //VBLANK: 0x04 = 4
+    HI704_write_cmos_sensor(0x43, 0x13);
+    HI704_write_cmos_sensor(0x03, 0x11);
+    HI704_write_cmos_sensor(0x10, 0x25);  
+    HI704_write_cmos_sensor(0x03, 0x20);
+    HI704_write_cmos_sensor(0x10, HI704_read_cmos_sensor(0x10)&0x7f);   //Close AE
+    HI704_write_cmos_sensor(0x18, HI704_read_cmos_sensor(0x18)|0x08);   //Reset AE
+    HI704_write_cmos_sensor(0x83, 0x00);
+    HI704_write_cmos_sensor(0x84, 0xbe);
+    HI704_write_cmos_sensor(0x85, 0x6e);
+    HI704_write_cmos_sensor(0x86, 0x00);
+    HI704_write_cmos_sensor(0x87, 0xfa);
+    HI704_write_cmos_sensor(0x8b, 0x3f);
+    HI704_write_cmos_sensor(0x8c, 0x7a);
+    HI704_write_cmos_sensor(0x8d, 0x34);
+    HI704_write_cmos_sensor(0x8e, 0xbc);
+    HI704_write_cmos_sensor(0x9c, 0x0b);
+    HI704_write_cmos_sensor(0x9d, 0xb8);
+    HI704_write_cmos_sensor(0x9e, 0x00);
+    HI704_write_cmos_sensor(0x9f, 0xfa);
+    HI704_write_cmos_sensor(0x01, HI704_read_cmos_sensor(0x01)&0xfe);   //Exit Sleep: For Write Reg
+    HI704_write_cmos_sensor(0x03, 0x20);
+    HI704_write_cmos_sensor(0x10, HI704_read_cmos_sensor(0x10)|0x80);   //Open AE
+    HI704_write_cmos_sensor(0x18, HI704_read_cmos_sensor(0x18)&0xf7);   //Reset AE
+}
 static void HI704_Initial_Setting(void)
 {
 	kal_uint32 iEcount;
@@ -520,6 +554,7 @@ static void HI704_Initial_Setting(void)
 	{	
 		HI704_write_cmos_sensor(HI704_Initial_Setting_Info[iEcount].address, HI704_Initial_Setting_Info[iEcount].data);
 	}
+	HI704_Set_VGA_mode();
 }
 
 static void HI704_Init_Parameter(void)
@@ -717,52 +752,18 @@ static void HI704_set_dummy(kal_uint16 dummy_pixels,kal_uint16 dummy_lines)
 #endif
 
 // 640 * 480
-static void HI704_Set_VGA_mode(void)
-{
-    HI704_write_cmos_sensor(0x01, HI704_read_cmos_sensor(0x01)|0x01);   //Sleep: For Write Reg
 
-    HI704_write_cmos_sensor(0x03, 0x00);
-    HI704_write_cmos_sensor(0x10, 0x00);        //VGA Size
 
-    HI704_write_cmos_sensor(0x20, 0x00);
-    HI704_write_cmos_sensor(0x21, 0x04);
 
-    HI704_write_cmos_sensor(0x40, 0x01);        //HBLANK: 0x70 = 112
-    HI704_write_cmos_sensor(0x41, 0x58);
-    HI704_write_cmos_sensor(0x42, 0x00);        //VBLANK: 0x04 = 4
-    HI704_write_cmos_sensor(0x43, 0x13);
 
-    HI704_write_cmos_sensor(0x03, 0x11);
-    HI704_write_cmos_sensor(0x10, 0x25);  
 
-    HI704_write_cmos_sensor(0x03, 0x20);
 
-    HI704_write_cmos_sensor(0x10, HI704_read_cmos_sensor(0x10)&0x7f);   //Close AE
-    HI704_write_cmos_sensor(0x18, HI704_read_cmos_sensor(0x18)|0x08);   //Reset AE
 	
-    HI704_write_cmos_sensor(0x83, 0x00);
-    HI704_write_cmos_sensor(0x84, 0xbe);
-    HI704_write_cmos_sensor(0x85, 0x6e);
-    HI704_write_cmos_sensor(0x86, 0x00);
-    HI704_write_cmos_sensor(0x87, 0xfa);
 
-    HI704_write_cmos_sensor(0x8b, 0x3f);
-    HI704_write_cmos_sensor(0x8c, 0x7a);
-    HI704_write_cmos_sensor(0x8d, 0x34);
-    HI704_write_cmos_sensor(0x8e, 0xbc);
 
-    HI704_write_cmos_sensor(0x9c, 0x0b);
-    HI704_write_cmos_sensor(0x9d, 0xb8);
-    HI704_write_cmos_sensor(0x9e, 0x00);
-    HI704_write_cmos_sensor(0x9f, 0xfa);
 
-    HI704_write_cmos_sensor(0x01, HI704_read_cmos_sensor(0x01)&0xfe);   //Exit Sleep: For Write Reg
 
-    HI704_write_cmos_sensor(0x03, 0x20);
-    HI704_write_cmos_sensor(0x10, HI704_read_cmos_sensor(0x10)|0x80);   //Open AE
-    HI704_write_cmos_sensor(0x18, HI704_read_cmos_sensor(0x18)&0xf7);   //Reset AE
 
-}
 
 static void HI704_Cal_Min_Frame_Rate(kal_uint16 min_framerate)
 {
@@ -791,7 +792,6 @@ static void HI704_Cal_Min_Frame_Rate(kal_uint16 min_framerate)
     HI704_sensor.pv_dummy_pixels = temp_data;
     HI704_sensor.pv_line_length = HI704_VGA_DEFAULT_PIXEL_NUMS+ HI704_sensor.pv_dummy_pixels ;
     spin_unlock(&hi704_yuv_drv_lock);
-
     if(HI704_sensor.banding == AE_FLICKER_MODE_50HZ)
     {
         HI704_expbanding = (HI704_sensor.pv_pclk/HI704_sensor.pv_line_length/100)*HI704_sensor.pv_line_length/8;
@@ -802,11 +802,13 @@ static void HI704_Cal_Min_Frame_Rate(kal_uint16 min_framerate)
         HI704_expbanding = (HI704_sensor.pv_pclk/HI704_sensor.pv_line_length/120)*HI704_sensor.pv_line_length/8;
         HI704_expmax = HI704_expbanding*120*10/min_framerate ;
     }
-    else
+    else//default 5oHZ
     {
-        SENSORDB("[HI704][Error] Wrong Banding Setting!!!...");
-    }
-        
+        //SENSORDB("[HI704][Error] Wrong Banding Setting!!!...");
+        HI704_expbanding = (HI704_sensor.pv_pclk/HI704_sensor.pv_line_length/100)*HI704_sensor.pv_line_length/8;
+        HI704_expmax = HI704_expbanding*100*10/min_framerate ;
+
+	}     
     HI704_write_cmos_sensor(0x03, 0x20);
     HI704_write_cmos_sensor(0x88, (HI704_expmax>>16)&0xff);
     HI704_write_cmos_sensor(0x89, (HI704_expmax>>8)&0xff);
@@ -821,77 +823,105 @@ static void HI704_Cal_Min_Frame_Rate(kal_uint16 min_framerate)
 
 
 static void HI704_Fix_Video_Frame_Rate(kal_uint16 fix_framerate)
-{
-    kal_uint32 HI704_expfix;
-    kal_uint32 HI704_expfix_temp;
-    kal_uint32 HI704_expmax = 0;
-    kal_uint32 HI704_expbanding = 0;
-    kal_uint32 temp_data1,temp_data2;
-      
-    SENSORDB("[Enter]HI704 Fix_video_frame_rate func: fix_fps=%d\n",fix_framerate);
+	{
+		kal_uint32 HI704_expfix;
+		kal_uint32 HI704_expfix_temp;
+		kal_uint32 HI704_expmax = 0;
+		kal_uint32 HI704_expbanding = 0;
+		kal_uint32 temp_data1,temp_data2;
+		  
+		SENSORDB("[Enter]HI704 Fix_video_frame_rate func: fix_fps=%d\n",fix_framerate);
+	
+		spin_lock(&hi704_yuv_drv_lock);
+		HI704_sensor.video_current_frame_rate = fix_framerate;
+		spin_unlock(&hi704_yuv_drv_lock);
+		// Fixed Framerate
+		HI704_write_cmos_sensor(0x01, HI704_read_cmos_sensor(0x01)|0x01);	//Sleep: For Write Reg
+	
+		HI704_write_cmos_sensor(0x03, 0x00);
+		HI704_write_cmos_sensor(0x11, HI704_read_cmos_sensor(0x11)|0x04);
+	
+		HI704_write_cmos_sensor(0x03, 0x20);
+		HI704_write_cmos_sensor(0x10, HI704_read_cmos_sensor(0x10)&0x7f);	//Close AE
+	
+		HI704_write_cmos_sensor(0x11, 0x00);
+		HI704_write_cmos_sensor(0x18, HI704_read_cmos_sensor(0x18)|0x08);	//Reset AE
+		HI704_write_cmos_sensor(0x2a, 0x00);
+		HI704_write_cmos_sensor(0x2b, 0x35);
+	
+		HI704_write_cmos_sensor(0x03, 0x00);
+		temp_data1 = ((HI704_read_cmos_sensor(0x40)<<8)|HI704_read_cmos_sensor(0x41));
+		temp_data2 = ((HI704_read_cmos_sensor(0x42)<<8)|HI704_read_cmos_sensor(0x43));
+		spin_lock(&hi704_yuv_drv_lock);
+		HI704_sensor.pv_dummy_pixels = temp_data1; 
+		HI704_sensor.pv_line_length = HI704_VGA_DEFAULT_PIXEL_NUMS + HI704_sensor.pv_dummy_pixels ;   
+		HI704_sensor.pv_dummy_lines = temp_data2;
+		spin_unlock(&hi704_yuv_drv_lock);
+			
+		HI704_expfix_temp = ((HI704_sensor.pv_pclk*10/fix_framerate)-(HI704_sensor.pv_line_length*HI704_sensor.pv_dummy_lines))/8;	  
+		HI704_expfix = ((HI704_expfix_temp*8/HI704_sensor.pv_line_length)*HI704_sensor.pv_line_length)/8;
+			
+		HI704_write_cmos_sensor(0x03, 0x20);	
+		//HI704_write_cmos_sensor(0x83, (HI704_expfix>>16)&0xff);
+		//HI704_write_cmos_sensor(0x84, (HI704_expfix>>8)&0xff);
+		//HI704_write_cmos_sensor(0x85, (HI704_expfix>>0)&0xff);	
+		HI704_write_cmos_sensor(0x91, (HI704_expfix>>16)&0xff);
+		HI704_write_cmos_sensor(0x92, (HI704_expfix>>8)&0xff);
+		HI704_write_cmos_sensor(0x93, (HI704_expfix>>0)&0xff);
+	
+		if(HI704_sensor.banding == AE_FLICKER_MODE_50HZ)
+		{
+			HI704_expbanding = ((HI704_read_cmos_sensor(0x8b)<<8)|HI704_read_cmos_sensor(0x8c));
+			
+			HI704_expmax = ((HI704_expfix_temp-HI704_expbanding)/HI704_expbanding)*HI704_expbanding;	
+			
+			HI704_write_cmos_sensor(0x03, 0x20);
+			HI704_write_cmos_sensor(0x88, (HI704_expmax>>16)&0xff);
+			HI704_write_cmos_sensor(0x89, (HI704_expmax>>8)&0xff);
+			HI704_write_cmos_sensor(0x8a, (HI704_expmax>>0)&0xff);
+			
+			HI704_write_cmos_sensor(0x01, HI704_read_cmos_sensor(0x01)&0xfe);	//Exit Sleep: For Write Reg
+			
+			HI704_write_cmos_sensor(0x03, 0x20);
+			HI704_write_cmos_sensor(0x10, HI704_read_cmos_sensor(0x10)|0x80);	//Open AE
+			HI704_write_cmos_sensor(0x18, HI704_read_cmos_sensor(0x18)&0xf7);	//Reset AE
+		}
+		else if(HI704_sensor.banding == AE_FLICKER_MODE_60HZ)
+		{
+			HI704_expbanding = ((HI704_read_cmos_sensor(0x8d)<<8)|HI704_read_cmos_sensor(0x8e));
+			
+			HI704_expmax = ((HI704_expfix_temp-HI704_expbanding)/HI704_expbanding)*HI704_expbanding;	
+			
+			HI704_write_cmos_sensor(0x03, 0x20);
+			HI704_write_cmos_sensor(0x88, (HI704_expmax>>16)&0xff);
+			HI704_write_cmos_sensor(0x89, (HI704_expmax>>8)&0xff);
+			HI704_write_cmos_sensor(0x8a, (HI704_expmax>>0)&0xff);
+			
+			HI704_write_cmos_sensor(0x01, HI704_read_cmos_sensor(0x01)&0xfe);	//Exit Sleep: For Write Reg
+			
+			HI704_write_cmos_sensor(0x03, 0x20);
+			HI704_write_cmos_sensor(0x10, HI704_read_cmos_sensor(0x10)|0x80);	//Open AE
+			HI704_write_cmos_sensor(0x18, HI704_read_cmos_sensor(0x18)&0xf7);	//Reset AE
+		}
+		else//default 50HZ
+		{
+			HI704_expbanding = ((HI704_read_cmos_sensor(0x8b)<<8)|HI704_read_cmos_sensor(0x8c));
+			
+			HI704_expmax = ((HI704_expfix_temp-HI704_expbanding)/HI704_expbanding)*HI704_expbanding;	
+			
+			HI704_write_cmos_sensor(0x03, 0x20);
+			HI704_write_cmos_sensor(0x88, (HI704_expmax>>16)&0xff);
+			HI704_write_cmos_sensor(0x89, (HI704_expmax>>8)&0xff);
+			HI704_write_cmos_sensor(0x8a, (HI704_expmax>>0)&0xff);
+			
+			HI704_write_cmos_sensor(0x01, HI704_read_cmos_sensor(0x01)&0xfe);	//Exit Sleep: For Write Reg
+			
+			HI704_write_cmos_sensor(0x03, 0x20);
+			HI704_write_cmos_sensor(0x10, HI704_read_cmos_sensor(0x10)|0x80);	//Open AE
+			HI704_write_cmos_sensor(0x18, HI704_read_cmos_sensor(0x18)&0xf7);	//Reset AE
+		}
+	}
 
-    spin_lock(&hi704_yuv_drv_lock);
-    HI704_sensor.video_current_frame_rate = fix_framerate;
-    spin_unlock(&hi704_yuv_drv_lock);
-    // Fixed Framerate
-    HI704_write_cmos_sensor(0x01, HI704_read_cmos_sensor(0x01)|0x01);   //Sleep: For Write Reg
-
-    HI704_write_cmos_sensor(0x03, 0x00);
-    HI704_write_cmos_sensor(0x11, HI704_read_cmos_sensor(0x11)|0x04);
-
-    HI704_write_cmos_sensor(0x03, 0x20);
-    HI704_write_cmos_sensor(0x10, HI704_read_cmos_sensor(0x10)&0x7f);   //Close AE
-
-    HI704_write_cmos_sensor(0x11, 0x00);
-    HI704_write_cmos_sensor(0x18, HI704_read_cmos_sensor(0x18)|0x08);   //Reset AE
-    HI704_write_cmos_sensor(0x2a, 0x00);
-    HI704_write_cmos_sensor(0x2b, 0x35);
-
-    HI704_write_cmos_sensor(0x03, 0x00);
-    temp_data1 = ((HI704_read_cmos_sensor(0x40)<<8)|HI704_read_cmos_sensor(0x41));
-    temp_data2 = ((HI704_read_cmos_sensor(0x42)<<8)|HI704_read_cmos_sensor(0x43));
-    spin_lock(&hi704_yuv_drv_lock);
-    HI704_sensor.pv_dummy_pixels = temp_data1; 
-    HI704_sensor.pv_line_length = HI704_VGA_DEFAULT_PIXEL_NUMS + HI704_sensor.pv_dummy_pixels ;   
-    HI704_sensor.pv_dummy_lines = temp_data2;
-    spin_unlock(&hi704_yuv_drv_lock);
-        
-    HI704_expfix_temp = ((HI704_sensor.pv_pclk*10/fix_framerate)-(HI704_sensor.pv_line_length*HI704_sensor.pv_dummy_lines))/8;    
-    HI704_expfix = ((HI704_expfix_temp*8/HI704_sensor.pv_line_length)*HI704_sensor.pv_line_length)/8;
-        
-    HI704_write_cmos_sensor(0x03, 0x20);    
-    //HI704_write_cmos_sensor(0x83, (HI704_expfix>>16)&0xff);
-    //HI704_write_cmos_sensor(0x84, (HI704_expfix>>8)&0xff);
-    //HI704_write_cmos_sensor(0x85, (HI704_expfix>>0)&0xff);    
-    HI704_write_cmos_sensor(0x91, (HI704_expfix>>16)&0xff);
-    HI704_write_cmos_sensor(0x92, (HI704_expfix>>8)&0xff);
-    HI704_write_cmos_sensor(0x93, (HI704_expfix>>0)&0xff);
-
-    if(HI704_sensor.banding == AE_FLICKER_MODE_50HZ)
-    {
-        HI704_expbanding = ((HI704_read_cmos_sensor(0x8b)<<8)|HI704_read_cmos_sensor(0x8c));
-    }
-    else if(HI704_sensor.banding == AE_FLICKER_MODE_60HZ)
-    {
-        HI704_expbanding = ((HI704_read_cmos_sensor(0x8d)<<8)|HI704_read_cmos_sensor(0x8e));
-    }
-    else
-    {
-        SENSORDB("[HI704]Wrong Banding Setting!!!...");
-    }
-    HI704_expmax = ((HI704_expfix_temp-HI704_expbanding)/HI704_expbanding)*HI704_expbanding;    
-
-    HI704_write_cmos_sensor(0x03, 0x20);
-    HI704_write_cmos_sensor(0x88, (HI704_expmax>>16)&0xff);
-    HI704_write_cmos_sensor(0x89, (HI704_expmax>>8)&0xff);
-    HI704_write_cmos_sensor(0x8a, (HI704_expmax>>0)&0xff);
-
-    HI704_write_cmos_sensor(0x01, HI704_read_cmos_sensor(0x01)&0xfe);   //Exit Sleep: For Write Reg
-
-    HI704_write_cmos_sensor(0x03, 0x20);
-    HI704_write_cmos_sensor(0x10, HI704_read_cmos_sensor(0x10)|0x80);   //Open AE
-    HI704_write_cmos_sensor(0x18, HI704_read_cmos_sensor(0x18)&0xf7);   //Reset AE
-}
 
 #if 0
 // 320 * 240
@@ -950,8 +980,8 @@ void HI704_night_mode(kal_bool enable)
     HI704_sensor.night_mode = enable;
     spin_unlock(&hi704_yuv_drv_lock);
 
-    if(HI704_sensor.MPEG4_Video_mode == KAL_TRUE)
-        return;
+  //  if(HI704_sensor.MPEG4_Video_mode == KAL_TRUE)
+   //     return;
 
     if(enable)
     {
@@ -1003,12 +1033,9 @@ static UINT32 HI704Preview(MSDK_SENSOR_EXPOSURE_WINDOW_STRUCT *image_window,
     HI704_sensor.pv_mode = KAL_TRUE;		
     spin_unlock(&hi704_yuv_drv_lock);
 
-    {   
-        SENSORDB("[HI704]preview set_VGA_mode\n");
-        HI704_Set_VGA_mode();
-    }
 
     HI704_Set_Mirror_Flip(sensor_config_data->SensorImageMirror);
+   HI704_night_mode(HI704_sensor.night_mode);
 
     SENSORDB("[Exit]:HI704 preview func\n");
     return TRUE; 
@@ -1454,41 +1481,32 @@ BOOL HI704_set_param_exposure(UINT16 para)
     spin_lock(&hi704_yuv_drv_lock);
     HI704_sensor.exposure = para;
     spin_unlock(&hi704_yuv_drv_lock);
-
-    HI704_write_cmos_sensor(0x03,0x10);
-    HI704_write_cmos_sensor(0x12,HI704_read_cmos_sensor(0x12)|0x10);
     switch (para)
     {
-    case AE_EV_COMP_13:  //+4 EV
-        HI704_write_cmos_sensor(0x40,0x60);
-        break;  
-    case AE_EV_COMP_10:  //+3 EV
-        HI704_write_cmos_sensor(0x40,0x48);
-        break;    
-    case AE_EV_COMP_07:  //+2 EV
-        HI704_write_cmos_sensor(0x40,0x30);
-        break;    
-    case AE_EV_COMP_03:	 //	+1 EV	
-        HI704_write_cmos_sensor(0x40,0x18);	
-        break;    
-    case AE_EV_COMP_00:  // +0 EV
-        HI704_write_cmos_sensor(0x40,0x10);
-        break;    
-    case AE_EV_COMP_n03:  // -1 EV
-        HI704_write_cmos_sensor(0x40,0x98);
-        break;    
-    case AE_EV_COMP_n07:	// -2 EV		
-        HI704_write_cmos_sensor(0x40,0xb0);	
-        break;    
-    case AE_EV_COMP_n10:   //-3 EV
-        HI704_write_cmos_sensor(0x40,0xc8);
-        break;
-    case AE_EV_COMP_n13:  // -4 EV
-        HI704_write_cmos_sensor(0x40,0xe0);
-        break;
-    default:
-        return FALSE;
-    }
+	case AE_EV_COMP_20: //+2 EV
+		HI704_write_cmos_sensor(0x03,0x20);
+		HI704_write_cmos_sensor(0x70,0x70);
+	break;	
+	case AE_EV_COMP_10:  //+1 EV
+		HI704_write_cmos_sensor(0x03,0x20);
+		HI704_write_cmos_sensor(0x70,0x60);
+	break;	  
+	case AE_EV_COMP_00:  //+2 EV
+		HI704_write_cmos_sensor(0x03,0x20);
+		HI704_write_cmos_sensor(0x70,0x48);
+		break;	  
+		case AE_EV_COMP_n10: // -1 EV
+		HI704_write_cmos_sensor(0x03,0x20);
+		HI704_write_cmos_sensor(0x70,0x30);
+		break;	  
+		case AE_EV_COMP_n20:// -2 EV		
+		HI704_write_cmos_sensor(0x03,0x20);
+		HI704_write_cmos_sensor(0x70,0x20);
+		break;	  
+	default:
+	return FALSE;
+					}
+	
 
     return TRUE;	
 } /* HI704_set_param_exposure */

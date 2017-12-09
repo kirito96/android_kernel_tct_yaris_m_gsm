@@ -86,13 +86,15 @@ static struct prio_set *select_set(struct prio_tracer *pt, int next, int kernel)
 	return &pt->ps[i];
 }
 
+/**
+ * query_prio_tracer -
+ * note: called under @pts_lock protected
+ */
 static struct prio_tracer *query_prio_tracer(pid_t tid)
 {
 	struct rb_node *n = priority_tracers.rb_node;
 	struct prio_tracer *pt;
-	unsigned long flags;
 
-	spin_lock_irqsave(&pts_lock, flags);
 	while (n) {
 		pt = rb_entry(n, struct prio_tracer, rb_node);
 
@@ -101,11 +103,9 @@ static struct prio_tracer *query_prio_tracer(pid_t tid)
 		else if (tid > pt->tid)
 			n = n->rb_right;
 		else {
-			spin_unlock_irqrestore(&pts_lock, flags);
 			return pt;
 		}
 	}
-	spin_unlock_irqrestore(&pts_lock, flags);
 	return NULL;
 }
 
@@ -121,10 +121,13 @@ void update_prio_tracer(pid_t tid, int prio, int policy, int kernel)
 
 	if (!pts_enable) return;
 
-	pt = query_prio_tracer(tid);
-	if (!pt) return;
-
 	spin_lock_irqsave(&pts_lock, flags);
+	pt = query_prio_tracer(tid);
+	if (!pt) {
+		spin_unlock_irqrestore(&pts_lock, flags);
+		return;
+	}
+
 	ps = select_set(pt, 1, kernel);
 	ps->prio = prio;
 	ps->policy = policy;
@@ -136,7 +139,7 @@ void update_prio_tracer(pid_t tid, int prio, int policy, int kernel)
 	kernel ? pt->count_ker++ : pt->count_usr++;
 
 	/* binder priority inherit */
-	if (kernel == 2)
+	if (kernel == PTS_BNDR)
 		pt->prio_binder = prio;
 	spin_unlock_irqrestore(&pts_lock, flags);
 }
@@ -146,6 +149,7 @@ void create_prio_tracer(pid_t tid)
 	struct rb_node **p = &priority_tracers.rb_node;
 	struct rb_node *parent = NULL;
 	struct prio_tracer *new_pt, *pt;
+	struct dentry *d = NULL;
 	unsigned long flags;
 	int i;
 
@@ -153,6 +157,15 @@ void create_prio_tracer(pid_t tid)
 	if (!new_pt) {
 		printk(KERN_ERR "%s: alloc failed\n", __func__);
 		return;
+	}
+
+	if (pts_debugfs_dir_proc) {
+		char strbuf[11];
+		snprintf(strbuf, sizeof(strbuf), "%u", tid);
+		/* debugfs involves mutex... */
+		d = debugfs_create_file(strbuf,
+					S_IRUGO, pts_debugfs_dir_proc,
+					new_pt, &pts_proc_fops);
 	}
 
 	spin_lock_irqsave(&pts_lock, flags);
@@ -166,6 +179,7 @@ void create_prio_tracer(pid_t tid)
 			p = &(*p)->rb_right;
 		else {
 			spin_unlock_irqrestore(&pts_lock, flags);
+			debugfs_remove(d);
 			kfree(new_pt);
 			printk(KERN_ERR "%s: find same pid\n", __func__);
 			return;
@@ -176,44 +190,47 @@ void create_prio_tracer(pid_t tid)
 	for (i = 0; i < 4; i++)
 		new_pt->ps[i].policy = -1;
 	new_pt->prio_binder = PTS_DEFAULT_PRIO;
+	new_pt->debugfs_entry = d;
 
 	rb_link_node(&new_pt->rb_node, parent, p);
 	rb_insert_color(&new_pt->rb_node, &priority_tracers);
 	spin_unlock_irqrestore(&pts_lock, flags);
-
-	if (pts_debugfs_dir_proc) {
-		char strbuf[11];
-		snprintf(strbuf, sizeof(strbuf), "%u", tid);
-		new_pt->debugfs_entry = debugfs_create_file(strbuf,
-					S_IRUGO, pts_debugfs_dir_proc,
-					new_pt, &pts_proc_fops);
-	}
 }
 
 void delete_prio_tracer(pid_t tid)
 {
-	struct prio_tracer *pt = query_prio_tracer(tid);
+	struct prio_tracer *pt;
+	struct dentry *d;
 	unsigned long flags;
 
-	if (!pt) return;
+	spin_lock_irqsave(&pts_lock, flags);
+	pt = query_prio_tracer(tid);
+	if (!pt) {
+		spin_unlock_irqrestore(&pts_lock, flags);
+		return;
+	}
+	d = pt->debugfs_entry;
+	spin_unlock_irqrestore(&pts_lock, flags);
 
-	debugfs_remove(pt->debugfs_entry);
+	/* debugfs involves mutex... */
+	debugfs_remove(d);
 
 	spin_lock_irqsave(&pts_lock, flags);
 	rb_erase(&pt->rb_node, &priority_tracers);
-	spin_unlock_irqrestore(&pts_lock, flags);	
+	kfree(pt);
+	spin_unlock_irqrestore(&pts_lock, flags);
 }
 
 void set_user_nice_syscall(struct task_struct *p, long nice)
 {
 	set_user_nice_core(p, nice);
-	update_prio_tracer(task_pid_nr(p), NICE_TO_PRIO(nice), 0, 0);
+	update_prio_tracer(task_pid_nr(p), NICE_TO_PRIO(nice), 0, PTS_USER);
 }
 
 void set_user_nice_binder(struct task_struct *p, long nice)
 {
 	set_user_nice_core(p, nice);
-	update_prio_tracer(task_pid_nr(p), NICE_TO_PRIO(nice), 0, 2);
+	update_prio_tracer(task_pid_nr(p), NICE_TO_PRIO(nice), 0, PTS_BNDR);
 }
 
 int sched_setscheduler_syscall(struct task_struct *p, int policy,
@@ -228,7 +245,7 @@ int sched_setscheduler_syscall(struct task_struct *p, int policy,
 			prio = __normal_prio(p);
 		else
 			prio = MAX_RT_PRIO-1 - prio;
-		update_prio_tracer(task_pid_nr(p), prio, policy, 0);
+		update_prio_tracer(task_pid_nr(p), prio, policy, PTS_USER);
 	}
 	return retval;
 }
@@ -245,7 +262,7 @@ int sched_setscheduler_nocheck_binder(struct task_struct *p, int policy,
 			prio = __normal_prio(p);
 		else
 			prio = MAX_RT_PRIO-1 - prio;
-		update_prio_tracer(task_pid_nr(p), prio, policy, 2);
+		update_prio_tracer(task_pid_nr(p), prio, policy, PTS_BNDR);
 	}
 	return retval;
 }
@@ -328,6 +345,11 @@ static int pts_enable_show(struct seq_file *m, void *unused)
 	return 0;
 }
 
+static int pts_enable_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pts_enable_show, inode->i_private);
+}
+
 static ssize_t pts_enable_write(struct file *flip, const char *ubuf,
 				size_t cnt, loff_t *data)
 {
@@ -349,16 +371,125 @@ static ssize_t pts_enable_write(struct file *flip, const char *ubuf,
 	return cnt;
 }
 
-static int pts_enable_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, pts_enable_show, inode->i_private);
-}
-
 static const struct file_operations pts_enable_fops = {
 	.owner = THIS_MODULE,
 	.open = pts_enable_open,
 	.read = seq_read,
 	.write = pts_enable_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static int pts_utest_show(struct seq_file *m, void *unused)
+{
+	seq_printf(m, "usage: echo $type $prio $tid\n"
+		      "       $type 0 user / 1 kernel / 2 binder\n"
+		      "       $prio\n"
+		      "              H             L\n"
+		      "         rt   |<----------->|\n"
+		      "              0            98\n"
+		      "       ((RT) 99             1)\n\n"
+		      "                              H          L\n"
+		      "      normal                  |<-------->|\n"
+		      "                            100        139\n"
+		      "                    ((nice) -20         19)\n");
+	return 0;
+}
+
+static int pts_utest_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pts_utest_show, inode->i_private);
+}
+
+/* # echo @ut_type @ut_prio @ut_tid > utest */
+static ssize_t pts_utest_write(struct file *flip, const char *ubuf,
+			       size_t cnt, loff_t *data)
+{
+	char buf[32];
+	size_t copy_size = cnt;
+	unsigned long val;
+	int ut_type, ut_tid, ut_prio;
+	int ret, i = 0, j;
+	struct task_struct *p;
+
+
+	if (cnt >= sizeof(buf))
+		copy_size = 32 - 1;
+	buf[copy_size] = '\0';
+
+	if (copy_from_user(&buf, ubuf, copy_size))
+		return -EFAULT;
+
+	do { } while (buf[i++] != ' ');
+	buf[(i - 1)] = '\0';
+	ret = strict_strtoul(buf, 10, &val);
+	ut_type = (int)val;
+
+	j = i;
+	do { } while (buf[i++] != ' ');
+	buf[(i - 1)] = '\0';
+	ret = strict_strtoul((const char *)(&buf[j]), 10, &val);
+	ut_prio = (int)val;
+
+	ret = strict_strtoul((const char *)(&buf[i]), 10, &val);
+	ut_tid = (int)val;
+
+	printk("%s: unit test %s tid %d prio %d j %d i %d", __func__,
+	       (ut_type == PTS_USER) ? "user" :
+		 ((ut_type == PTS_KRNL) ? "kernel" :
+		   ((ut_type == PTS_BNDR) ? "binder" : "unknown")),
+	       ut_tid, ut_prio, j, i);
+
+
+	/* start to test api */
+	p = find_task_by_vpid(ut_tid);
+	if (!p) goto utest_out;
+
+	if ((ut_prio >= 0) && (ut_prio < MAX_RT_PRIO)) {
+		struct sched_param param;
+
+		/* sched_priority is rt priority rather than effective one */
+		ut_prio = MAX_RT_PRIO-1 - ut_prio;
+		param.sched_priority = ut_prio | MT_ALLOW_RT_PRIO_BIT;
+
+		switch (ut_type) {
+		case PTS_USER:
+			sched_setscheduler_syscall(p, SCHED_RR, &param);
+			break;
+		case PTS_KRNL:
+			sched_setscheduler_nocheck(p, SCHED_RR, &param);
+			break;
+		case PTS_BNDR:
+			sched_setscheduler_nocheck_binder(p, SCHED_RR, &param);
+			break;
+		default:
+			break;
+		}	
+	} else { /* assume normal */
+		switch (ut_type) {
+		case PTS_USER:
+			set_user_nice_syscall(p, PRIO_TO_NICE(ut_prio));
+			break;
+		case PTS_KRNL:
+			set_user_nice(p, PRIO_TO_NICE(ut_prio));
+			break;
+		case PTS_BNDR:
+			set_user_nice_binder(p, PRIO_TO_NICE(ut_prio));
+			break;
+		default:
+			break;
+		}	
+	}
+
+utest_out:
+	return cnt;
+}
+
+static const struct file_operations pts_utest_fops = {
+	.owner = THIS_MODULE,
+	.open = pts_utest_open,
+	.read = seq_read,
+	.write = pts_utest_write,
 	.llseek = seq_lseek,
 	.release = single_release,
 };
@@ -375,11 +506,15 @@ static int __init prio_tracer_init(void)
 				    (S_IRUGO | S_IWUSR | S_IWGRP),
 				    pts_debugfs_dir_root,
 				    NULL, &pts_enable_fops);
+
+		debugfs_create_file("utest",
+				    (S_IRUGO | S_IWUSR | S_IWGRP),
+				    pts_debugfs_dir_root,
+				    NULL, &pts_utest_fops);
 	}
 
-#ifndef USER_BUILD_KERNEL
+	/* if built-in, default on */
 	pts_enable = 1;
-#endif
 	return 0;
 }
 

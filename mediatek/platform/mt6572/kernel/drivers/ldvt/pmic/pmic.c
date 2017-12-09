@@ -14,7 +14,7 @@
 #include <linux/kdev_t.h>
 #include <linux/cdev.h>
 
-#include <mach/timer.h>
+//#include <mach/timer.h>
 #include <mach/irqs.h>
 #include <asm/uaccess.h>
 
@@ -468,279 +468,279 @@ static kal_uint32 aPMURegBeg_bank0[273][2]= {  /* Register , reset val*/
 };
 
 static kal_uint32 aPMURegBeg_mask[273] = { /* mask*/
-  {0x007F},
-  {0x001F},
-  {0x7037},
-  {0x000F},
-  {0x0003},
-  {0xBFFF},
-  {0x0FFF},
-  {0x0030},
-  {0x7F03},
-  {0x00F0},
-  {0x0003},
-  {0x330D},
-  {0x7F00},
-  {0x07FF},
-  {0x0F37},
-  {0x7FFF},
-  {0x7FFF},
-  {0xFFFF},
-  {0x0777},
-  {0x0077},
-  {0xAAAB},
-  {0x0FFF},
-  {0x00FF},
-  {0x009F},
-  {0x0000},
-  {0x0000},
-  {0x0003},
-  {0x0003},
-  {0x0003},
-  {0x001F},
-  {0x001F},
-  {0x001F},
-  {0x8007},
-  {0xFFFF},
-  {0x0000},
-  {0x0001},
-  {0xF1FF},
-  {0xF1FF},
-  {0xF1FF},
-  {0xFFFF},
-  {0x7FFF},
-  {0xC3F3},
-  {0x030F},
-  {0x0033},
-  {0x00FF},
-  {0x000F},
-  {0x0001},
-  {0xFFFF},
-  {0x007F},
-  {0x007F},
-  {0x007F},
-  {0x0000},
-  {0x0333},
-  {0x0333},
-  {0x0333},
-  {0x0D73},
-  {0x7FFF},
-  {0xC3F3},
-  {0x030F},
-  {0x0033},
-  {0x00FF},
-  {0x000F},
-  {0x0001},
-  {0xFFFF},
-  {0x007F},
-  {0x007F},
-  {0x007F},
-  {0x0000},
-  {0x0333},
-  {0x0333},
-  {0x0333},
-  {0x0D73},
-  {0x003F},
-  {0xFFF3},
-  {0xF300},
-  {0x0043},
-  {0xFFFF},
-  {0x000F},
-  {0x0001},
-  {0xFFFF},
-  {0x003F},
-  {0x003F},
-  {0x003F},
-  {0x0000},
-  {0x0777},
-  {0x0333},
-  {0x0333},
-  {0x0073},
-  {0x3F01},
-  {0x3F3F},
-  {0x00FF},
-  {0x0000},
-  {0xFFFC},
-  {0xFFFF},
-  {0x7007},
-  {0xFF0F},
-  {0xFFFC},
-  {0xFFFF},
-  {0x7007},
-  {0xFF0F},
-  {0xFFFC},
-  {0xFFFF},
-  {0x7007},
-  {0xFF0F},
-  {0xFFFC},
-  {0xFFFF},
-  {0x7007},
-  {0xFF0F},
-  {0xFFFF},
-  {0x0000},
-  {0x003F},
-  {0x00FF},
-  {0xFFFF},
-  {0x0F03},
-  {0x7303},
-  {0xFFFF},
-  {0xB000},
-  {0x0029},
-  {0xFFFF},
-  {0x0F50},
-  {0x0F54},
-  {0x0FFF},
-  {0xF00F},
-  {0x78FC},
-  {0x5300},
-  {0x0F56},
-  {0x5300},
-  {0x0003},
-  {0x5003},
-  {0x7003},
-  {0x7003},
-  {0x5307},
-  {0x7003},
-  {0x7003},
-  {0xB003},
-  {0xB003},
-  {0xB003},
-  {0x0F17},
-  {0x7003},
-  {0xFFFF},
-  {0xB003},
-  {0xB007},
-  {0x0101},
-  {0x8C48},
-  {0xC82D},
-  {0x0000},
-  {0x0000},
-  {0xFFFF},
-  {0x0F50},
-  {0x0F50},
-  {0x1FD7},
-  {0x3FD7},
-  {0x3FDF},
-  {0x0FF5},
-  {0x0FF5},
-  {0x0F75},
-  {0xB003},
-  {0x78FD},
-  {0xFFFF},
-  {0x0F35},
-  {0x0F35},
-  {0x0003},
-  {0xB007},
-  {0x3FF5},
-  {0x8FFF},
-  {0x0000},
-  {0x8C5C},
-  {0xE380},
-  {0xB003},
-  {0x0F17},
-  {0x7003},
-  {0x7003},
-  {0x0F17},
-  {0x7003},
-  {0x0F77},
-  {0x7003},
-  {0x0F17},
-  {0x001F},
-  {0x003F},
-  {0x0001},
-  {0xFFFF},
-  {0x0001},
-  {0x0015},
-  {0x0000},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFFFF},
-  {0x0003},
-  {0x00FF},
-  {0x0003},
-  {0x1FEB},
-  {0x13FF},
-  {0x7FFF},
-  {0x07F7},
-  {0x00FF},
-  {0xFF37},
-  {0x007F},
-  {0x771F},
-  {0xFFFF},
-  {0x3FF7},
-  {0xFFFF},
-  {0x000F},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0x0000},
-  {0xFFFF},
-  {0xFFFF},
-  {0x1FF5},
-  {0xF037},
-  {0xFFFF},
-  {0xFFFF},
-  {0x000F},
-  {0x3FFF},
-  {0x3FFF},
-  {0x0000},
-  {0x0000},
-  {0xFC38},
-  {0xCFFF},
-  {0x8017},
-  {0xC3FF},
-  {0xD0BF},
-  {0x8000},
-  {0x8000},
-  {0x81FF},
-  {0x00FF},
-  {0x00FE},
-  {0x00FF},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFF73},
-  {0x0003},
-  {0x0077},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFFFF},
-  {0xFFFF},
-  {0x8333},
-  {0x0100},
-  {0xF3FF},
-  {0x0000},
-  {0x0000},
-  {0xFFFF},
-  {0xFFFF}
+  0x007F,
+  0x001F,
+  0x7037,
+  0x000F,
+  0x0003,
+  0xBFFF,
+  0x0FFF,
+  0x0030,
+  0x7F03,
+  0x00F0,
+  0x0003,
+  0x330D,
+  0x7F00,
+  0x07FF,
+  0x0F37,
+  0x7FFF,
+  0x7FFF,
+  0xFFFF,
+  0x0777,
+  0x0077,
+  0xAAAB,
+  0x0FFF,
+  0x00FF,
+  0x009F,
+  0x0000,
+  0x0000,
+  0x0003,
+  0x0003,
+  0x0003,
+  0x001F,
+  0x001F,
+  0x001F,
+  0x8007,
+  0xFFFF,
+  0x0000,
+  0x0001,
+  0xF1FF,
+  0xF1FF,
+  0xF1FF,
+  0xFFFF,
+  0x7FFF,
+  0xC3F3,
+  0x030F,
+  0x0033,
+  0x00FF,
+  0x000F,
+  0x0001,
+  0xFFFF,
+  0x007F,
+  0x007F,
+  0x007F,
+  0x0000,
+  0x0333,
+  0x0333,
+  0x0333,
+  0x0D73,
+  0x7FFF,
+  0xC3F3,
+  0x030F,
+  0x0033,
+  0x00FF,
+  0x000F,
+  0x0001,
+  0xFFFF,
+  0x007F,
+  0x007F,
+  0x007F,
+  0x0000,
+  0x0333,
+  0x0333,
+  0x0333,
+  0x0D73,
+  0x003F,
+  0xFFF3,
+  0xF300,
+  0x0043,
+  0xFFFF,
+  0x000F,
+  0x0001,
+  0xFFFF,
+  0x003F,
+  0x003F,
+  0x003F,
+  0x0000,
+  0x0777,
+  0x0333,
+  0x0333,
+  0x0073,
+  0x3F01,
+  0x3F3F,
+  0x00FF,
+  0x0000,
+  0xFFFC,
+  0xFFFF,
+  0x7007,
+  0xFF0F,
+  0xFFFC,
+  0xFFFF,
+  0x7007,
+  0xFF0F,
+  0xFFFC,
+  0xFFFF,
+  0x7007,
+  0xFF0F,
+  0xFFFC,
+  0xFFFF,
+  0x7007,
+  0xFF0F,
+  0xFFFF,
+  0x0000,
+  0x003F,
+  0x00FF,
+  0xFFFF,
+  0x0F03,
+  0x7303,
+  0xFFFF,
+  0xB000,
+  0x0029,
+  0xFFFF,
+  0x0F50,
+  0x0F54,
+  0x0FFF,
+  0xF00F,
+  0x78FC,
+  0x5300,
+  0x0F56,
+  0x5300,
+  0x0003,
+  0x5003,
+  0x7003,
+  0x7003,
+  0x5307,
+  0x7003,
+  0x7003,
+  0xB003,
+  0xB003,
+  0xB003,
+  0x0F17,
+  0x7003,
+  0xFFFF,
+  0xB003,
+  0xB007,
+  0x0101,
+  0x8C48,
+  0xC82D,
+  0x0000,
+  0x0000,
+  0xFFFF,
+  0x0F50,
+  0x0F50,
+  0x1FD7,
+  0x3FD7,
+  0x3FDF,
+  0x0FF5,
+  0x0FF5,
+  0x0F75,
+  0xB003,
+  0x78FD,
+  0xFFFF,
+  0x0F35,
+  0x0F35,
+  0x0003,
+  0xB007,
+  0x3FF5,
+  0x8FFF,
+  0x0000,
+  0x8C5C,
+  0xE380,
+  0xB003,
+  0x0F17,
+  0x7003,
+  0x7003,
+  0x0F17,
+  0x7003,
+  0x0F77,
+  0x7003,
+  0x0F17,
+  0x001F,
+  0x003F,
+  0x0001,
+  0xFFFF,
+  0x0001,
+  0x0015,
+  0x0000,
+  0xFFFF,
+  0xFFFF,
+  0xFFFF,
+  0xFFFF,
+  0xFFFF,
+  0xFFFF,
+  0xFFFF,
+  0xFFFF,
+  0xFFFF,
+  0xFFFF,
+  0xFFFF,
+  0xFFFF,
+  0x0003,
+  0x00FF,
+  0x0003,
+  0x1FEB,
+  0x13FF,
+  0x7FFF,
+  0x07F7,
+  0x00FF,
+  0xFF37,
+  0x007F,
+  0x771F,
+  0xFFFF,
+  0x3FF7,
+  0xFFFF,
+  0x000F,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0x0000,
+  0xFFFF,
+  0xFFFF,
+  0x1FF5,
+  0xF037,
+  0xFFFF,
+  0xFFFF,
+  0x000F,
+  0x3FFF,
+  0x3FFF,
+  0x0000,
+  0x0000,
+  0xFC38,
+  0xCFFF,
+  0x8017,
+  0xC3FF,
+  0xD0BF,
+  0x8000,
+  0x8000,
+  0x81FF,
+  0x00FF,
+  0x00FE,
+  0x00FF,
+  0xFFFF,
+  0xFFFF,
+  0xFF73,
+  0x0003,
+  0x0077,
+  0xFFFF,
+  0xFFFF,
+  0xFFFF,
+  0xFFFF,
+  0xFFFF,
+  0xFFFF,
+  0xFFFF,
+  0x8333,
+  0x0100,
+  0xF3FF,
+  0x0000,
+  0x0000,
+  0xFFFF,
+  0xFFFF
 };
 
 static kal_uint32 aPMURegBeg_bank0_write[34][2]= {  /* Register* , write val*/
@@ -781,40 +781,40 @@ static kal_uint32 aPMURegBeg_bank0_write[34][2]= {  /* Register* , write val*/
 };
 
 static kal_uint32 aPMURegBeg_mask_write[34] = { /* mask*/
-  {0x007F},
-  {0x001F},
-  {0x7037},
-  {0x000F},
-  {0x0003},
-  {0x0FFF},
-  {0x0030},
-  {0x7F03},
-  {0x00F0},
-  {0x0003},
-  {0x330D},
-  {0x7F00},
-  {0x07FF},
-  {0x0F37},
-  {0x7FFF},
-  {0x7FFF},
-  {0xFFFF},
-  {0x0777},
-  {0x0077},
-  {0xAAAB},
-  {0x0FFF},
-  {0x00FF},
-  {0x009F},
-  {0x0000},
-  {0x0000},
-  {0x0003},
-  {0x0003},
-  {0x0003},
-  {0x001F},
-  {0x001F},
-  {0x001F},
-  {0x8007},
-  {0xFFFF},
-  {0x0000}
+  0x007F,
+  0x001F,
+  0x7037,
+  0x000F,
+  0x0003,
+  0x0FFF,
+  0x0030,
+  0x7F03,
+  0x00F0,
+  0x0003,
+  0x330D,
+  0x7F00,
+  0x07FF,
+  0x0F37,
+  0x7FFF,
+  0x7FFF,
+  0xFFFF,
+  0x0777,
+  0x0077,
+  0xAAAB,
+  0x0FFF,
+  0x00FF,
+  0x009F,
+  0x0000,
+  0x0000,
+  0x0003,
+  0x0003,
+  0x0003,
+  0x001F,
+  0x001F,
+  0x001F,
+  0x8007,
+  0xFFFF,
+  0x0000
 };
 
 
@@ -837,7 +837,7 @@ extern void upmu_set_reg_value(kal_uint32 reg, kal_uint32 reg_val);
 ///////////////////////////////////////////////////////////////////////////////////
 void pmic_get_chip_version_ldvt(void)
 {
-    kal_uint32 eco_version = 0;
+//    kal_uint32 eco_version = 0;
     kal_uint32 tmp32;
 
 	tmp32 = upmu_get_cid();
@@ -863,7 +863,7 @@ void pmic_get_PCHR_CHRDET_ldvt(void)
 ///////////////////////////////////////////////////////////////////////////////////
 void pmic_VERIFY_DEFAULT_VALUE_ldvt(void)
 {
-	kal_uint32 tmp32=0;
+//	kal_uint32 tmp32=0;
 	kal_uint32 u2PMUReg = 0;
     kal_uint32 u2Cnt = 0;
     kal_uint32 default_value_mask = 0;
@@ -899,7 +899,7 @@ void pmic_VERIFY_DEFAULT_VALUE_ldvt(void)
 ///////////////////////////////////////////////////////////////////////////////////
 void pmic_UVVP_PMIC_TOP_WR(int test_value)
 {
-	kal_uint32 tmp32=0;
+	//kal_uint32 tmp32=0;
 	kal_uint32 u2PMUReg = 0;
     kal_uint32 u2Cnt = 0;
     kal_uint32 default_value_mask = 0;
@@ -1152,10 +1152,10 @@ void do_reset_auxadc(void)
 
 void do_dump_pmic(void)
 {
-	kal_uint32 tmp32=0;
+//	kal_uint32 tmp32=0;
 	kal_uint32 u2PMUReg = 0;
     kal_uint32 u2Cnt = 0;
-    kal_uint32 default_value_mask = 0;
+//    kal_uint32 default_value_mask = 0;
 
 
 	for(u2Cnt = 0; u2Cnt < (sizeof(aPMURegBeg_bank0)/sizeof(*aPMURegBeg_bank0)); ++u2Cnt)
@@ -1176,8 +1176,8 @@ void do_dump_int_status(void)
 {
 
     kal_uint32 ret=0;
-    kal_uint32 ret_val=0;
-    kal_uint32 reg_val=0;
+//    kal_uint32 ret_val=0;
+//    kal_uint32 reg_val=0;
     kal_uint32 int_status_val_0=0;
     kal_uint32 int_status_val_1=0;
 
@@ -1205,7 +1205,7 @@ void do_print_time(void)
 {
 	struct timeval t;
 	do_gettimeofday(&t);
-	printk("time[%d][%d]\n ",t.tv_sec,t.tv_usec);
+	printk("time[%d][%d]\n ",(int)t.tv_sec,(int)t.tv_usec);
 }
 
 
@@ -1501,7 +1501,7 @@ SetReg(GPIO7_MODE, 3'd7);  //TESTOUT0
 	mdelay(10);
 
 	{
-		U32 data1,data2,data3,data4,data5;
+		U32 data1,data2,data3;
 		pmic_read_interface(0xc0c0,&data1,0xffff,0); 
 		pmic_read_interface(0xc0c8,&data2,0xffff,0); 
 		
@@ -1515,7 +1515,7 @@ SetReg(GPIO7_MODE, 3'd7);  //TESTOUT0
 
 void pmic_UVVP_PMIC_AUXADC_1311(void)
 {
-	kal_int32 i=0;
+//	kal_int32 i=0;
 	kal_int32 ret_val=0;
 
 	do_reset_auxadc();
@@ -1544,7 +1544,7 @@ void pmic_UVVP_PMIC_AUXADC_1311(void)
 void pmic_UVVP_PMIC_AUXADC_1321(void)
 {
 
-	kal_int32 i=0;
+//	kal_int32 i=0;
 	kal_int32 ret_val=0;
 
 	do_reset_auxadc();
@@ -2431,7 +2431,7 @@ void do_scrxxx_map(int j)
 
 void do_vproc_en_test(int index_val)
 {
-    int i,j;
+    int i,j=0;
     
     g_buck_num=0;
     
@@ -2466,7 +2466,7 @@ void do_vproc_en_test(int index_val)
 
 void do_vsys_en_test(int index_val)
 {
-    int i,j;
+    int i,j=0;
 
     g_buck_num=1;
 	pmic_config_interface(STRUP_CON7,0xff,0xff,0);
@@ -2503,7 +2503,7 @@ void do_vsys_en_test(int index_val)
 
 void do_vpa_en_test(int index_val)
 {
-    int i,j;
+    int i,j=0;
     
     g_buck_num=2;
     
@@ -2880,7 +2880,7 @@ void do_dlc_subtest(int index_val)
 
 void do_scrxxx_map_dlc(int index_val)
 {
-    int j;
+//    int j;
     
 
     printk("[upmu_set_rg_srclken_en(0)]\n");
@@ -3339,7 +3339,7 @@ void pmic_UVVP_PMIC_BUCK_ON_OFF(int index_val)
 ///////////////////////////////////////////////////////////////////////////////////
 void pmic_UVVP_PMIC_BUCK_VOSEL(int index_val)
 {
-    int i=0; 
+//    int i=0; 
     
     printk("[pmic_UVVP_PMIC_BUCK_VOSEL] start....\n");
 
@@ -3394,7 +3394,7 @@ void pmic_UVVP_PMIC_BUCK_VOSEL(int index_val)
 ///////////////////////////////////////////////////////////////////////////////////
 void pmic_UVVP_PMIC_BUCK_DLC(int index_val)
 {
-    int i=0; 
+//    int i=0; 
     
     printk("[pmic_UVVP_PMIC_DLC_VOSEL] start....\n");
 
@@ -3431,7 +3431,7 @@ void pmic_UVVP_PMIC_BUCK_DLC(int index_val)
 ///////////////////////////////////////////////////////////////////////////////////
 void pmic_UVVP_PMIC_BUCK_BURST(int index_val)
 {
-    int i=0; 
+    //int i=0; 
     
     printk("[pmic_UVVP_PMIC_BUCK_BURST] start....\n");
 
@@ -4602,12 +4602,10 @@ void pmic_UVVP_PMIC_LDO_CAL(int index_val)
 
 
 
-
 //---------------------------------------------------------------------------
 // IOCTL
 //---------------------------------------------------------------------------
-static int uvvp_pmic_ioctl(struct file *file,
-								unsigned int cmd, unsigned long arg)
+long uvvp_pmic_ioctl(struct file *file,unsigned int cmd, unsigned long arg)
 {
 	printk("\r\n******** uvvp_pmic_ioctl cmd[%d]********\r\n",cmd);
 	

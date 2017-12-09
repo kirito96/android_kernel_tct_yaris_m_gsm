@@ -2115,10 +2115,10 @@ mt_restore_control_registers:
         @mcr    p15,0,r3,c13,c0,3    @ TPIDRURO
         @mcr    p15,0,r12,c13,c0,4   @ TPIDRPRW
         @
-        ldmne  r0!, {r1,r2}
+        ldm  r0!, {r1,r2}
         mcr    p15,0,r1,c13,c0,1    @ CONTEXTIDR
         mcr    p15,0,r2,c13,c0,2    @ TPIDRURW
-        ldmne  r0!, {r1,r2}
+        ldm  r0!, {r1,r2}
         mcr    p15,0,r1,c13,c0,3    @ TPIDRURO
         mcr    p15,0,r2,c13,c0,4   @ TPIDRPRW
         
@@ -2268,9 +2268,16 @@ L_CPU_FINAL_WP:
                 @ uart tx register, need update for diff project/platform
                 .word -1056915456 
         .endif
-        
+
+#ifdef CONFIG_DEBUG_RODATA
+new_stack_0:      .word nstack_0+1020
+new_stack_1:      .word nstack_1+1020
+.section".bss","aw",%nobits
+nstack_0:         .space 1024
+nstack_1:         .space 1024
+#else        
 new_stack_0:      .word nstack_0+1020
 nstack_0:         .space 1024
 new_stack_1:      .word nstack_1+1020
 nstack_1:         .space 1024
-
+#endif //end of !CONFIG_DEBUG_RODATA

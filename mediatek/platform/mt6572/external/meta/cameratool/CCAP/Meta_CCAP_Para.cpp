@@ -1,3 +1,37 @@
+/*****************************************************************************
+*  Copyright Statement:
+*  --------------------
+*  This software is protected by Copyright and the information contained
+*  herein is confidential. The software may not be copied and the information
+*  contained herein may not be used or disclosed except with the written
+*  permission of MediaTek Inc. (C) 2008
+*
+*  BY OPENING THIS FILE, BUYER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+*  THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+*  RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO BUYER ON
+*  AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+*  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+*  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+*  NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+*  SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+*  SUPPLIED WITH THE MEDIATEK SOFTWARE, AND BUYER AGREES TO LOOK ONLY TO SUCH
+*  THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. MEDIATEK SHALL ALSO
+*  NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE RELEASES MADE TO BUYER'S
+*  SPECIFICATION OR TO CONFORM TO A PARTICULAR STANDARD OR OPEN FORUM.
+*
+*  BUYER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND CUMULATIVE
+*  LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+*  AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+*  OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY BUYER TO
+*  MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+*
+*  THE TRANSACTION CONTEMPLATED HEREUNDER SHALL BE CONSTRUED IN ACCORDANCE
+*  WITH THE LAWS OF THE STATE OF CALIFORNIA, USA, EXCLUDING ITS CONFLICT OF
+*  LAWS PRINCIPLES.  ANY DISPUTES, CONTROVERSIES OR CLAIMS ARISING THEREOF AND
+*  RELATED THERETO SHALL BE SETTLED BY ARBITRATION IN SAN FRANCISCO, CA, UNDER
+*  THE RULES OF THE INTERNATIONAL CHAMBER OF COMMERCE (ICC).
+*
+*****************************************************************************/
 #define LOG_TAG "CCAP"
 #include <stdio.h>
 #include <fcntl.h>
@@ -19,8 +53,7 @@ extern "C" {
 
 #include "meta_ccap_para.h"
 #include "AcdkLog.h"
-
-
+//#include "cct_if.h"
 
 #define CCAP_DEBUG 1
 
@@ -189,7 +222,7 @@ static META_BOOL bSendDataToACDK(/*ACDK_CCT_FEATURE_ENUM*/int	FeatureID,
     rAcdkFeatureInfo.pu4RealParaOutLen = pRealOutByeCnt; 
     
 
-    return (MDK_IOControl(FeatureID, &rAcdkFeatureInfo));
+    return (Mdk_IOControl(FeatureID, &rAcdkFeatureInfo));
 }
 
 static VOID vPrvCb(VOID *a_pParam)
@@ -204,8 +237,24 @@ static VOID vPrvCb(VOID *a_pParam)
     //ACDK_LOGD("Height:%d", pImgBufInfo->BufInfoUnion.rPrvVDOBufInfo.u2ImgYRes); 
 }
 
+static META_BOOL bSendDataToCCT(/*ACDK_CCT_FEATURE_ENUM*/int    FeatureID,
+                                               UINT8*                                 pInAddr,
+                                               UINT32                                 nInBufferSize,
+                                               UINT8*                                 pOutAddr,
+                                               UINT32                                 nOutBufferSize,
+                                               UINT32*                                       pRealOutByeCnt)
+{
+    ACDK_FEATURE_INFO_STRUCT rAcdkFeatureInfo;
+
+    rAcdkFeatureInfo.puParaIn = pInAddr;
+    rAcdkFeatureInfo.u4ParaInLen = nInBufferSize;
+    rAcdkFeatureInfo.puParaOut = pOutAddr;
+    rAcdkFeatureInfo.u4ParaOutLen = nOutBufferSize;
+    rAcdkFeatureInfo.pu4RealParaOutLen = pRealOutByeCnt;
 
 
+    return (CctIF_IOControl(FeatureID, &rAcdkFeatureInfo));
+}
 META_BOOL FT_ACDK_CCT_OP_PREVIEW_LCD_START(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCNF,char** pBuff)
 {
       if (!g_bAcdkOpend )
@@ -215,17 +264,24 @@ META_BOOL FT_ACDK_CCT_OP_PREVIEW_LCD_START(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pC
 
       ACDK_LOGD("FT_CCT_OP_PREVIEW_LCD_START"); 
 
-      //ACDK_CCT_CAMERA_PREVIEW_STRUCT rCCTPreviewConfig;
-      ACDK_PREVIEW_STRUCT rCCTPreviewConfig;
+      ACDK_CCT_CAMERA_PREVIEW_STRUCT rCCTPreviewConfig; 
 
       rCCTPreviewConfig.fpPrvCB = vPrvCb; 
-      rCCTPreviewConfig.u4PrvW = 320; 
-      rCCTPreviewConfig.u4PrvH = 240; 
+      rCCTPreviewConfig.u2PreviewWidth = 320; 
+      rCCTPreviewConfig.u2PreviewHeight = 240; 
       rCCTPreviewConfig.u16PreviewTestPatEn = 0;
-  
       UINT32 u4RetLen = 0; 
 
-      META_BOOL bRet = bSendDataToACDK (ACDK_CMD_PREVIEW_START, (UINT8 *)&rCCTPreviewConfig,sizeof(ACDK_CCT_CAMERA_PREVIEW_STRUCT),                                      
+/*
+      if(!g_FT_CCT_StateMachine.is_fb_init) 
+      {   
+		  ACDK_LOGE("[CCAP]:  Begin clean cct fb!"); 
+		  // clean cct frame buffer
+		  if(ft_fb_init())
+			  g_FT_CCT_StateMachine.is_fb_init = KAL_TRUE;
+      }
+*/
+      META_BOOL bRet = bSendDataToACDK (ACDK_CMD_PREVIEW_START, (UINT8 *)&rCCTPreviewConfig,sizeof(ACDK_CCT_CAMERA_PREVIEW_STRUCT),
                                                                                                                 NULL,
                                                                                                                 0,
                                                                                                                 &u4RetLen);
@@ -281,8 +337,8 @@ META_BOOL FT_ACDK_CCT_OP_PREVIEW_LCD_STOP(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCN
        }
     	 pCNF->status = FT_CCT_ERR_PREVIEW_ALREADY_STOPPED;
 	     g_FT_CCT_StateMachine.p_preview_sensor = NULL;
-		MDK_DeInit();
-		MDK_Close();
+		Mdk_DeInit();
+		Mdk_Close();
 		g_bAcdkOpend = FALSE;
 		
 	     return TRUE;
@@ -296,15 +352,15 @@ BOOL Set_SubCamera()
     //====== Check If Change Device Without Preview Start/Stop Process ======
     if(g_acdkState == -1 && g_bAcdkOpend == TRUE)
     {
-        MDK_DeInit();
-        MDK_Close();
+        Mdk_DeInit();
+        Mdk_Close();
         g_bAcdkOpend = FALSE;
     }
 		if(!g_bAcdkOpend)
 		{
-			 	if (MDK_Open() == FALSE)
+			 	if (Mdk_Open() == FALSE)
   			{
-      		ACDK_LOGE("MDK_Open() Fail \n"); 
+      		ACDK_LOGE("Mdk_Open() Fail \n"); 
       		return FALSE;
   			}
   			else
@@ -326,18 +382,18 @@ BOOL Set_SubCamera()
 		rAcdkFeatureInfo.pu4RealParaOutLen = &u4RetLen; 
 	
 		LOGD("Set main/sub sensor for sensorInit() in IspHal::init():%d \n",srcDev); 
-		bRet = MDK_IOControl(ACDK_CMD_SET_SRC_DEV, &rAcdkFeatureInfo);
+		bRet = Mdk_IOControl(ACDK_CMD_SET_SRC_DEV, &rAcdkFeatureInfo);
 		if (!bRet) {
 			LOGD("ACDK_FEATURE_SET_SRC_DEV Fail: %d \n",srcDev); 
 			return E_CCT_CCAP_API_FAIL; 
 		}
 
 		LOGE("lln::init ACDK\n");
-		if(MDK_Init()==false)
+		if(Mdk_Init()==false)
 		{
-			LOGE("MDK_Init fail\n");
-			MDK_DeInit();
-			MDK_Close();
+			LOGE("Mdk_Init fail\n");
+			Mdk_DeInit();
+			Mdk_Close();
     	g_bAcdkOpend = FALSE;
 			
 			return E_CCT_CCAP_API_FAIL; 
@@ -359,15 +415,15 @@ BOOL Set_Main2Camera()
     //====== Check If Change Device Without Preview Start/Stop Process ======
     if(g_acdkState == -1 && g_bAcdkOpend == TRUE)
     {
-        MDK_DeInit();
-        MDK_Close();
+        Mdk_DeInit();
+        Mdk_Close();
         g_bAcdkOpend = FALSE;
     }
 		if(!g_bAcdkOpend)
 		{
-			 	if (MDK_Open() == FALSE)
+			 	if (Mdk_Open() == FALSE)
   			{
-      		ACDK_LOGE("MDK_Open() Fail \n"); 
+      		ACDK_LOGE("Mdk_Open() Fail \n");
       		return FALSE;
   			}
   			else
@@ -389,18 +445,18 @@ BOOL Set_Main2Camera()
 		rAcdkFeatureInfo.pu4RealParaOutLen = &u4RetLen; 
 	
 		ACDK_LOGD("Set main/sub sensor for sensorInit() in IspHal::init():%d \n",srcDev); 
-		bRet = MDK_IOControl(ACDK_CMD_SET_SRC_DEV, &rAcdkFeatureInfo);
+		bRet = Mdk_IOControl(ACDK_CMD_SET_SRC_DEV, &rAcdkFeatureInfo);
 		if (!bRet) {
 			ACDK_LOGD("ACDK_FEATURE_SET_SRC_DEV Fail: %d \n",srcDev); 
 			return E_CCT_CCAP_API_FAIL; 
 		}
 
 		ACDK_LOGE("lln::init ACDK\n");
-		if(MDK_Init()==false)
+		if(Mdk_Init()==false)
 		{
-			ACDK_LOGE("MDK_Init fail\n");
-			MDK_DeInit();
-			MDK_Close();
+			ACDK_LOGE("Mdk_Init fail\n");
+			Mdk_DeInit();
+			Mdk_Close();
 			g_bAcdkOpend = FALSE;
 			
 			return E_CCT_CCAP_API_FAIL; 
@@ -426,18 +482,16 @@ BOOL FT_ACDK_CCT_OP_SUBPREVIEW_LCD_START(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCNF
 
       ACDK_LOGD("FT_CCT_OP_SUBPREVIEW_LCD_START\n"); 
 
-      //ACDK_CCT_CAMERA_PREVIEW_STRUCT rCCTPreviewConfig; 
-      ACDK_PREVIEW_STRUCT rCCTPreviewConfig;
+      ACDK_CCT_CAMERA_PREVIEW_STRUCT rCCTPreviewConfig; 
 
       rCCTPreviewConfig.fpPrvCB = vPrvCb; 
-      rCCTPreviewConfig.u4PrvW = 320; 
-      rCCTPreviewConfig.u4PrvH = 240; 
+      rCCTPreviewConfig.u2PreviewWidth = 320; 
+      rCCTPreviewConfig.u2PreviewHeight = 240; 
       rCCTPreviewConfig.u16PreviewTestPatEn = 0;
-  
       UINT32 u4RetLen = 0; 
     
 
-      BOOL bRet = bSendDataToACDK (ACDK_CMD_PREVIEW_START, (UINT8 *)&rCCTPreviewConfig,sizeof(ACDK_CCT_CAMERA_PREVIEW_STRUCT),                                      
+      BOOL bRet = bSendDataToACDK (ACDK_CMD_PREVIEW_START, (UINT8 *)&rCCTPreviewConfig,sizeof(ACDK_CCT_CAMERA_PREVIEW_STRUCT),
                                                                                                                 NULL,
                                                                                                                 0,
                                                                                                                 &u4RetLen);
@@ -461,15 +515,7 @@ BOOL FT_ACDK_CCT_OP_PHOTOFLASH_CONTROL(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCNF,c
 	{
 	   return FALSE;
 	}
-	ACDK_LOGD("FT_ACDK_CCT_OP_PHOTOFLASH_CONTROL func\n");
-
-#ifdef CONSTANT_FLASHLIGHT
-
-#else
-	pCNF->status = FT_CNF_FAIL;
-	if(1)
-    	return FALSE;
-#endif
+	ACDK_LOGD("FT_ACDK_CCT_OP_PHOTOFLASH_CONTROL\n"); 
 	
     UINT32 u4RetLen = 0; 
 	unsigned int inData = 500000; 
@@ -480,9 +526,8 @@ BOOL FT_ACDK_CCT_OP_PHOTOFLASH_CONTROL(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCNF,c
 														   NULL, 
 														   0,
 														   &u4RetLen); 
-	if (bRet<0)
+	if (!bRet)
         {
-    	ACDK_LOGD("[CCAP]:FT_ACDK_CCT_OP_PHOTOFLASH_CONTROL fail!");
       	    pCNF->status = FT_CNF_FAIL;	
             return FALSE; 
         }
@@ -514,8 +559,8 @@ BOOL FT_ACDK_CCT_OP_SUBPREVIEW_LCD_STOP(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCNF,
 	   pCNF->status = FT_CCT_ERR_PREVIEW_ALREADY_STOPPED;
 	   g_FT_CCT_StateMachine.p_preview_sensor = NULL;
 
-	   	MDK_DeInit();
-		MDK_Close();
+	   	Mdk_DeInit();
+		Mdk_Close();
 		g_bAcdkOpend = FALSE;
 	   
 	     return TRUE;
@@ -535,18 +580,16 @@ BOOL FT_ACDK_CCT_OP_MAIN2PREVIEW_LCD_START(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pC
 
       ACDK_LOGD("FT_CCT_OP_MAIN2PREVIEW_LCD_START\n"); 
 
-	ACDK_PREVIEW_STRUCT rCCTPreviewConfig;
-      //ACDK_CCT_CAMERA_PREVIEW_STRUCT rCCTPreviewConfig; 
+      ACDK_CCT_CAMERA_PREVIEW_STRUCT rCCTPreviewConfig; 
 
       rCCTPreviewConfig.fpPrvCB = vPrvCb; 
-      rCCTPreviewConfig.u4PrvW= 320; 
-      rCCTPreviewConfig.u4PrvH= 240; 
+      rCCTPreviewConfig.u2PreviewWidth = 320; 
+      rCCTPreviewConfig.u2PreviewHeight = 240; 
       rCCTPreviewConfig.u16PreviewTestPatEn = 0;
-  
       UINT32 u4RetLen = 0; 
     
 
-      BOOL bRet = bSendDataToACDK (ACDK_CMD_PREVIEW_START, (UINT8 *)&rCCTPreviewConfig,sizeof(ACDK_CCT_CAMERA_PREVIEW_STRUCT),                                      
+      BOOL bRet = bSendDataToACDK (ACDK_CMD_PREVIEW_START, (UINT8 *)&rCCTPreviewConfig,sizeof(ACDK_CCT_CAMERA_PREVIEW_STRUCT),
                                                                                                                 NULL,
                                                                                                                 0,
                                                                                                                 &u4RetLen);
@@ -584,8 +627,8 @@ BOOL FT_ACDK_CCT_OP_MAIN2PREVIEW_LCD_STOP(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCN
 	   pCNF->status = FT_CCT_ERR_PREVIEW_ALREADY_STOPPED;
 	   g_FT_CCT_StateMachine.p_preview_sensor = NULL;
 
-	   	MDK_DeInit();
-		MDK_Close();
+	   	Mdk_DeInit();
+		Mdk_Close();
 		g_bAcdkOpend = FALSE;
 	   
 	     return TRUE;
@@ -1197,15 +1240,17 @@ static VOID vCapCb(VOID *a_pParam)
 bool FT_ACDK_CCT_OP_SINGLE_SHOT_CAPTURE_EX	(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCNF,char** pBuff)
 {
 
-#if 0
+
 	ACDK_CCT_CAP_OUTPUT_FORMAT ACDK_capture_type;
 	unsigned short int width=g_iFullSizeWidth;
 	unsigned short int height=g_iFullSizeHeight;
 	static const FT_CCT_SENSOR_EX  	*s_sensor=NULL;
-        ACDK_CCT_STILL_CAPTURE_STRUCT StillCaptureConfigPara;
-        memset(&StillCaptureConfigPara, 0, sizeof(ACDK_CCT_STILL_CAPTURE_STRUCT));
+        //ACDK_CCT_STILL_CAPTURE_STRUCT StillCaptureConfigPara;
+        ACDK_CAPTURE_STRUCT_S StillCaptureConfigPara;
+        memset(&StillCaptureConfigPara, 0, sizeof(ACDK_CAPTURE_STRUCT_S));
 
 	StillCaptureConfigPara.eOperaMode = ACDK_OPT_META_MODE;
+	StillCaptureConfigPara.i4IsSave = 0;
 
 	if( NULL == (s_sensor=get_sensor_by_id(pREQ->type, pREQ->device_id))) {
 			pCNF->status = FT_CCT_ERR_INVALID_SENSOR_ID;
@@ -1239,7 +1284,7 @@ bool FT_ACDK_CCT_OP_SINGLE_SHOT_CAPTURE_EX	(const FT_CCT_REQ* pREQ,FT_CCT_CNF* p
 		height = height / pREQ->cmd.capture_ex.sub_sample;
 		g_nJPGSize = height*width*3/5;
 		ACDK_capture_type = OUTPUT_JPEG;
-		StillCaptureConfigPara.eOutputFormat = OUTPUT_JPEG; 
+		StillCaptureConfigPara.eOutputFormat = JPEG_TYPE; 
 		g_FT_CCT_StateMachine.output_format = OUTPUT_JPEG;
 		ACDK_LOGD("Capture: capture type is JPEG"); 
 	}
@@ -1247,7 +1292,7 @@ bool FT_ACDK_CCT_OP_SINGLE_SHOT_CAPTURE_EX	(const FT_CCT_REQ* pREQ,FT_CCT_CNF* p
 	{
 		g_nJPGSize = height*width;
 		ACDK_capture_type = OUTPUT_PURE_RAW8;
-    		StillCaptureConfigPara.eOutputFormat = OUTPUT_PURE_RAW8; 
+    		StillCaptureConfigPara.eOutputFormat = PURE_RAW8_TYPE; 
 		g_FT_CCT_StateMachine.output_format = OUTPUT_PURE_RAW8;
    		ACDK_LOGD("Capture: capture type is 8 bit pure Raw data"); 
 	}
@@ -1255,7 +1300,7 @@ bool FT_ACDK_CCT_OP_SINGLE_SHOT_CAPTURE_EX	(const FT_CCT_REQ* pREQ,FT_CCT_CNF* p
 	{
 		g_nJPGSize = height*width;
 		ACDK_capture_type = OUTPUT_PROCESSED_RAW8;
-    		StillCaptureConfigPara.eOutputFormat = OUTPUT_PROCESSED_RAW8; 
+    		StillCaptureConfigPara.eOutputFormat = PROCESSED_RAW8_TYPE; 
 		g_FT_CCT_StateMachine.output_format = OUTPUT_PROCESSED_RAW8;
    		ACDK_LOGD("Capture: capture type is 8 bit processed Raw data"); 
 	}
@@ -1263,7 +1308,7 @@ bool FT_ACDK_CCT_OP_SINGLE_SHOT_CAPTURE_EX	(const FT_CCT_REQ* pREQ,FT_CCT_CNF* p
 	{
 		g_nJPGSize = height*width * 5 / 4;
 		ACDK_capture_type = OUTPUT_PURE_RAW10;
-    		StillCaptureConfigPara.eOutputFormat = OUTPUT_PURE_RAW10; 
+    		StillCaptureConfigPara.eOutputFormat = PURE_RAW10_TYPE; 
 		g_FT_CCT_StateMachine.output_format = OUTPUT_PURE_RAW10;
     		ACDK_LOGD("Capture: capture type is 10 bit pure Raw data"); 
 	}
@@ -1271,7 +1316,7 @@ bool FT_ACDK_CCT_OP_SINGLE_SHOT_CAPTURE_EX	(const FT_CCT_REQ* pREQ,FT_CCT_CNF* p
 	{
 		g_nJPGSize = height*width * 5 / 4;
 		ACDK_capture_type = OUTPUT_PROCESSED_RAW10;
-    		StillCaptureConfigPara.eOutputFormat = OUTPUT_PROCESSED_RAW10; 
+    		StillCaptureConfigPara.eOutputFormat = PROCESSED_RAW10_TYPE; 
 		g_FT_CCT_StateMachine.output_format = OUTPUT_PROCESSED_RAW10;
     		ACDK_LOGD("Capture: capture type is 10 bit processed Raw data"); 
 	}
@@ -1296,9 +1341,9 @@ bool FT_ACDK_CCT_OP_SINGLE_SHOT_CAPTURE_EX	(const FT_CCT_REQ* pREQ,FT_CCT_CNF* p
 	bCapDone = FALSE;
 
 	g_FT_CCT_StateMachine.capture_jpeg_state = CAPTURE_JPEG_PROCESS;
-	if (!bSendDataToACDK(ACDK_CCT_OP_SINGLE_SHOT_CAPTURE_EX, 
+	if (!bSendDataToACDK(ACDK_CMD_CAPTURE/*ACDK_CCT_OP_SINGLE_SHOT_CAPTURE_EX*/,
 		                           (UINT8 *)&StillCaptureConfigPara, 
-                               sizeof(ACDK_CCT_STILL_CAPTURE_STRUCT), 
+                               sizeof(ACDK_CAPTURE_STRUCT_S), 
                                NULL, 
                                0,
                                &ACDKCCTParaLen))
@@ -1349,8 +1394,6 @@ bool FT_ACDK_CCT_OP_SINGLE_SHOT_CAPTURE_EX	(const FT_CCT_REQ* pREQ,FT_CCT_CNF* p
 
 		return true;
 	}
-	#endif
-	return true;
 }
 
 
@@ -2588,6 +2631,35 @@ bool FT_ACDK_CCT_V2_OP_AWB_GET_CCM_STATUS(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCN
 bool FT_ACDK_CCT_V2_OP_AWB_GET_NVRAM_CCM(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCNF,char** pBuff)
 {
 //@ 89 tmp mark
+/*
+	UINT32 u4Index = (UINT32)(pREQ->cmd.awb_get_nvram_ccm_index);
+    ACDK_CCT_CCM_STRUCT ccm;
+    memset(&ccm, 0, sizeof(ccm));
+    UINT32 u4RetLen = 0;
+
+    ACDK_LOGD("ACDK_CCT_V2_OP_AWB_GET_NVRAM_CCM:index=%u", u4Index);
+    if(!bSendDataToACDK(ACDK_CCT_V2_OP_AWB_GET_NVRAM_CCM, 
+			(UINT8*)&u4Index, 
+		   	sizeof(u4Index), 
+		   	(UINT8*)&ccm, 
+		   	sizeof(ccm), 
+		   	&u4RetLen))
+	{
+		pCNF->status = FT_CNF_FAIL;
+		ACDK_LOGD("ACDK_CCT_V2_OP_AWB_GET_NVRAM_CCM driver error!");
+		return false;
+	}
+    
+    memcpy(&(pCNF->result.get_6238_awb_nvram_ccm), &(ccm), sizeof(ACDK_CCT_CCM_STRUCT));
+    pCNF->status = FT_CNF_OK;
+	ACDK_LOGD("ACDK_CCT_V2_OP_AWB_GET_NVRAM_CCM pass!");
+    ACDK_LOGD("Get NVram CCM"); 
+    ACDK_LOGD("Light Mode:%u", u4Index); 
+    ACDK_LOGD("CCM Matrix"); 
+    ACDK_LOGD("M11 M12 M13 : 0x%03X 0x%03X 0x%03X", ccm.M11, ccm.M12, ccm.M13);
+    ACDK_LOGD("M21 M22 M23 : 0x%03X 0x%03X 0x%03X", ccm.M21, ccm.M22, ccm.M23)
+    ACDK_LOGD("M31 M32 M33 : 0x%03X 0x%03X 0x%03X", ccm.M31, ccm.M32, ccm.M33);
+    */
     return true;
 }
 
@@ -4363,6 +4435,219 @@ bool FT_ACDK_CCT_V2_OP_AWB_GET_AWB_PARA(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCNF,
 
     
 //@ 89 tmp mark
+/*
+    AWB_NVRAM_T rAWBNVRAM;
+
+    memset(&rAWBNVRAM,0, sizeof(rAWBNVRAM));
+
+    ACDK_LOGD("ACDK_CCT_V2_OP_AWB_GET_AWB_PARA");     
+    
+    //! ====================================================
+    //! 1. Fill the input / output data  here 
+    //!     or anything you need to initialize 
+    //! ====================================================
+
+
+    UINT32 u4RetLen = 0; 
+
+    //! ====================================================
+    //! 2. Modify the input data, size, and output data, size 
+    //! ====================================================
+    if(!bSendDataToACDK(ACDK_CCT_V2_OP_AWB_GET_AWB_PARA, 
+                        NULL, 
+                        0, 
+                        (UINT8 *)&rAWBNVRAM, 
+                        sizeof(AWB_NVRAM_T),
+                        &u4RetLen))
+    {
+    	pCNF->status = FT_CNF_FAIL;	
+			return false;     
+    }
+		memcpy(&(pCNF->result.get_awb_nvram_info),&rAWBNVRAM,sizeof(AWB_NVRAM_T));
+    pCNF->status = FT_CNF_OK;
+    // TEST ONLY (check AWB parameter)
+    ACDK_LOGD("rCalGain.u4R = %d", rAWBNVRAM.rCalData.rCalGain.u4R);
+    ACDK_LOGD("rCalGain.u4G = %d", rAWBNVRAM.rCalData.rCalGain.u4G);
+    ACDK_LOGD("rCalGain.u4B = %d", rAWBNVRAM.rCalData.rCalGain.u4B);
+    ACDK_LOGD("rDefGain.u4R = %d", rAWBNVRAM.rCalData.rDefGain.u4R);
+    ACDK_LOGD("rDefGain.u4G = %d", rAWBNVRAM.rCalData.rDefGain.u4G);
+    ACDK_LOGD("rDefGain.u4B = %d", rAWBNVRAM.rCalData.rDefGain.u4B);
+    ACDK_LOGD("rD65Gain.u4R = %d", rAWBNVRAM.rCalData.rD65Gain.u4R);
+    ACDK_LOGD("rD65Gain.u4G = %d", rAWBNVRAM.rCalData.rD65Gain.u4G);
+    ACDK_LOGD("rD65Gain.u4B = %d", rAWBNVRAM.rCalData.rD65Gain.u4B);
+    
+    ACDK_LOGD("rOriginalXY.rHorizon.i4X = %d", rAWBNVRAM.rOriginalXY.rHorizon.i4X);
+    ACDK_LOGD("rOriginalXY.rHorizon.i4Y = %d", rAWBNVRAM.rOriginalXY.rHorizon.i4Y);
+    ACDK_LOGD("rOriginalXY.rA.i4X = %d", rAWBNVRAM.rOriginalXY.rA.i4X);
+    ACDK_LOGD("rOriginalXY.rA.i4Y = %d", rAWBNVRAM.rOriginalXY.rA.i4Y);
+    ACDK_LOGD("rOriginalXY.rTL84.i4X = %d", rAWBNVRAM.rOriginalXY.rTL84.i4X);
+    ACDK_LOGD("rOriginalXY.rTL84.i4Y = %d", rAWBNVRAM.rOriginalXY.rTL84.i4Y);
+    ACDK_LOGD("rOriginalXY.rCWF.i4X = %d", rAWBNVRAM.rOriginalXY.rCWF.i4X);
+    ACDK_LOGD("rOriginalXY.rCWF.i4Y = %d", rAWBNVRAM.rOriginalXY.rCWF.i4Y);
+    ACDK_LOGD("rOriginalXY.rDNP.i4X = %d", rAWBNVRAM.rOriginalXY.rDNP.i4X);
+    ACDK_LOGD("rOriginalXY.rDNP.i4Y = %d", rAWBNVRAM.rOriginalXY.rDNP.i4Y);
+    ACDK_LOGD("rOriginalXY.rD65.i4X = %d", rAWBNVRAM.rOriginalXY.rD65.i4X);
+    ACDK_LOGD("rOriginalXY.rD65.i4Y = %d", rAWBNVRAM.rOriginalXY.rD65.i4Y);
+    ACDK_LOGD("rOriginalXY.rD75.i4X = %d", rAWBNVRAM.rOriginalXY.rD75.i4X);
+    ACDK_LOGD("rOriginalXY.rD75.i4Y = %d", rAWBNVRAM.rOriginalXY.rD75.i4Y);
+    ACDK_LOGD("rOriginalXY.rDF.i4X = %d\n", rAWBNVRAM.rOriginalXY.rDF.i4X);
+    ACDK_LOGD("rOriginalXY.rDF.i4Y = %d\n", rAWBNVRAM.rOriginalXY.rDF.i4Y);
+
+    ACDK_LOGD("rRotatedXY.rHorizon.i4X = %d", rAWBNVRAM.rRotatedXY.rHorizon.i4X);
+    ACDK_LOGD("rRotatedXY.rHorizon.i4Y = %d", rAWBNVRAM.rRotatedXY.rHorizon.i4Y);
+    ACDK_LOGD("rRotatedXY.rA.i4X = %d", rAWBNVRAM.rRotatedXY.rA.i4X);
+    ACDK_LOGD("rRotatedXY.rA.i4Y = %d", rAWBNVRAM.rRotatedXY.rA.i4Y);
+    ACDK_LOGD("rRotatedXY.rTL84.i4X = %d", rAWBNVRAM.rRotatedXY.rTL84.i4X);
+    ACDK_LOGD("rRotatedXY.rTL84.i4Y = %d", rAWBNVRAM.rRotatedXY.rTL84.i4Y);
+    ACDK_LOGD("rRotatedXY.rCWF.i4X = %d", rAWBNVRAM.rRotatedXY.rCWF.i4X);
+    ACDK_LOGD("rRotatedXY.rCWF.i4Y = %d", rAWBNVRAM.rRotatedXY.rCWF.i4Y);
+    ACDK_LOGD("rRotatedXY.rDNP.i4X = %d", rAWBNVRAM.rRotatedXY.rDNP.i4X);
+    ACDK_LOGD("rRotatedXY.rDNP.i4Y = %d", rAWBNVRAM.rRotatedXY.rDNP.i4Y);
+    ACDK_LOGD("rRotatedXY.rD65.i4X = %d", rAWBNVRAM.rRotatedXY.rD65.i4X);
+    ACDK_LOGD("rRotatedXY.rD65.i4Y = %d", rAWBNVRAM.rRotatedXY.rD65.i4Y);
+    ACDK_LOGD("rRotatedXY.rD75.i4X = %d", rAWBNVRAM.rRotatedXY.rD75.i4X);
+    ACDK_LOGD("rRotatedXY.rD75.i4Y = %d", rAWBNVRAM.rRotatedXY.rD75.i4Y);
+    ACDK_LOGD("rRotatedXY.rDF.i4X = %d\n", rAWBNVRAM.rRotatedXY.rDF.i4X);
+    ACDK_LOGD("rRotatedXY.rDF.i4Y = %d\n", rAWBNVRAM.rRotatedXY.rDF.i4Y);
+
+    ACDK_LOGD("rRotationMatrix.i4RotationAngle = %d", rAWBNVRAM.rRotationMatrix.i4RotationAngle);
+    ACDK_LOGD("rRotationMatrix.i4H11 = %d", rAWBNVRAM.rRotationMatrix.i4H11);
+    ACDK_LOGD("rRotationMatrix.i4H12 = %d", rAWBNVRAM.rRotationMatrix.i4H12);
+    ACDK_LOGD("rRotationMatrix.i4H21 = %d", rAWBNVRAM.rRotationMatrix.i4H21);
+    ACDK_LOGD("rRotationMatrix.i4H22 = %d", rAWBNVRAM.rRotationMatrix.i4H22);
+
+    ACDK_LOGD("rDaylightLocus.i4SlopeNumerator = %d", rAWBNVRAM.rDaylightLocus.i4SlopeNumerator);
+    ACDK_LOGD("rDaylightLocus.i4SlopeDenominator = %d", rAWBNVRAM.rDaylightLocus.i4SlopeDenominator);
+    
+    ACDK_LOGD("rAWBLightArea.rTungsten.i4RightBound = %d", rAWBNVRAM.rAWBLightArea.rTungsten.i4RightBound);
+    ACDK_LOGD("rAWBLightArea.rTungsten.i4LeftBound = %d", rAWBNVRAM.rAWBLightArea.rTungsten.i4LeftBound);    
+    ACDK_LOGD("rAWBLightArea.rTungsten.i4UpperBound = %d", rAWBNVRAM.rAWBLightArea.rTungsten.i4UpperBound);    
+    ACDK_LOGD("rAWBLightArea.rTungsten.i4LowerBound = %d", rAWBNVRAM.rAWBLightArea.rTungsten.i4LowerBound);    
+    ACDK_LOGD("rAWBLightArea.rWarmFluorescent.i4RightBound = %d", rAWBNVRAM.rAWBLightArea.rWarmFluorescent.i4RightBound);    
+    ACDK_LOGD("rAWBLightArea.rWarmFluorescent.i4LeftBound = %d", rAWBNVRAM.rAWBLightArea.rWarmFluorescent.i4LeftBound);    
+    ACDK_LOGD("rAWBLightArea.rWarmFluorescent.i4UpperBound = %d", rAWBNVRAM.rAWBLightArea.rWarmFluorescent.i4UpperBound);    
+    ACDK_LOGD("rAWBLightArea.rWarmFluorescent.i4LowerBound = %d", rAWBNVRAM.rAWBLightArea.rWarmFluorescent.i4LowerBound);    
+    ACDK_LOGD("rAWBLightArea.rFluorescent.i4RightBound = %d", rAWBNVRAM.rAWBLightArea.rFluorescent.i4RightBound);    
+    ACDK_LOGD("rAWBLightArea.rFluorescent.i4LeftBound = %d", rAWBNVRAM.rAWBLightArea.rFluorescent.i4LeftBound);    
+    ACDK_LOGD("rAWBLightArea.rFluorescent.i4UpperBound = %d", rAWBNVRAM.rAWBLightArea.rFluorescent.i4UpperBound);    
+    ACDK_LOGD("rAWBLightArea.rFluorescent.i4LowerBound = %d", rAWBNVRAM.rAWBLightArea.rFluorescent.i4LowerBound);    
+    ACDK_LOGD("rAWBLightArea.rCWF.i4RightBound = %d", rAWBNVRAM.rAWBLightArea.rCWF.i4RightBound);    
+    ACDK_LOGD("rAWBLightArea.rCWF.i4LeftBound = %d", rAWBNVRAM.rAWBLightArea.rCWF.i4LeftBound);    
+    ACDK_LOGD("rAWBLightArea.rCWF.i4UpperBound = %d", rAWBNVRAM.rAWBLightArea.rCWF.i4UpperBound);    
+    ACDK_LOGD("rAWBLightArea.rCWF.i4LowerBound = %d", rAWBNVRAM.rAWBLightArea.rCWF.i4LowerBound);    
+    ACDK_LOGD("rAWBLightArea.rDaylight.i4RightBound = %d", rAWBNVRAM.rAWBLightArea.rDaylight.i4RightBound);    
+    ACDK_LOGD("rAWBLightArea.rDaylight.i4LeftBound = %d", rAWBNVRAM.rAWBLightArea.rDaylight.i4LeftBound);    
+    ACDK_LOGD("rAWBLightArea.rDaylight.i4UpperBound = %d", rAWBNVRAM.rAWBLightArea.rDaylight.i4UpperBound);    
+    ACDK_LOGD("rAWBLightArea.rDaylight.i4LowerBound = %d", rAWBNVRAM.rAWBLightArea.rDaylight.i4LowerBound);    
+    ACDK_LOGD("rAWBLightArea.rShade.i4RightBound = %d", rAWBNVRAM.rAWBLightArea.rShade.i4RightBound);    
+    ACDK_LOGD("rAWBLightArea.rShade.i4LeftBound = %d", rAWBNVRAM.rAWBLightArea.rShade.i4LeftBound);    
+    ACDK_LOGD("rAWBLightArea.rShade.i4UpperBound = %d", rAWBNVRAM.rAWBLightArea.rShade.i4UpperBound);    
+    ACDK_LOGD("rAWBLightArea.rShade.i4LowerBound = %d", rAWBNVRAM.rAWBLightArea.rShade.i4LowerBound);    
+    ACDK_LOGD("rAWBLightArea.rDaylightFluorescent.i4RightBound = %d\n", rAWBNVRAM.rAWBLightArea.rDaylightFluorescent.i4RightBound);
+    ACDK_LOGD("rAWBLightArea.rDaylightFluorescent.i4LeftBound = %d\n", rAWBNVRAM.rAWBLightArea.rDaylightFluorescent.i4LeftBound);
+    ACDK_LOGD("rAWBLightArea.rDaylightFluorescent.i4UpperBound = %d\n", rAWBNVRAM.rAWBLightArea.rDaylightFluorescent.i4UpperBound);
+    ACDK_LOGD("rAWBLightArea.rDaylightFluorescent.i4LowerBound = %d\n", rAWBNVRAM.rAWBLightArea.rDaylightFluorescent.i4LowerBound);
+    
+    ACDK_LOGD("rPWBLightArea.rReferenceArea.i4RightBound = %d", rAWBNVRAM.rPWBLightArea.rReferenceArea.i4RightBound);
+    ACDK_LOGD("rPWBLightArea.rReferenceArea.i4LeftBound = %d", rAWBNVRAM.rPWBLightArea.rReferenceArea.i4LeftBound);    
+    ACDK_LOGD("rPWBLightArea.rReferenceArea.i4UpperBound = %d", rAWBNVRAM.rPWBLightArea.rReferenceArea.i4UpperBound);    
+    ACDK_LOGD("rPWBLightArea.rReferenceArea.i4LowerBound = %d", rAWBNVRAM.rPWBLightArea.rReferenceArea.i4LowerBound);    
+    ACDK_LOGD("rPWBLightArea.rDaylight.i4RightBound = %d", rAWBNVRAM.rPWBLightArea.rDaylight.i4RightBound);    
+    ACDK_LOGD("rPWBLightArea.rDaylight.i4LeftBound = %d", rAWBNVRAM.rPWBLightArea.rDaylight.i4LeftBound);    
+    ACDK_LOGD("rPWBLightArea.rDaylight.i4UpperBound = %d", rAWBNVRAM.rPWBLightArea.rDaylight.i4UpperBound);    
+    ACDK_LOGD("rPWBLightArea.rDaylight.i4LowerBound = %d", rAWBNVRAM.rPWBLightArea.rDaylight.i4LowerBound);    
+    ACDK_LOGD("rPWBLightArea.rCloudyDaylight.i4RightBound = %d", rAWBNVRAM.rPWBLightArea.rCloudyDaylight.i4RightBound);    
+    ACDK_LOGD("rPWBLightArea.rCloudyDaylight.i4LeftBound = %d", rAWBNVRAM.rPWBLightArea.rCloudyDaylight.i4LeftBound);    
+    ACDK_LOGD("rPWBLightArea.rCloudyDaylight.i4UpperBound = %d", rAWBNVRAM.rPWBLightArea.rCloudyDaylight.i4UpperBound);    
+    ACDK_LOGD("rPWBLightArea.rCloudyDaylight.i4LowerBound = %d", rAWBNVRAM.rPWBLightArea.rCloudyDaylight.i4LowerBound);    
+    ACDK_LOGD("rPWBLightArea.rShade.i4RightBound = %d", rAWBNVRAM.rPWBLightArea.rShade.i4RightBound);    
+    ACDK_LOGD("rPWBLightArea.rShade.i4LeftBound = %d", rAWBNVRAM.rPWBLightArea.rShade.i4LeftBound);    
+    ACDK_LOGD("rPWBLightArea.rShade.i4UpperBound = %d", rAWBNVRAM.rPWBLightArea.rShade.i4UpperBound);    
+    ACDK_LOGD("rPWBLightArea.rShade.i4LowerBound = %d", rAWBNVRAM.rPWBLightArea.rShade.i4LowerBound);    
+    ACDK_LOGD("rPWBLightArea.rTwilight.i4RightBound = %d", rAWBNVRAM.rPWBLightArea.rTwilight.i4RightBound);    
+    ACDK_LOGD("rPWBLightArea.rTwilight.i4LeftBound = %d", rAWBNVRAM.rPWBLightArea.rTwilight.i4LeftBound);    
+    ACDK_LOGD("rPWBLightArea.rTwilight.i4UpperBound = %d", rAWBNVRAM.rPWBLightArea.rTwilight.i4UpperBound);    
+    ACDK_LOGD("rPWBLightArea.rTwilight.i4LowerBound = %d", rAWBNVRAM.rPWBLightArea.rTwilight.i4LowerBound);    
+    ACDK_LOGD("rPWBLightArea.rFluorescent.i4RightBound = %d", rAWBNVRAM.rPWBLightArea.rFluorescent.i4RightBound);    
+    ACDK_LOGD("rPWBLightArea.rFluorescent.i4LeftBound = %d", rAWBNVRAM.rPWBLightArea.rFluorescent.i4LeftBound);    
+    ACDK_LOGD("rPWBLightArea.rFluorescent.i4UpperBound = %d", rAWBNVRAM.rPWBLightArea.rFluorescent.i4UpperBound);    
+    ACDK_LOGD("rPWBLightArea.rFluorescent.i4LowerBound = %d", rAWBNVRAM.rPWBLightArea.rFluorescent.i4LowerBound);    
+    ACDK_LOGD("rPWBLightArea.rWarmFluorescent.i4RightBound = %d", rAWBNVRAM.rPWBLightArea.rWarmFluorescent.i4RightBound);    
+    ACDK_LOGD("rPWBLightArea.rWarmFluorescent.i4LeftBound = %d", rAWBNVRAM.rPWBLightArea.rWarmFluorescent.i4LeftBound);
+    ACDK_LOGD("rPWBLightArea.rWarmFluorescent.i4UpperBound = %d", rAWBNVRAM.rPWBLightArea.rWarmFluorescent.i4UpperBound);        
+    ACDK_LOGD("rPWBLightArea.rWarmFluorescent.i4LowerBound = %d", rAWBNVRAM.rPWBLightArea.rWarmFluorescent.i4LowerBound);        
+    ACDK_LOGD("rPWBLightArea.rIncandescent.i4RightBound = %d", rAWBNVRAM.rPWBLightArea.rIncandescent.i4RightBound);    
+    ACDK_LOGD("rPWBLightArea.rIncandescent.i4LeftBound = %d", rAWBNVRAM.rPWBLightArea.rIncandescent.i4LeftBound);    
+    ACDK_LOGD("rPWBLightArea.rIncandescent.i4UpperBound = %d", rAWBNVRAM.rPWBLightArea.rIncandescent.i4UpperBound);        
+    ACDK_LOGD("rPWBLightArea.rIncandescent.i4LowerBound = %d", rAWBNVRAM.rPWBLightArea.rIncandescent.i4LowerBound);    
+
+    ACDK_LOGD("rPWBDefaultGain.rDaylight.u4R = %d", rAWBNVRAM.rPWBDefaultGain.rDaylight.u4R);
+    ACDK_LOGD("rPWBDefaultGain.rDaylight.u4G = %d", rAWBNVRAM.rPWBDefaultGain.rDaylight.u4G);
+    ACDK_LOGD("rPWBDefaultGain.rDaylight.u4B = %d", rAWBNVRAM.rPWBDefaultGain.rDaylight.u4B);    
+    ACDK_LOGD("rPWBDefaultGain.rCloudyDaylight.u4R = %d", rAWBNVRAM.rPWBDefaultGain.rCloudyDaylight.u4R);    
+    ACDK_LOGD("rPWBDefaultGain.rCloudyDaylight.u4G = %d", rAWBNVRAM.rPWBDefaultGain.rCloudyDaylight.u4G);    
+    ACDK_LOGD("rPWBDefaultGain.rCloudyDaylight.u4B = %d", rAWBNVRAM.rPWBDefaultGain.rCloudyDaylight.u4B);    
+    ACDK_LOGD("rPWBDefaultGain.rShade.u4R = %d", rAWBNVRAM.rPWBDefaultGain.rShade.u4R);    
+    ACDK_LOGD("rPWBDefaultGain.rShade.u4G = %d", rAWBNVRAM.rPWBDefaultGain.rShade.u4G);    
+    ACDK_LOGD("rPWBDefaultGain.rShade.u4B = %d", rAWBNVRAM.rPWBDefaultGain.rShade.u4B);    
+    ACDK_LOGD("rPWBDefaultGain.rTwilight.u4R = %d", rAWBNVRAM.rPWBDefaultGain.rTwilight.u4R);    
+    ACDK_LOGD("rPWBDefaultGain.rTwilight.u4G = %d", rAWBNVRAM.rPWBDefaultGain.rTwilight.u4G);    
+    ACDK_LOGD("rPWBDefaultGain.rTwilight.u4B = %d", rAWBNVRAM.rPWBDefaultGain.rTwilight.u4B);    
+    ACDK_LOGD("rPWBDefaultGain.rFluorescent.u4R = %d", rAWBNVRAM.rPWBDefaultGain.rFluorescent.u4R);    
+    ACDK_LOGD("rPWBDefaultGain.rFluorescent.u4G = %d", rAWBNVRAM.rPWBDefaultGain.rFluorescent.u4G);    
+    ACDK_LOGD("rPWBDefaultGain.rFluorescent.u4B = %d", rAWBNVRAM.rPWBDefaultGain.rFluorescent.u4B);    
+    ACDK_LOGD("rPWBDefaultGain.rWarmFluorescent.u4R = %d", rAWBNVRAM.rPWBDefaultGain.rWarmFluorescent.u4R);       
+    ACDK_LOGD("rPWBDefaultGain.rWarmFluorescent.u4G = %d", rAWBNVRAM.rPWBDefaultGain.rWarmFluorescent.u4G);        
+    ACDK_LOGD("rPWBDefaultGain.rWarmFluorescent.u4B = %d", rAWBNVRAM.rPWBDefaultGain.rWarmFluorescent.u4B);        
+    ACDK_LOGD("rPWBDefaultGain.rIncandescent.u4R = %d", rAWBNVRAM.rPWBDefaultGain.rIncandescent.u4R);        
+    ACDK_LOGD("rPWBDefaultGain.rIncandescent.u4G = %d", rAWBNVRAM.rPWBDefaultGain.rIncandescent.u4G);        
+    ACDK_LOGD("rPWBDefaultGain.rIncandescent.u4B = %d", rAWBNVRAM.rPWBDefaultGain.rIncandescent.u4B);    
+
+    ACDK_LOGD("rPreferenceColor.rTungsten.i4SliderValue = %d", rAWBNVRAM.rPreferenceColor.rTungsten.i4SliderValue);
+    ACDK_LOGD("rPreferenceColor.rTungsten.i4OffsetThr = %d", rAWBNVRAM.rPreferenceColor.rTungsten.i4OffsetThr);    
+    ACDK_LOGD("rPreferenceColor.rWarmFluorescent.i4SliderValue = %d", rAWBNVRAM.rPreferenceColor.rWarmFluorescent.i4SliderValue);    
+    ACDK_LOGD("rPreferenceColor.rWarmFluorescent.i4OffsetThr = %d", rAWBNVRAM.rPreferenceColor.rWarmFluorescent.i4OffsetThr);    
+    ACDK_LOGD("rPreferenceColor.rShade.i4SliderValue = %d", rAWBNVRAM.rPreferenceColor.rShade.i4SliderValue);    
+    ACDK_LOGD("rPreferenceColor.rShade.i4OffsetThr = %d", rAWBNVRAM.rPreferenceColor.rShade.i4OffsetThr);    
+    ACDK_LOGD("rPreferenceColor.rDaylightWBGain.u4R = %d", rAWBNVRAM.rPreferenceColor.rDaylightWBGain.u4R);    
+    ACDK_LOGD("rPreferenceColor.rDaylightWBGain.u4G = %d", rAWBNVRAM.rPreferenceColor.rDaylightWBGain.u4G);    
+    ACDK_LOGD("rPreferenceColor.rDaylightWBGain.u4B = %d", rAWBNVRAM.rPreferenceColor.rDaylightWBGain.u4B);    
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_Tungsten.u4R = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_Tungsten.u4R);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_Tungsten.u4G = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_Tungsten.u4G);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_Tungsten.u4B = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_Tungsten.u4B);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_WarmFluorescent.u4R = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_WarmFluorescent.u4R);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_WarmFluorescent.u4G = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_WarmFluorescent.u4G);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_WarmFluorescent.u4B = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_WarmFluorescent.u4B);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_Fluorescent.u4R = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_Fluorescent.u4R);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_Fluorescent.u4G = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_Fluorescent.u4G);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_Fluorescent.u4B = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_Fluorescent.u4B);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_CWF.u4R = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_CWF.u4R);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_CWF.u4G = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_CWF.u4G);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_CWF.u4B = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_CWF.u4B);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_Daylight.u4R = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_Daylight.u4R);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_Daylight.u4G = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_Daylight.u4G);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_Daylight.u4B = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_Daylight.u4B);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_Shade.u4R = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_Shade.u4R);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_Shade.u4G = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_Shade.u4G);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_Shade.u4B = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_Shade.u4B);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_DaylightFluorescent.u4R = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_DaylightFluorescent.u4R);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_DaylightFluorescent.u4G = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_DaylightFluorescent.u4G);
+    ACDK_LOGD("rPreferenceColor.rPreferenceGain_DaylightFluorescent.u4B = %d\n", rAWBNVRAM.rPreferenceColor.rPreferenceGain_DaylightFluorescent.u4B);
+    
+    ACDK_LOGD("rCCTEstimation.i4CCT[0] = %d", rAWBNVRAM.rCCTEstimation.i4CCT[0]);
+    ACDK_LOGD("rCCTEstimation.i4CCT[1] = %d", rAWBNVRAM.rCCTEstimation.i4CCT[1]);    
+    ACDK_LOGD("rCCTEstimation.i4CCT[2] = %d", rAWBNVRAM.rCCTEstimation.i4CCT[2]);    
+    ACDK_LOGD("rCCTEstimation.i4CCT[3] = %d", rAWBNVRAM.rCCTEstimation.i4CCT[3]);    
+    ACDK_LOGD("rCCTEstimation.i4CCT[4] = %d", rAWBNVRAM.rCCTEstimation.i4CCT[4]);    
+    ACDK_LOGD("rCCTEstimation.i4CCT[5] = %d", rAWBNVRAM.rCCTEstimation.i4CCT[5]);    
+
+    ACDK_LOGD("rCCTEstimation.i4RotatedXCoordinate[0] = %d", rAWBNVRAM.rCCTEstimation.i4RotatedXCoordinate[0]);   
+    ACDK_LOGD("rCCTEstimation.i4RotatedXCoordinate[1] = %d", rAWBNVRAM.rCCTEstimation.i4RotatedXCoordinate[1]);    
+    ACDK_LOGD("rCCTEstimation.i4RotatedXCoordinate[2] = %d", rAWBNVRAM.rCCTEstimation.i4RotatedXCoordinate[2]);    
+    ACDK_LOGD("rCCTEstimation.i4RotatedXCoordinate[3] = %d", rAWBNVRAM.rCCTEstimation.i4RotatedXCoordinate[3]);    
+    ACDK_LOGD("rCCTEstimation.i4RotatedXCoordinate[4] = %d", rAWBNVRAM.rCCTEstimation.i4RotatedXCoordinate[4]);    
+    ACDK_LOGD("rCCTEstimation.i4RotatedXCoordinate[5] = %d", rAWBNVRAM.rCCTEstimation.i4RotatedXCoordinate[5]);    
+*/
  
 }
 
@@ -4606,7 +4891,7 @@ static VOID vGetImageDimensionCb(VOID *a_pParam)
 
 bool FT_ACDK_CCT_OP_GET_IMAGE_DIMENSION(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCNF,char** pBuff)
 {
-#if 0
+/*
 	ACDK_CCT_CAP_OUTPUT_FORMAT ACDK_capture_type;
 	unsigned short int width=g_iFullSizeWidth;
 	unsigned short int height=g_iFullSizeHeight;
@@ -4674,7 +4959,7 @@ bool FT_ACDK_CCT_OP_GET_IMAGE_DIMENSION(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCNF,
 
 	ACDK_LOGD("Get image dimension: Send capture req to ACDK...");
 	//g_FT_CCT_StateMachine.capture_jpeg_state = CAPTURE_JPEG_PROCESS;
-	if (!bSendDataToACDK(ACDK_CCT_OP_SINGLE_SHOT_CAPTURE_EX, 
+	if (!bSendDataToCCT(ACDK_CMD_CAPTURE,
 		                           (UINT8 *)&StillCaptureConfigPara, 
                                sizeof(ACDK_CCT_STILL_CAPTURE_STRUCT), 
                                NULL, 
@@ -4721,7 +5006,7 @@ bool FT_ACDK_CCT_OP_GET_IMAGE_DIMENSION(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCNF,
 		pCNF->result.get_image_dimension.output_format = pREQ->cmd.get_image_dimension.output_format;
 		return true;
 	}
-	#endif
+	*/
 	return true;
 }
 
@@ -5049,7 +5334,7 @@ bool FT_ACDK_CCT_V2_OP_ISP_GET_NVRAM_DATA(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCN
         case CAMERA_NVRAM_3A_STRUCT:
             	break;
         case CAMERA_NVRAM_ISP_PARAM_STRUCT:
-		g_NvramBufferLen = 	sizeof(NVRAM_CAMERA_ISP_PARAM_STRUCT);
+		g_NvramBufferLen = 	sizeof(ISP_NVRAM_REGISTER_STRUCT);	
             	break;
         default:
             	ACDK_LOGD("[Get Camera NVRAM data] Unsupported NVRAM structure");    
@@ -5391,6 +5676,28 @@ bool FT_ACDK_CCT_OP_STROBE_RATIO_TUNING(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCNF,
 MRESULT FT_ACDK_CCT_OP_SWITCH_CAMERA(const FT_CCT_REQ* pREQ,FT_CCT_CNF* pCNF,char** pBuff)
 {
 //@89 tmp mark
+/*
+
+    ACDK_LOGD("FT_ACDK_CCT_OP_SWITCH_CAMERA");
+	
+    MUINT32 u4CameraType = (UINT32)(pREQ->cmd.dev_src_device);
+    MUINT32 u4RetLen = 0;
+
+    ACDK_LOGD("u4CameraType: %d\n", u4CameraType);
+
+    BOOL bRet = bSendDataToACDK(ACDK_CCT_OP_SWITCH_CAMERA,
+                                (UINT8*)&u4CameraType,
+                                4,
+                                NULL,
+                                0,
+                                &u4RetLen);
+
+    if (!bRet)
+    {
+        ACDK_LOGE("ACDK_CCT_OP_SWITCH_CAMERA Fail\n");
+        return false;
+    }
+*/
     return true;
 }
 
@@ -5926,14 +6233,14 @@ META_BOOL META_CCAP_init()
 	if(g_bAcdkOpend)
 		return TRUE;
 
-  if (MDK_Open() == FALSE)
+  if (Mdk_Open() == FALSE)
   {
-      ACDK_LOGE("MDK_Open() Fail "); 
+      ACDK_LOGE("Mdk_Open() Fail "); 
       return FALSE;
   }
-	if (MDK_Init() == FALSE) 
+	if (Mdk_Init() == FALSE) 
        {
-           ACDK_LOGE("MDK_Init() Fail "); 
+           ACDK_LOGE("Mdk_Init() Fail "); 
            goto Exit; 
        }
 
@@ -5947,8 +6254,8 @@ META_BOOL META_CCAP_init()
 	bACDKOpenFlag = TRUE;
 	return TRUE;
 Exit:
-	  MDK_DeInit(); 
-    MDK_Close();     
+	Mdk_DeInit();
+    	Mdk_Close();
     ACDK_LOGD("umount SDCard file system"); 
     return FALSE;
 }
@@ -5959,8 +6266,8 @@ void META_CCAP_deinit()
     ACDK_LOGD("META_CCAP_deinit"); 
     
     g_acdkState = -1;
-       MDK_DeInit(); 
-       MDK_Close();
+	Mdk_DeInit();
+       Mdk_Close();
 }
 
 
@@ -5987,6 +6294,15 @@ void META_CCAP_OP(const FT_CCT_REQ *req, char *peer_buff_in)
 			  g_FT_CCT_StateMachine.is_fb_init = KAL_TRUE;
       }
 
+/*
+	if(!g_FT_CCT_StateMachine.is_init) 
+	{	
+		ACDK_LOGE("[CCAP]:  Begin initialize ft cct!");	
+		// init isp, sensor and firmware
+		if(ft_cct_init())
+			g_FT_CCT_StateMachine.is_init = KAL_TRUE;
+	}
+*/
 	
 	//get input data
 	if(FALSE == ProcessFT_Command(req,peer_buff_in,&cnf))

@@ -22,6 +22,7 @@
 #include <asm/memory.h>
 #include <asm/thread_info.h>
 #include <asm/pgtable.h>
+#include <asm/vfpmacros.h>
 
 #ifdef CONFIG_DEBUG_LL
 #include <mach/debug-macro.S>
@@ -254,6 +255,7 @@ __create_page_tables:
 	/*
 	 * Then map boot params address in r2 or the first 1MB (2MB with LPAE)
 	 * of ram if boot params address is not specified.
+	 * We map 2 sections in case the ATAGs/DTB crosses a section boundary.
 	 */
 	mov	r0, r2, lsr #SECTION_SHIFT
 	movs	r0, r0, lsl #SECTION_SHIFT
@@ -262,6 +264,8 @@ __create_page_tables:
 	add	r3, r3, #PAGE_OFFSET
 	add	r3, r4, r3, lsr #(SECTION_SHIFT - PMD_ORDER)
 	orr	r6, r7, r0
+	str	r6, [r3], #1 << PMD_ORDER
+	add	r6, r6, #1 << SECTION_SHIFT
 	str	r6, [r3]
 
 #ifdef CONFIG_DEBUG_LL
@@ -339,6 +343,16 @@ __turn_mmu_on_loc:
 #if defined(CONFIG_SMP)
 	__CPUINIT
 ENTRY(secondary_startup)
+#ifdef CONFIG_VFP_OPT
+	ldr r10, =(0xF << 20)
+	mcr p15, 0, r10, c1, c0, 2
+	VFPFMRX r10, FPEXC		@ Is the VFP enabled?
+	orr r10, r10, #FPEXC_EN		@ user FPEXC has the enable bit set
+	bic r10, r10, #FPEXC_EX		@ make sure exceptions are disabled
+	VFPFMXR FPEXC, r10		@ enable VFP, disable any pending
+					@ exceptions, so we can get at the
+					@ rest of it
+#endif
 	/*
 	 * Common entry point for secondary CPUs.
 	 *

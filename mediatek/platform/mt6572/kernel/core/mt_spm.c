@@ -18,9 +18,9 @@ DEFINE_SPINLOCK(spm_lock);
 extern irqreturn_t (*spm_wdt_irq_bark)(int irq, void *dev_id);
 extern void	(*spm_wdt_fiq_bark)(void *arg, void *regs, void *svc_sp);
 
-static irqreturn_t spm0_irq_handler(int irq, void *dev_id)
+irqreturn_t spm0_irq_handler(int irq, void *dev_id)
 {
-    spm_error("GENE", "!!! SPM ISR[0] SHOULD NOT BE EXECUTED !!!\n");
+    spm_error("!!! SPM ISR[0] SHOULD NOT BE EXECUTED !!!\n");
 
     spin_lock(&spm_lock);
     /* clean ISR status */
@@ -31,7 +31,7 @@ static irqreturn_t spm0_irq_handler(int irq, void *dev_id)
     return IRQ_HANDLED;
 }
 
-static irqreturn_t spm1_irq_handler(int irq, void *dev_id)
+irqreturn_t spm1_irq_handler(int irq, void *dev_id)
 {
     #ifdef CONFIG_KICK_SPM_WDT
         //spin_lock(&spm_lock);
@@ -54,7 +54,7 @@ static irqreturn_t spm1_irq_handler(int irq, void *dev_id)
 }
 
 #ifdef CONFIG_KICK_SPM_WDT
-static void spm1_fiq_handler(void *arg, void *regs, void *svc_sp)
+ void spm1_fiq_handler(void *arg, void *regs, void *svc_sp)
 {   
     //aee_wdt_printf("Orz.Orz.Orz...SPM WDT Timeout @ FRQ\n");
 
@@ -93,7 +93,7 @@ void spm_module_init(void)
     spin_unlock_irqrestore(&spm_lock, flags);
     r = request_irq(MT_SPM0_IRQ_ID, spm0_irq_handler, IRQF_TRIGGER_LOW,"mt-spm", NULL);
     if (r) {
-        spm_error("GENE", "SPM IRQ[0] register failed (%d)\n", r);
+        spm_error("SPM IRQ[0] register failed (%d)\n", r);
         WARN_ON(1);
  
    }
@@ -110,7 +110,7 @@ void spm_module_init(void)
     #endif 
 
     if (r) {
-        spm_error("GENE", "SPM IRQ[1] register failed (%d)\n", r);
+        spm_error("SPM IRQ[1] register failed (%d)\n", r);
         WARN_ON(1);}    
 }
 
@@ -121,7 +121,8 @@ bool spm_is_md_sleep(void)
 
 bool spm_is_conn_sleep(void)
 {
-    return !(spm_read(SPM_PCM_REG13_DATA) & R13_CONN_STATE);
+    //return !(spm_read(SPM_PCM_REG13_DATA) & R13_CONN_STATE);
+    return !(spm_read(SPM_PCM_REG13_DATA) & R13_CONN_APSRC_REQ);
 }
 
 

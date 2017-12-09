@@ -57,7 +57,7 @@ typedef struct
 {
    kal_uint32 pucPhysBufAddr;
    kal_uint8 *pucVirtBufAddr;
-#if !defined(DL1_MEM_FIXED_IN_SRAM)
+#if defined(MTK_AUDIO_DYNAMIC_SRAM_SUPPORT)
    kal_uint32 pucPhysBufAddrBackup;
    kal_uint8 *pucVirtBufAddrBackup;
 #endif

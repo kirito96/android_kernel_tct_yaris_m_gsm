@@ -1,4 +1,53 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein
+ * is confidential and proprietary to MediaTek Inc. and/or its licensors.
+ * Without the prior written permission of MediaTek inc. and/or its licensors,
+ * any reproduction, modification, use or disclosure of MediaTek Software,
+ * and information contained herein, in whole or in part, shall be strictly prohibited.
+ */
+/* MediaTek Inc. (C) 2010. All rights reserved.
+ *
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER ON
+ * AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL WARRANTIES,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR NONINFRINGEMENT.
+ * NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH RESPECT TO THE
+ * SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY, INCORPORATED IN, OR
+ * SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES TO LOOK ONLY TO SUCH
+ * THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO. RECEIVER EXPRESSLY ACKNOWLEDGES
+ * THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES
+ * CONTAINED IN MEDIATEK SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK
+ * SOFTWARE RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S ENTIRE AND
+ * CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE RELEASED HEREUNDER WILL BE,
+ * AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE MEDIATEK SOFTWARE AT ISSUE,
+ * OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE CHARGE PAID BY RECEIVER TO
+ * MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek Software")
+ * have been modified by MediaTek Inc. All revisions are subject to any receiver's
+ * applicable license agreements with MediaTek Inc.
+ */
 
+/*
+ * Copyright (C) 2007 The Android Open Source Project
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,7 +83,7 @@ struct MtdWriteContext {
     size_t stored;
     int fd;
 
-    off_t* bad_block_offsets;
+    off64_t* bad_block_offsets;
     int bad_block_alloc;
     int bad_block_count;
 };
@@ -273,7 +322,7 @@ static int read_block(const MtdPartition *partition, int fd, char *data)
         return -1;
     }
 
-    loff_t pos = lseek64(fd, 0, SEEK_CUR);
+    off64_t pos = lseek64(fd, 0, SEEK_CUR);
 
     ssize_t size = partition->erase_size;
     int mgbb;
@@ -380,11 +429,11 @@ MtdWriteContext *mtd_write_partition(const MtdPartition *partition)
     return ctx;
 }
 
-static void add_bad_block_offset(MtdWriteContext *ctx, off_t pos) {
+static void add_bad_block_offset(MtdWriteContext *ctx, off64_t pos) {
     if (ctx->bad_block_count + 1 > ctx->bad_block_alloc) {
         ctx->bad_block_alloc = (ctx->bad_block_alloc*2) + 1;
         ctx->bad_block_offsets = realloc(ctx->bad_block_offsets,
-                                         ctx->bad_block_alloc * sizeof(off_t));
+                                         ctx->bad_block_alloc * sizeof(off64_t));
     }
     ctx->bad_block_offsets[ctx->bad_block_count++] = pos;
 }
@@ -394,12 +443,12 @@ static int write_block(MtdWriteContext *ctx, const char *data)
     const MtdPartition *partition = ctx->partition;
     int fd = ctx->fd;
 
-    off_t pos = lseek(fd, 0, SEEK_CUR);
-    if (pos == (off_t) -1) return 1;
+    off64_t pos = lseek64(fd, 0, SEEK_CUR);
+    if (pos == (off64_t) -1) return 1;
 
     ssize_t size = partition->erase_size;
     while (pos + size <= (int) partition->size) {
-        loff_t bpos = pos;
+        off64_t bpos = pos;
         if (ioctl(fd, MEMGETBADBLOCK, &bpos) > 0) {
             add_bad_block_offset(ctx, pos);
             fprintf(stderr, "mtd: not writing bad block at 0x%08lx\n", pos);
@@ -417,14 +466,14 @@ static int write_block(MtdWriteContext *ctx, const char *data)
                         pos, strerror(errno));
                 continue;
             }
-            if (lseek(fd, pos, SEEK_SET) != pos ||
+            if (lseek64(fd, pos, SEEK_SET) != pos ||
                 write(fd, data, size) != size) {
                 fprintf(stderr, "mtd: write error at 0x%08lx (%s)\n",
                         pos, strerror(errno));
             }
 
             char verify[size];
-            if (lseek(fd, pos, SEEK_SET) != pos ||
+            if (lseek64(fd, pos, SEEK_SET) != pos ||
                 read(fd, verify, size) != size) {
                 fprintf(stderr, "mtd: re-read error at 0x%08lx (%s)\n",
                         pos, strerror(errno));
@@ -483,7 +532,7 @@ ssize_t mtd_write_data(MtdWriteContext *ctx, const char *data, size_t len)
     return wrote;
 }
 
-off_t mtd_erase_blocks(MtdWriteContext *ctx, int blocks)
+off64_t mtd_erase_blocks(MtdWriteContext *ctx, int blocks)
 {
     // Zero-pad and write any pending data to get us to a block boundary
     if (ctx->stored > 0) {
@@ -493,8 +542,8 @@ off_t mtd_erase_blocks(MtdWriteContext *ctx, int blocks)
         ctx->stored = 0;
     }
 
-    off_t pos = lseek(ctx->fd, 0, SEEK_CUR);
-    if ((off_t) pos == (off_t) -1) return pos;
+    off64_t pos = lseek64(ctx->fd, 0, SEEK_CUR);
+    if ((off64_t) pos == (off64_t) -1) return pos;
 
     const int total = (ctx->partition->size - pos) / ctx->partition->erase_size;
     if (blocks < 0) blocks = total;
@@ -505,7 +554,7 @@ off_t mtd_erase_blocks(MtdWriteContext *ctx, int blocks)
 
     // Erase the specified number of blocks
     while (blocks-- > 0) {
-        loff_t bpos = pos;
+        off64_t bpos = pos;
         if (ioctl(ctx->fd, MEMGETBADBLOCK, &bpos) > 0) {
             fprintf(stderr, "mtd: not erasing bad block at 0x%08lx\n", pos);
             pos += ctx->partition->erase_size;
@@ -528,7 +577,7 @@ int mtd_write_close(MtdWriteContext *ctx)
 {
     int r = 0;
     // Make sure any pending data gets written
-    if (mtd_erase_blocks(ctx, 0) == (off_t) -1) r = -1;
+    if (mtd_erase_blocks(ctx, 0) == (off64_t) -1) r = -1;
     if (close(ctx->fd)) r = -1;
     free(ctx->bad_block_offsets);
     free(ctx->buffer);
@@ -536,7 +585,10 @@ int mtd_write_close(MtdWriteContext *ctx)
     return r;
 }
 
-off_t mtd_find_write_start(MtdWriteContext *ctx, off_t pos) {
+/* Return the offset of the first good block at or after pos (which
+ * might be pos itself).
+ */
+off64_t mtd_find_write_start(MtdWriteContext *ctx, off64_t pos) {
     int i;
     for (i = 0; i < ctx->bad_block_count; ++i) {
         if (ctx->bad_block_offsets[i] == pos) {

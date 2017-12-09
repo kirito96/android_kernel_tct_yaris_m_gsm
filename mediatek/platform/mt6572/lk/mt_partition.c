@@ -1,6 +1,11 @@
 #include <mt_partition.h>
 #include <stdint.h>
+#include <printf.h>
+#include <malloc.h>
+#include <string.h>
 #include <platform/errno.h>
+#include <platform/mmc_core.h>
+#include <platform/mmc_common_inter.h>
 #include "pmt.h"
 #include <target.h>
 
@@ -94,7 +99,7 @@ part_t* mt_part_get_partition(char *name)
 	
 	while (part->name)
 	{
-		if (!strcmp (name, part->name))
+		if (!strcmp (name, (const char *)part->name))
 		{
 #ifdef PMT
 		tempart.name=part->name;
@@ -141,6 +146,10 @@ int mt_part_generic_read(part_dev_t *dev, u64 src, uchar *dst, int size)
 	if (part_start) {
 	    blknr = aligned_start >> BLK_BITS;	
 		part_len = BLK_SIZE - part_start;
+		if(part_len>(u64)size)
+		{
+			part_len = size;
+		}
 		if ((blkdev->block_read(dev_id, blknr, 1, (unsigned long*)buf)) != 1)
 			return -EIO;
 		memcpy(dst, buf + part_start, part_len);
@@ -152,9 +161,11 @@ int mt_part_generic_read(part_dev_t *dev, u64 src, uchar *dst, int size)
 	blknr  = aligned_start >> BLK_BITS;
 	blkcnt = (aligned_end - aligned_start) >> BLK_BITS;
 	
+	if(blkcnt!=0)
+	{
 	if ((blkdev->block_read(dev_id, blknr, blkcnt, (unsigned long *)(dst))) != blkcnt)
 		return -EIO;
-
+	}
     src += (blkcnt << BLK_BITS);
     dst += (blkcnt << BLK_BITS);
 
@@ -274,6 +285,10 @@ int mt_part_generic_read(part_dev_t *dev, ulong src, uchar *dst, int size)
 	if (part_start) {
 	    blknr = aligned_start >> BLK_BITS;	
 		part_len = BLK_SIZE - part_start;
+		if(part_len>(ulong)size)
+		{
+			part_len = size;
+		}
 		if ((blkdev->block_read(dev_id, blknr, 1, (unsigned long*)buf)) != 1)
 			return -EIO;
 		memcpy(dst, buf + part_start, part_len);
@@ -285,8 +300,11 @@ int mt_part_generic_read(part_dev_t *dev, ulong src, uchar *dst, int size)
 	blknr  = aligned_start >> BLK_BITS;
 	blkcnt = (aligned_end - aligned_start) >> BLK_BITS;
 	
+	if(blkcnt!=0)
+	{
 	if ((blkdev->block_read(dev_id, blknr, blkcnt, (unsigned long *)(dst))) != blkcnt)
 		return -EIO;
+	}
 
     src += (blkcnt << BLK_BITS);
     dst += (blkcnt << BLK_BITS);
@@ -407,9 +425,9 @@ int partition_get_index(const char * name)
 			printf("[%s]find %s %s index %d\n",__FUNCTION__,name,g_part_name_map[index].r_name,g_part_name_map[index].partition_idx);
 			return g_part_name_map[index].partition_idx;
 		}
-	}
-	if(index == PART_MAX_COUNT)
-		return -1;
+	}	
+	// No found
+  return -1;
 }
 
 u64 partition_get_offset(int index)
@@ -463,7 +481,7 @@ int emmc_erase(u64 offset, u64 size)
 unsigned long partition_reserve_size(void)
 {
 	unsigned long size = 0;	
-	if(target_is_emmc_boot){
+	if(target_is_emmc_boot()){
 #ifdef MTK_EMMC_SUPPORT_OTP
 		size += PART_SIZE_OTP;
 #endif

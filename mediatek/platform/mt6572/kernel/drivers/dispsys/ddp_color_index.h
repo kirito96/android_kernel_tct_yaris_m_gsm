@@ -1,5 +1,8 @@
+#ifndef __DDP_COLOR_INDEX_H__
+#define __DDP_COLOR_INDEX_H__
 
 #include "ddp_drv.h"
+
 
 static DISPLAY_PQ_T pqindex =
 {
@@ -437,3 +440,6 @@ entry:
     }
 }
 };
+
+#endif
+

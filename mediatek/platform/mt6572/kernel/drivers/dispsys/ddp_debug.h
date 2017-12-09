@@ -4,6 +4,8 @@
 #include <linux/kernel.h>
 #include <linux/mmprofile.h>
 
+#include <mach/mt_typedefs.h>
+
 
 extern struct DDP_MMP_Events_t
 {
@@ -25,6 +27,7 @@ extern struct DDP_MMP_Events_t
     MMP_Event CMDQ_IRQ;
     MMP_Event Mutex_IRQ;
     MMP_Event WAIT_INTR;
+    MMP_Event Debug;
 } DDP_MMP_Events;
 //#define DISP_MSG(...)   xlog_printk(ANDROID_LOG_DEBUG, "xlog/disp", __VA_ARGS__)
 //#define DISP_DBG(...)   xlog_printk(ANDROID_LOG_WARN,  "xlog/disp", __VA_ARGS__)
@@ -32,8 +35,8 @@ extern struct DDP_MMP_Events_t
 
 
 // global debug macro for DDP
-#define DDP_DRV_DBG
-#define LCD_DRV_DBG
+#define DDP_DRV_DBG_ON
+#define LCD_DRV_DBG_ON
 
 
 extern unsigned int ddp_drv_dbg_log;

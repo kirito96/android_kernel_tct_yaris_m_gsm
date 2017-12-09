@@ -146,6 +146,7 @@
 #define spm_is_wakesrc_invalid(wakeid) ((wakeid & WAKE_SRC_ALWAYS_OFF) != 0)//Scott, why we need !!??
 
 /* PCM R13 */
+#define R13_CONN_APSRC_REQ          (1U << 2)
 #define R13_MD_STATE                (1U << 7)
 #define R13_CONN_STATE              (1U << 11)
 #define R13_UART_CLK_OFF_ACK        (1U << 20)
@@ -191,7 +192,7 @@ typedef struct {
     u32 AP_STANBY_CON;
     u32 SLEEP_CPU_WAKEUP_EVENT;
     u32 SLEEP_ISR_STATUS; 
-    u32 PCM_REG_DATA[15];
+    u32 PCM_REG_DATA[16];
     u32 SPM_CLK_CON_STA;
 }PCM_DBG_REG;
 
@@ -205,7 +206,7 @@ typedef struct
 {
 		SPM_PCM_SCENARIO scenario;	
 	   // u8  cpu_status;                 //Currently not used, paremeter passed tp cpu_power_down()
-	   
+	    
 	   char*    ver;
 	    
 	/*6589: spm_set_sysclk_settle*/
@@ -214,8 +215,8 @@ typedef struct
 		//enum 	SYSSETTLE_SEL{MD1=0,MD2} sys_26m_src; //Select settle time source
 	
 	/*6589: spm_kick_im_to_fetch*/
-		u32 	pcm_firmware_addr;		//Address of the SPM firmware
-		u16		pcm_firmware_len;		//Size of the SPM firmware (number of bytes)
+	    u32 	pcm_firmware_addr;		//Address of the SPM firmware
+		u16	pcm_firmware_len;		//Size of the SPM firmware (number of bytes)
 		
 	/*6589:spm_request_uart_to_sleep*/
 		bool 	spm_request_uart_sleep;	//call spm_request_uart_to_sleep or not;

@@ -5,7 +5,11 @@
 #include <sys/types.h>
 #include <platform/mt_reg_base.h>
 #ifndef MTK_EMMC_SUPPORT
+#ifdef MTK_SPI_NAND_SUPPORT
+#include "snand_device_list.h"
+#else
 #include "nand_device_list.h"
+#endif
 #endif
 
 typedef volatile unsigned char *P_U8;
@@ -98,10 +102,16 @@ typedef signed long long *P_S64;
 #define NFI_FIFODATA3_REG32 ((volatile P_U32)(NFI_BASE+0x019C))
 
 #define NFI_MASTERSTA_REG16 ((volatile P_U16)(NFI_BASE+0x0210))
+#define NFI_SPIDMA_REG32    ((volatile P_U32)(NFI_BASE+0x022C))
+
 
 /*******************************************************************************
  * NFI Register Field Definition 
  *******************************************************************************/
+
+/* NFI_SPIDMA_REG32 */
+#define SPIDMA_SEC_EN        (0x00010000)
+#define SPIDMA_SEC_SIZE_MASK (0x0000FFFF)
 
 /* NFI_CNFG */
 #define CNFG_AHB             (0x0001)
@@ -169,6 +179,10 @@ typedef signed long long *P_S64;
 #define INTR_AHB_DONE_EN     (0x0040)
 #define INTR_ALL_INTR_DE     (0x0000)
 #define INTR_ALL_INTR_EN     (0x007F)
+#define INTR_CUSTOM_PROG_DONE_INTR_EN    (0x00000080)
+#define INTR_AUTO_PROG_DONE_INTR_EN      (0x00000200)
+#define INTR_AUTO_BLKER_INTR_EN          (0x00000800)
+
 
 /* NFI_INTR */
 #define INTR_RD_DONE         (0x0001)
@@ -313,6 +327,8 @@ typedef signed long long *P_S64;
 #define DEC_CNFG_ECC4          (0x0000)
 //#define DEC_CNFG_ECC6          (0x0001)
 //#define DEC_CNFG_ECC12         (0x0002)
+#define DEC_CNFG_DEC_MODE_MASK (0x0030)
+#define DEC_CNFG_AHB           (0x0000)
 #define DEC_CNFG_NFI           (0x0010)
 //#define DEC_CNFG_META6         (0x10300000)
 //#define DEC_CNFG_META8         (0x10400000)
@@ -418,6 +434,17 @@ do {	\
 /*
  * Standard NAND flash commands
  */
+
+#define NAND_CMD_READ_0		(0)
+#define NAND_CMD_READ_1		(1)
+#define NAND_CMD_PAGE_PROG	(0x10)
+#define NAND_CMD_READ_OOB	(0x50)
+#define NAND_CMD_ERASE_1		(0x60)
+#define NAND_CMD_READ_ID		(0x90)
+#define NAND_CMD_ERASE_2		(0xd0)
+#define NAND_CMD_READ_ID		(0x90)
+#define NAND_CMD_READ_START	(0x30)
+
 #define NAND_CMD_READ0		0
 #define NAND_CMD_READ1		1
 #define NAND_CMD_RNDOUT		5
@@ -465,6 +492,8 @@ do {	\
 #define NAND_STATUS_READY	0x40
 #define NAND_STATUS_WP		0x80
 
+#define NAND_CMD_DUMMYREAD          (0x00)
+#define NAND_CMD_DUMMYPROG          (0x80)
 #define NAND_BUSWIDTH_16	0x00000002
 
 #define MTD_MAX_OOBFREE_ENTRIES	8
@@ -506,17 +535,11 @@ do {\
 #define TIMEOUT_3   0xffff
 #define TIMEOUT_4   5000
 
-#ifndef PART_SIZE_BMTPOOL
-#define BMT_POOL_SIZE (80)
-#else
-#define BMT_POOL_SIZE (PART_SIZE_BMTPOOL)
-#endif
-
-#define PMT_POOL_SIZE (2)
 
 #define NAND_SECTOR_SIZE            (512)
-#define NAND_SPARE_PER_SECTOR       (16)
+#define NAND_SPARE_PER_SECTOR       (28)    // for MT6572, ECC-12 is used and needs 28 bytes per sector
 #define NAND_FDM_PER_SECTOR	(8)
+#define IO_WIDTH_4                  4
 #define IO_WIDTH_8                  8
 #define IO_WIDTH_16                 16
 #define OOB_AVAIL_PER_SECTOR 8
@@ -579,7 +602,11 @@ struct nand_chip
     u32 writesize;
     u32 chipsize;
     u32 erasesize;
+    #ifdef MTK_SPI_NAND_SUPPORT
+    u8 id[SNAND_MAX_ID];
+    #else
     u8 id[NAND_MAX_ID];
+    #endif
     u8 id_length;
     u8 *name;
     u32 oobblock;               /* page size */
@@ -597,4 +624,10 @@ extern void nand_driver_test(void);
 extern int nand_erase(u64 offset, u64 size);
 static u32 find_next_good_block(u32 start_block);
 static bool block_replace(u32 src_block, u32 dst_block, u32 error_page);
+extern bool nand_erase_hw (u32 offset);
+extern bool mark_block_bad_hw(u32 offset);
+extern int nand_write_page_hw(u32 page, u8 *dat, u8 *oob);
+extern bool __nand_erase (u32 logical_addr);
+extern bool mark_block_bad (u32 logical_addr);
+static int check_data_empty(void *data, unsigned size);
 #endif

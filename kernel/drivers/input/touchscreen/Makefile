@@ -6,8 +6,6 @@
 
 wm97xx-ts-y := wm97xx-core.o
 
-# for sweep2wake, leave 1st to avoid merge issues at the end of the file
-obj-$(CONFIG_TOUCHSCREEN_SWEEP2WAKE)		+= sweep2wake.o
 # for doubletap2wake, leave 1st to avoid merge issues at the end of the file
 obj-$(CONFIG_TOUCHSCREEN_DOUBLETAP2WAKE)	+= doubletap2wake.o
 

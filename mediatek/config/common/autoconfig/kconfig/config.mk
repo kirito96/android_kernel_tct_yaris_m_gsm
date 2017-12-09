@@ -9,5 +9,6 @@ merge-order   := \
     $(if $(call seq,yes,$(BUILD_DEBUG_KERNEL)),project_debug,) \
     flavor \
     $(if $(call seq,user,$(TARGET_BUILD_VARIANT)),USER,) \
-    $(if $(call seq,userdebug,$(TARGET_BUILD_VARIANT)),USER,)
+    $(if $(call seq,userdebug,$(TARGET_BUILD_VARIANT)),USER,) \
+    $(if $(call seq,userdebug,$(TARGET_BUILD_VARIANT)),USERDEBUG,)
 

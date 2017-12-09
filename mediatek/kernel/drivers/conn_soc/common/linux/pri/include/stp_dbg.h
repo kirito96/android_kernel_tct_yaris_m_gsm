@@ -198,6 +198,7 @@ typedef enum _ENUM_STP_FW_ISSUE_TYPE_{
 	STP_FW_NOACK_ISSUE = 0x2,
 	STP_FW_WARM_RST_ISSUE = 0x3,
 	STP_DBG_PROC_TEST = 0x4,
+	STP_HOST_TRIGGER_FW_ASSERT = 0x5,
 	STP_FW_ISSUE_TYPE_MAX
 }ENUM_STP_FW_ISSUE_TYPE, *P_ENUM_STP_FW_ISSUE_TYPE;
 
@@ -208,6 +209,12 @@ typedef enum _ENUM_STP_FW_ISSUE_TYPE_{
 #define STP_DBG_WIFI_VER_SIZE 8
 #define STP_DBG_ROM_VER_SIZE 4
 #define STP_ASSERT_TYPE_SIZE 32
+
+typedef struct stp_dbg_host_assert_t{
+	UINT32 drv_type;
+	UINT32 reason;
+	UINT32 assert_from_host;
+}STP_DBG_HOST_ASSERT_T, *P_STP_DBG_HOST_ASSERT_T;
 
 typedef struct stp_dbg_cpupcr_t{
 	UINT32 chipId;
@@ -222,6 +229,7 @@ typedef struct stp_dbg_cpupcr_t{
 	UINT32 fwTaskId;
 	UINT32 fwRrq;
 	UINT32 fwIsr;
+	STP_DBG_HOST_ASSERT_T host_assert_info;
 	UINT8 assert_type[STP_ASSERT_TYPE_SIZE];
 	ENUM_STP_FW_ISSUE_TYPE issue_type;
 	OSAL_SLEEPABLE_LOCK lock;
@@ -275,5 +283,7 @@ extern INT32 stp_dbg_poll_cuppcr_ctrl(UINT32 en);
 extern INT32 stp_dbg_set_version_info(UINT32 chipid,UINT8 *pRomVer,UINT8 *wifiVer,UINT8 *pPatchVer,UINT8 *pPatchBrh);
 extern INT32 stp_dbg_cpupcr_infor_format(UINT8 **buf,UINT32 *len);
 extern INT32 stp_dbg_set_fw_info(UINT8 *assert_info,UINT32 len,ENUM_STP_FW_ISSUE_TYPE issue_type);
+extern INT32 stp_dbg_set_host_assert_info(UINT32 drv_type,UINT32 reason,UINT32 en);
+extern UINT32 stp_dbg_get_host_trigger_assert(VOID);
 #endif /* end of _STP_DEBUG_H_ */
 

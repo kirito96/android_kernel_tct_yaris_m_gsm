@@ -46,7 +46,7 @@
 #define STP_PSM_IDLE_TIME_SLEEP           5000   //temporary for stress testing
 #define STP_PSM_SDIO_IDLE_TIME_SLEEP           100   //temporary for SDIO stress testing
 #define STP_PSM_WAIT_EVENT_TIMEOUT        6000
-
+#if 0
 #define STP_PSM_WMT_EVENT_SLEEP_EN                    (0x1UL << 0)
 #define STP_PSM_WMT_EVENT_WAKEUP_EN                   (0x1UL << 1)
 #define STP_PSM_BLOCK_DATA_EN                         (0x1UL << 2)
@@ -56,7 +56,19 @@
 #define STP_PSM_WMT_EVENT_HOST_WAKEUP_EN                    (0x1UL << 6)
 #define STP_PSM_WMT_EVENT_DISABLE_MONITOR_TX_HIGH_DENSITY   (0x1UL << 7) 
 #define STP_PSM_WMT_EVENT_DISABLE_MONITOR_RX_HIGH_DENSITY   (0x1UL << 8)
+#endif
 
+#define STP_PSM_WMT_EVENT_SLEEP_EN                    (0)
+#define STP_PSM_WMT_EVENT_WAKEUP_EN                   (1)
+#define STP_PSM_BLOCK_DATA_EN                         (2)
+#define STP_PSM_WMT_EVENT_DISABLE_MONITOR             (3)
+#define STP_PSM_WMT_EVENT_ROLL_BACK_EN                (4)
+#define STP_PSM_RESET_EN                              (5)
+#define STP_PSM_WMT_EVENT_HOST_WAKEUP_EN                    (6)
+#define STP_PSM_WMT_EVENT_DISABLE_MONITOR_TX_HIGH_DENSITY   (7) 
+#define STP_PSM_WMT_EVENT_DISABLE_MONITOR_RX_HIGH_DENSITY   (8)
+
+#define STP_PSM_DBG_SIZE (8)
 
 /* OP command ring buffer : must be power of 2 */
 #define STP_OP_BUF_SIZE (16)
@@ -120,7 +132,7 @@ typedef struct mtk_stp_psm
     //P_OSAL_OP               current_active_op;
     UINT32               last_active_opId;
     MTKSTP_PSM_STATE_T      work_state; /*working state*/
-    INT32                   flag;
+    OSAL_BIT_OP_VAR			flag;
     
     /* in normal cases, sleep op is always enabled; but in error cases, we can't execute sleep cmd, Eg: FW assert, core dump*/
     INT32                   sleep_en;   
@@ -131,15 +143,41 @@ typedef struct mtk_stp_psm
     OSAL_TIMER              psm_timer;  /*monitor if active*/
     OSAL_EVENT                wait_wmt_q;
     OSAL_FIFO               hold_fifo;
-    OSAL_UNSLEEPABLE_LOCK   hold_fifo_spinlock_global;
+    OSAL_SLEEPABLE_LOCK   hold_fifo_spinlock_global;
     OSAL_UNSLEEPABLE_LOCK   wq_spinlock;
-    OSAL_SLEEPABLE_LOCK     user_lock;
 	OSAL_SLEEPABLE_LOCK     stp_psm_lock;
     INT32                   (*wmt_notify)(MTKSTP_PSM_ACTION_T action);
     INT32                   (*stp_tx_cb)(unsigned  char*buffer,UINT32 length, UINT8 type);
 	MTK_WCN_BOOL            (*is_wmt_quick_ps_support)(VOID);
     UINT8                   out_buf[STP_PSM_TX_SIZE];
 }MTKSTP_PSM_T;
+
+typedef struct {
+	UINT32 prev_flag;
+	UINT32 cur_flag;
+	UINT32 line_num;
+	UINT32 package_no;
+	UINT32 sec;
+	UINT32 usec;
+	UINT32 pid;
+}STP_PSM_ENTRY_T;
+
+typedef struct stp_psm_record {
+	STP_PSM_ENTRY_T queue[STP_PSM_DBG_SIZE];
+	UINT32 in;
+	UINT32 out;
+	UINT32 size;
+	OSAL_UNSLEEPABLE_LOCK lock;
+}STP_PSM_RECORD_T;
+
+typedef struct stp_psm_opid_record {
+	STP_PSM_ENTRY_T queue[STP_PSM_DBG_SIZE];
+	UINT32 in;
+	UINT32 out;
+	UINT32 size;
+	OSAL_UNSLEEPABLE_LOCK lock;
+}STP_PSM_OPID_RECORD, *P_STP_PSM_OPID_RECORD;
+
 
 /*******************************************************************************
 *                            P U B L I C   D A T A

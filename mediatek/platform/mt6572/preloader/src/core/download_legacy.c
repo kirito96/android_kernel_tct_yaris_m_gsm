@@ -1,3 +1,39 @@
+/* Copyright Statement:
+ *
+ * This software/firmware and related documentation ("MediaTek Software") are
+ * protected under relevant copyright laws. The information contained herein is
+ * confidential and proprietary to MediaTek Inc. and/or its licensors. Without
+ * the prior written permission of MediaTek inc. and/or its licensors, any
+ * reproduction, modification, use or disclosure of MediaTek Software, and
+ * information contained herein, in whole or in part, shall be strictly
+ * prohibited.
+ * 
+ * MediaTek Inc. (C) 2010. All rights reserved.
+ * 
+ * BY OPENING THIS FILE, RECEIVER HEREBY UNEQUIVOCALLY ACKNOWLEDGES AND AGREES
+ * THAT THE SOFTWARE/FIRMWARE AND ITS DOCUMENTATIONS ("MEDIATEK SOFTWARE")
+ * RECEIVED FROM MEDIATEK AND/OR ITS REPRESENTATIVES ARE PROVIDED TO RECEIVER
+ * ON AN "AS-IS" BASIS ONLY. MEDIATEK EXPRESSLY DISCLAIMS ANY AND ALL
+ * WARRANTIES, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE OR
+ * NONINFRINGEMENT. NEITHER DOES MEDIATEK PROVIDE ANY WARRANTY WHATSOEVER WITH
+ * RESPECT TO THE SOFTWARE OF ANY THIRD PARTY WHICH MAY BE USED BY,
+ * INCORPORATED IN, OR SUPPLIED WITH THE MEDIATEK SOFTWARE, AND RECEIVER AGREES
+ * TO LOOK ONLY TO SUCH THIRD PARTY FOR ANY WARRANTY CLAIM RELATING THERETO.
+ * RECEIVER EXPRESSLY ACKNOWLEDGES THAT IT IS RECEIVER'S SOLE RESPONSIBILITY TO
+ * OBTAIN FROM ANY THIRD PARTY ALL PROPER LICENSES CONTAINED IN MEDIATEK
+ * SOFTWARE. MEDIATEK SHALL ALSO NOT BE RESPONSIBLE FOR ANY MEDIATEK SOFTWARE
+ * RELEASES MADE TO RECEIVER'S SPECIFICATION OR TO CONFORM TO A PARTICULAR
+ * STANDARD OR OPEN FORUM. RECEIVER'S SOLE AND EXCLUSIVE REMEDY AND MEDIATEK'S
+ * ENTIRE AND CUMULATIVE LIABILITY WITH RESPECT TO THE MEDIATEK SOFTWARE
+ * RELEASED HEREUNDER WILL BE, AT MEDIATEK'S OPTION, TO REVISE OR REPLACE THE
+ * MEDIATEK SOFTWARE AT ISSUE, OR REFUND ANY SOFTWARE LICENSE FEES OR SERVICE
+ * CHARGE PAID BY RECEIVER TO MEDIATEK FOR SUCH MEDIATEK SOFTWARE AT ISSUE.
+ *
+ * The following software/firmware and/or related documentation ("MediaTek
+ * Software") have been modified by MediaTek Inc. All revisions are subject to
+ * any receiver's applicable license agreements with MediaTek Inc.
+ */
 
 #include "typedefs.h"
 #include "platform.h"
@@ -15,6 +51,9 @@
 
 #define MOD                 "<DM>"
 
+/**************************************************************************
+ *  MACRO DEFINITION
+ **************************************************************************/
 #if DM_DBG_LOG
 #define DM_ASSERT(expr)      {  if ((expr)==FALSE){  \
     print("%s : [ASSERT] at %s #%d %s\n       %s\n       above expression is not TRUE\n", MOD, __FILE__, __LINE__, __FUNCTION__, #expr); \
@@ -30,8 +69,14 @@
 #define DM_LOG
 #endif
 
+/**************************************************************************
+ *  LOCAL VARIABLE DECLARATION
+ **************************************************************************/
 DM_CONTEXT dm_ctx = { 0 };
 
+/**************************************************************************
+ *  GLOBAL VARIABLE DECLARATION
+ **************************************************************************/
 u32 g_dl_safe_start_addr;
 char dm_rx_buf[DM_BUF_MAX_SIZE];
 BOOL g_cust_key_init;
@@ -41,6 +86,9 @@ BOOL g_sec_img_patch_valid;
 
 DM_PARTITION_INFO_PACKET g_img_dl_pt_info = {0};
 
+/**************************************************************************
+ *  EXTERNAL DECLARATION
+ **************************************************************************/
 extern int nand_curr_device;
 extern u32 nand_maf_id;
 extern u32 nand_dev_id;
@@ -111,6 +159,9 @@ void dump_time_analysis (void)
 
 void handle_pt_cmd (void);
 
+/**************************************************************************
+ * Fill Internal Imgp Data
+ **************************************************************************/
 void fill_internal_imgp (DM_IMAGE_INFO_PACKET *imgp, DM_EXT_IMAGE_INFO_PACKET *ext_imgp)
 {
     imgp->pattern = ext_imgp->pattern;
@@ -135,6 +186,9 @@ void fill_internal_imgp (DM_IMAGE_INFO_PACKET *imgp, DM_EXT_IMAGE_INFO_PACKET *e
 
 }
 
+/**************************************************************************
+ * Handle Nand Flash Erase
+ **************************************************************************/
 u32 force_erase (DM_IMG_INFO * img_info, u32 pktsz)
 {
 
@@ -170,6 +224,9 @@ u32 force_erase (DM_IMG_INFO * img_info, u32 pktsz)
 }
 
 
+/**************************************************************************
+ *  Handle Nand Flash Erase
+ **************************************************************************/
 u32 handle_erase (DM_IMG_INFO * img_info, u32 pktsz)
 {
     if ((FALSE == g_end_user_flash_tool) || (FALSE == g_sec_img_patch_enable))
@@ -180,6 +237,9 @@ u32 handle_erase (DM_IMG_INFO * img_info, u32 pktsz)
     force_erase (img_info, pktsz);
 }
 
+/**************************************************************************
+ * Handle Data
+ **************************************************************************/
 void handle_data (u32 pktsz, u8 * buf)
 {
     bool res = TRUE;
@@ -284,6 +344,9 @@ _next:
 }
 
 
+/**************************************************************************
+ *  Calculate Checksum
+ **************************************************************************/
 void handle_cksm (void)
 {
     u32 u4cksum = 0;
@@ -317,6 +380,9 @@ void handle_cksm (void)
     return;
 }
 
+/**************************************************************************
+ *  Check Image Information
+ **************************************************************************/
 u32 check_imgp (DM_IMAGE_INFO_PACKET * imgp, u32 * pktsz)
 {
     print ("\n%s : ------------------ IMG ---------------\n", MOD);
@@ -456,6 +522,9 @@ void  handle_pt_cmd (void)
     check_pt_cmd ();
 }
 
+/**************************************************************************
+ *  Handle Image 
+ **************************************************************************/
 u32 handle_imgp (u32 * pktsz)
 {
     DM_EXT_IMAGE_INFO_PACKET ext_imgp;
@@ -473,6 +542,9 @@ u32 handle_imgp (u32 * pktsz)
     return *pktsz;
 }
 
+/**************************************************************************
+ *  Return Packet Size Per Transmission
+ **************************************************************************/
 u32 save_imgp (DM_IMAGE_INFO_PACKET * imgp)
 {
     u32 cnt;
@@ -519,6 +591,9 @@ u32 save_imgp (DM_IMAGE_INFO_PACKET * imgp)
     return dm_ctx.img_info.pkt_size;
 }
 
+/**************************************************************************
+ *  Handle Flash Information Sent From Flash Tool
+ **************************************************************************/
 void handle_pl_info (void)
 {
     DM_PL_INFO_PACKET plip = {0};
@@ -561,6 +636,9 @@ void handle_pl_info (void)
     mt_usbtty_putcn (DM_SZ_PL_INFO_PKT, (u8 *) & plip, TRUE);
 }
 
+/**************************************************************************
+ *  Handle Error
+ **************************************************************************/
 void handle_errp (void)
 {
     DM_ERRCODE_PACKET errp = { DM_ERROR_PKT_PATN, 0 };
@@ -591,6 +669,9 @@ void  handle_update (void)
     dm_ctx.dm_status = DM_STATUS_SECT_WAIT_NXT;
 }    
 
+/**************************************************************************
+*  Reboot State
+**************************************************************************/
 void handle_reboot (void)
 {
     // check if device Is ready to use
@@ -603,6 +684,9 @@ void handle_reboot (void)
     do_reboot (0);
 }
 
+/**************************************************************************
+ *  Auto Boot State
+ **************************************************************************/
 void handle_autoboot (void)
 {
     /* check if device Is ready to use */
@@ -618,6 +702,9 @@ void handle_autoboot (void)
 }
 
 
+/**************************************************************************
+ *  Middle State
+ **************************************************************************/
 void handle_midle_state (u8 * buf)
 {
     DM_PKT_TYPE pkt_type;
@@ -682,6 +769,9 @@ void handle_midle_state (u8 * buf)
 }
 
 
+/**************************************************************************
+ *  Allocate Buffer
+ **************************************************************************/
 u8 * prepare_data_buf (void)
 {
 #if 1 //CFG_FPGA_PLATFORM
@@ -702,6 +792,9 @@ u8 * prepare_data_buf (void)
     }
 }
 
+/**************************************************************************
+ *  Download Main Function
+ **************************************************************************/
 void download_handler(void)
 {
     u32 pktsz = 0;

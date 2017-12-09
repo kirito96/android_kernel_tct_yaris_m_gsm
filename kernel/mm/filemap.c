@@ -133,6 +133,19 @@ void __delete_from_page_cache(struct page *page)
 	__dec_zone_page_state(page, NR_FILE_PAGES);
 	if (PageSwapBacked(page))
 		__dec_zone_page_state(page, NR_SHMEM);
+	if (page_mapped(page)) {
+		printk(KERN_ALERT"page 0x%08lx is mapped, pfn: %lu, %s page\n", 
+			(unsigned long)page, (unsigned long)page_to_pfn(page),
+			PageHighMem(page)? "high": "low");
+		printk(KERN_ALERT"mapping: 0x%08lx, m->flags: 0x%08lx\n",
+			(unsigned long)mapping, (unsigned long)mapping->flags);
+		if (PageTail(page)) {
+			printk(KERN_ALERT"tail page\n");
+		} else if (PageHead(page)) {
+			printk(KERN_ALERT"head page\n");
+		}
+		dump_page(page);
+	}
 	BUG_ON(page_mapped(page));
 
 	/*
@@ -1694,7 +1707,10 @@ int filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	struct page *page;
 	pgoff_t size;
 	int ret = 0;
-
+#ifdef CONFIG_MT_ENG_BUILD
+	void add_kmem_status_filemap_fault_counter(void);
+	add_kmem_status_filemap_fault_counter();
+#endif
 	size = (i_size_read(inode) + PAGE_CACHE_SIZE - 1) >> PAGE_CACHE_SHIFT;
 	if (offset >= size) {
                 printk(KERN_ALERT"SIGBUS debug: %s, %d, offset: %lu, size: %lu\n", 
@@ -1715,9 +1731,6 @@ int filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	} else {
 		/* No page in the page cache at all */
 		do_sync_mmap_readahead(vma, ra, file, offset);
-#ifdef CONFIG_ZRAM
-        current->fm_flt++;
-#endif
 		count_vm_event(PGFMFAULT);
 		count_vm_event(PGMAJFAULT);
 		mem_cgroup_count_vm_event(vma->vm_mm, PGMAJFAULT);
@@ -2465,6 +2478,11 @@ again:
 			break;
 		}
 
+		if (fatal_signal_pending(current)) {
+			status = -EINTR;
+			break;
+		}
+
 		status = a_ops->write_begin(file, mapping, pos, bytes, flags,
 						&page, &fsdata);
 		if (unlikely(status))
@@ -2505,10 +2523,6 @@ again:
 		written += copied;
 
 		balance_dirty_pages_ratelimited(mapping);
-		if (fatal_signal_pending(current)) {
-			status = -EINTR;
-			break;
-		}
 	} while (iov_iter_count(i));
 
 	return written ? written : status;

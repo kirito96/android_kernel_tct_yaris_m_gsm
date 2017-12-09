@@ -20,9 +20,11 @@
 /*=============================================================================
  *                              Include Files
  *===========================================================================*/
-#include "val_types.h"
-#include "val_api.h"
+#include "val_types_private.h"
+#include "hal_types_private.h"
+#include "val_api_private.h"
 #include "val_log.h"
+
 //#include "mfv_reg.h"
 //#include "mfv_config.h"
 #include <linux/jiffies.h>
@@ -157,19 +159,31 @@ VAL_RESULT_T eVideoWaitEvent(
 )
 {
     wait_queue_head_t *pWaitQueue;
-    long               timeout_jiff;
+    long               timeout_jiff, i4Ret;
     VAL_RESULT_T       status;
     
     pWaitQueue   = (wait_queue_head_t *)a_prParam->pvWaitQueue;
     timeout_jiff = (a_prParam->u4TimeoutMs) * HZ / 1000; 
     //MFV_LOGD("[MFV]eVideoWaitEvent,a_prParam->u4TimeoutMs=%d, timeout = %ld\n",a_prParam->u4TimeoutMs,timeout_jiff);
-    if (0 == wait_event_interruptible_timeout(*pWaitQueue, *((VAL_UINT8_T *)a_prParam->pvReserved)/*g_mflexvideo_interrupt_handler*/, timeout_jiff))
+    i4Ret = wait_event_interruptible_timeout(*pWaitQueue, *((VAL_UINT8_T *)a_prParam->pvReserved)/*g_mflexvideo_interrupt_handler*/, timeout_jiff);
+    if (0 == i4Ret) {
         status = VAL_RESULT_INVALID_ISR;//timeout
-    else
+    }
+    else if (-ERESTARTSYS == i4Ret) {
+        MFV_LOGE("eVideoWaitEvent wake up by ERESTARTSYS");
+        status = VAL_RESULT_RESTARTSYS;
+    }
+    else if (i4Ret > 0) {
         status = VAL_RESULT_NO_ERROR;
+    }
+    else {
+        MFV_LOGE("eVideoWaitEvent wake up by %d", i4Ret);
+        status = VAL_RESULT_NO_ERROR;
+    }
     *((VAL_UINT8_T *)a_prParam->pvReserved) = VAL_FALSE;
     return status;
 }
+
 
 VAL_RESULT_T eVideoSetEvent(
     VAL_EVENT_T *a_prParam, 

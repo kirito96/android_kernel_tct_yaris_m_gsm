@@ -11,6 +11,7 @@ extern void arm_machine_restart(char mode, const char *cmd);
 extern struct sys_timer mt6572_timer;
 extern void mt_power_off(void);
 extern void mt_fixup(struct tag *tags, char **cmdline, struct meminfo *mi);
+extern void mt_reserve(void);
 
 static void __init mt_init(void)
 {
@@ -44,19 +45,11 @@ static struct map_desc mt_io_desc[] __initdata =
         .type = MT_DEVICE
     },
 
-    /* infrasys AO first half */
+    /* infrasys AO */
     {
         .virtual = TOPCKGEN_BASE,
         .pfn = __phys_to_pfn(IO_VIRT_TO_PHYS(TOPCKGEN_BASE)),
-        .length = 0x7000,
-        .type = MT_DEVICE
-    },
-    
-    /* infrasys AO second half */
-    {
-        .virtual = APMCU_GPTIMER_BASE,
-        .pfn = __phys_to_pfn(IO_VIRT_TO_PHYS(APMCU_GPTIMER_BASE)),
-        .length = 0xB000,
+        .length = SZ_128K,
         .type = MT_DEVICE
     },
 
@@ -116,5 +109,6 @@ MACHINE_START(MT6572, "MT6572")
     .timer          = &mt6572_timer,
     .init_machine   = mt_init,
     .fixup          = mt_fixup,
-    .restart        = arm_machine_restart
+    .restart        = arm_machine_restart,
+    .reserve        = mt_reserve,
 MACHINE_END

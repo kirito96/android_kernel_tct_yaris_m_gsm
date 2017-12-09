@@ -1,44 +1,15 @@
 #ifndef _DDP_RDMA_API_H_
 #define _DDP_RDMA_API_H_
 
+#include <mach/mt_typedefs.h>
+
+#include "ddp_drv.h"
+
 
 #define RDMA_INSTANCES  2
 #define RDMA_MAX_WIDTH  2047
 #define RDMA_MAX_HEIGHT 2047
 
-enum RDMA_INPUT_FORMAT {
-    RDMA_INPUT_FORMAT_YUYV   = 0,
-    RDMA_INPUT_FORMAT_UYVY   = 1,
-    RDMA_INPUT_FORMAT_YVYU   = 2,
-    RDMA_INPUT_FORMAT_VYUY   = 3,
-    RDMA_INPUT_FORMAT_RGB565 = 4,
-    RDMA_INPUT_FORMAT_RGB888 = 8,
-    RDMA_INPUT_FORMAT_ARGB   = 16,
-};
-
-enum RDMA_OUTPUT_FORMAT {
-    RDMA_OUTPUT_FORMAT_ARGB   = 0,
-    RDMA_OUTPUT_FORMAT_YUV444 = 1,
-};
-
-enum RDMA_MODE {
-    RDMA_MODE_DIRECT_LINK = 0,
-    RDMA_MODE_MEMORY      = 1,
-};
-
-typedef struct _RDMA_CONFIG_STRUCT
-{
-    unsigned idx;            // instance index
-    enum RDMA_MODE mode;          // data mode
-    enum RDMA_INPUT_FORMAT inputFormat;
-    unsigned address;
-    unsigned pitch;
-    bool isByteSwap;
-    enum RDMA_OUTPUT_FORMAT outputFormat;
-    unsigned width; 
-    unsigned height; 
-    bool isRGBSwap;
-}RDMA_CONFIG_STRUCT;
 
 
 // initialize module
@@ -56,7 +27,7 @@ int RDMAReset(unsigned idx);
 // configu module
 int RDMAConfig(unsigned idx,
                     enum RDMA_MODE mode,
-                    enum RDMA_INPUT_FORMAT inputFormat, 
+                    DpColorFormat inFormat, 
                     unsigned address, 
                     enum RDMA_OUTPUT_FORMAT outputFormat, 
                     unsigned pitch,
@@ -66,10 +37,12 @@ int RDMAConfig(unsigned idx,
                     bool isRGBSwap); // ourput setting
 
 void RDMAWait(unsigned idx);
-
+void RDMASetAddress(unsigned int idx, unsigned int address);
 void RDMASetTargetLine(unsigned int idx, unsigned int line);
 
 void RDMAEnableIrq(unsigned int idx, unsigned int value);
+
+enum RDMA_INPUT_FORMAT rdma_fmt_convert(DpColorFormat fmt);
 
 //---------------------------------------------------------------------------------------
 #define INT_ENABLE_FLD_FIFO_UNDERFLOW_INT_EN                   REG_FLD(1, 4)
@@ -88,12 +61,15 @@ void RDMAEnableIrq(unsigned int idx, unsigned int value);
 #define GLOBAL_CON_FLD_MODE_SEL                                REG_FLD(1, 1)
 #define GLOBAL_CON_FLD_ENGINE_EN                               REG_FLD(1, 0)
 
-#define SIZE_CON_0_FLD_OUTPUT_RGB_SWAP                           REG_FLD(1, 31)
-#define SIZE_CON_0_FLD_INPUT_BYTE_SWAP                           REG_FLD(1, 30)
-#define SIZE_CON_0_FLD_OUTPUT_FORMAT                             REG_FLD(1, 29)
-#define SIZE_CON_0_FLD_OUTPUT_FRAME_WIDTH                        REG_FLD(12, 0)
+#define SIZE_CON_0_FLD_OUTPUT_RGB_SWAP                         REG_FLD(1, 31)
+#define SIZE_CON_0_FLD_INPUT_BYTE_SWAP                         REG_FLD(1, 30)
+#define SIZE_CON_0_FLD_OUTPUT_FORMAT                           REG_FLD(1, 29)
+#define SIZE_CON_0_FLD_MATRIX_INT_MTX_SEL			           REG_FLD(4, 20)
+#define SIZE_CON_0_FLD_MATRIX_ENABLE					       REG_FLD(1, 17)
+#define SIZE_CON_0_FLD_MATRIX_EXT_MTX_ENABLE				   REG_FLD(1, 16)
+#define SIZE_CON_0_FLD_OUTPUT_FRAME_WIDTH                      REG_FLD(12, 0)
 
-#define SIZE_CON_1_FLD_OUTPUT_FRAME_HEIGHT                        REG_FLD(20, 0)
+#define SIZE_CON_1_FLD_OUTPUT_FRAME_HEIGHT                     REG_FLD(20, 0)
 
 //#define MEM_START_TRIG_FLD_MEM_MODE_START_TRIG                 REG_FLD(1, 0)
 

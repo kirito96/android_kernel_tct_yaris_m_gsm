@@ -32,7 +32,16 @@
 #include <mach/upmu_hw.h>
 #include <linux/xlog.h>
 #include <linux/delay.h>
+#include <mach/mt_sleep.h>
+#include <mach/mt_boot.h>
+#include <mach/system.h>
+#include <mach/mt_board_type.h>
+#include <linux/spinlock.h>
 
+#include "cust_battery_meter.h"
+#include <cust_charging.h>
+#include <mach/mt_gpio.h>
+#include <linux/wakelock.h>
 	 
  // ============================================================ //
  //define
@@ -47,7 +56,9 @@
  // ============================================================ //
 kal_bool chargin_hw_init_done = KAL_TRUE; 
 kal_bool charging_type_det_done = KAL_TRUE;
-
+#if defined(HIGH_VOLTAGE_BATTERY_FEATURE_SUPPORT)
+static kal_bool high_vlotage_charge = KAL_FALSE; 
+#endif
 const kal_uint32 VBAT_CV_VTH[]=
 {
 	BATTERY_VOLT_04_200000_V,   BATTERY_VOLT_04_212500_V,	BATTERY_VOLT_04_225000_V,   BATTERY_VOLT_04_237500_V,
@@ -93,8 +104,79 @@ const kal_uint32 VCDT_HV_VTH[]=
   extern kal_uint32 upmu_get_reg_value(kal_uint32 reg);
  extern void Charger_Detect_Init(void);
  extern void Charger_Detect_Release(void);
+ extern int PMIC_IMM_GetOneChannelValue(int dwChannel, int deCount, int trimd);
+ extern void mt_power_off(void);
+ extern U32 pmic_config_interface (U32 RegNum, U32 val, U32 MASK, U32 SHIFT);
+ extern U32 pmic_read_interface (U32 RegNum, U32 *val, U32 MASK, U32 SHIFT);
  
  // ============================================================ //
+#ifdef MTK_POWER_EXT_DETECT
+static kal_uint32 mt_get_board_type(void)
+{
+
+	/*
+  	*  Note: Don't use it in IRQ context
+  	*/
+#if 1
+	 static int board_type = MT_BOARD_NONE;
+
+	 if (board_type != MT_BOARD_NONE)
+	 	return board_type;
+
+	 spin_lock(&mt_board_lock);
+
+	 /* Enable AUX_IN0 as GPI */
+	 mt_set_gpio_ies(GPIO_PHONE_EVB_DETECT, GPIO_IES_ENABLE);
+
+	 /* Set internal pull-down for AUX_IN0 */
+	 mt_set_gpio_pull_select(GPIO_PHONE_EVB_DETECT, GPIO_PULL_DOWN);
+	 mt_set_gpio_pull_enable(GPIO_PHONE_EVB_DETECT, GPIO_PULL_ENABLE);
+
+	 /* Wait 20us */
+	 udelay(20);
+
+	 /* Read AUX_INO's GPI value*/
+	 mt_set_gpio_mode(GPIO_PHONE_EVB_DETECT, GPIO_MODE_00);
+	 mt_set_gpio_dir(GPIO_PHONE_EVB_DETECT, GPIO_DIR_IN);
+
+	 if (mt_get_gpio_in(GPIO_PHONE_EVB_DETECT) == 1) {
+		 /* Disable internal pull-down if external pull-up on PCB(leakage) */
+		 mt_set_gpio_pull_enable(GPIO_PHONE_EVB_DETECT, GPIO_PULL_DISABLE);
+		 board_type = MT_BOARD_EVB;
+	 } else {
+	 	 /* Disable internal pull-down if external pull-up on PCB(leakage) */
+		 mt_set_gpio_pull_enable(GPIO_PHONE_EVB_DETECT, GPIO_PULL_DISABLE);
+		 board_type = MT_BOARD_PHONE;
+	 }
+	 spin_unlock(&mt_board_lock);
+	 battery_xlog_printk(BAT_LOG_CRTI, "[Kernel] Board type is %s\n", (board_type == MT_BOARD_EVB) ? "EVB" : "PHONE");
+	 return board_type;
+#else
+	 return MT_BOARD_EVB;
+#endif
+}
+#endif
+static kal_uint32 charging_get_csdac_value(void)
+{
+	kal_uint32 tempA, tempB, tempC;
+	kal_uint32 sum;
+
+    pmic_config_interface(CHR_CON11,0xC,0xF,0); 
+	pmic_read_interface(CHR_CON10, &tempC, 0xF, 0x0);	// bit 1 and 2 mapping bit 8 and bit9
+
+	pmic_config_interface(CHR_CON11,0xA,0xF,0); 
+	pmic_read_interface(CHR_CON10, &tempA, 0xF, 0x0);	//bit 0 ~ 3 mapping bit 4 ~7
+
+	pmic_config_interface(CHR_CON11,0xB,0xF,0); 
+	pmic_read_interface(CHR_CON10, &tempB, 0xF, 0x0);	//bit 0~3 mapping bit 0~3
+
+	sum =  (((tempC & 0x6) >> 1)<<8) | (tempA << 4) | tempB;
+
+	battery_xlog_printk(BAT_LOG_CRTI, "tempC=%d,tempA=%d,tempB=%d, csdac=%d\n", tempC,tempA,tempB,sum);
+	
+	return sum;
+}
+
 kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_uint32 array_size, const kal_uint32 val)
 {
 	if (val < array_size)
@@ -167,29 +249,27 @@ kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_ui
 	 }
  }
 
-
- static void hw_bc11_dump_register(void)
- {
-	kal_uint32 status = STATUS_OK;
-
+#if defined(CONFIG_POWER_EXT)
+#else
+static void hw_bc11_dump_register(void)
+{
 	kal_uint32 reg_val = 0;
-    kal_uint32 reg_num = CHR_CON18;
-    kal_uint32 i = 0;
+	kal_uint32 reg_num = CHR_CON18;
+	kal_uint32 i = 0;
 
-    for(i=reg_num ; i<=CHR_CON19 ; i+=2)
-    {
-        reg_val = upmu_get_reg_value(i);
-        battery_xlog_printk(BAT_LOG_FULL, "Chr Reg[0x%x]=0x%x \r\n", i, reg_val);
-    }
+	for(i=reg_num ; i<=CHR_CON19 ; i+=2)
+	{
+		reg_val = upmu_get_reg_value(i);
+		battery_xlog_printk(BAT_LOG_FULL, "Chr Reg[0x%x]=0x%x \r\n", i, reg_val);
+	}	
+}
 
-	return status;
- }
-	
 
  static void hw_bc11_init(void)
  {
+ 	 msleep(300);
 	 Charger_Detect_Init();
-   		 
+		 
 	 //RG_BC11_BIAS_EN=1	
 	 upmu_set_rg_bc11_bias_en(0x1);
 	 //RG_BC11_VSRC_EN[1:0]=00
@@ -202,20 +282,20 @@ kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_ui
 	 upmu_set_rg_bc11_ipu_en(0x0);
 	 //RG_BC11_IPD_EN[1.0] = 00
 	 upmu_set_rg_bc11_ipd_en(0x0);
-	   //BC11_RST=1
+	 //BC11_RST=1
 	 upmu_set_rg_bc11_rst(0x1);
 	 //BC11_BB_CTRL=1
 	 upmu_set_rg_bc11_bb_ctrl(0x1);
  
  	 //msleep(10);
  	 mdelay(50);
-
-	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
-    {
-    	battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_init() \r\n");
-		hw_bc11_dump_register();
-    }	
 	 
+	 if(Enable_BATDRV_LOG == BAT_LOG_FULL)
+	 {
+    		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_init() \r\n");
+		hw_bc11_dump_register();
+	 }	
+
  }
  
  
@@ -223,25 +303,25 @@ kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_ui
  {
 	 U32 wChargerAvail = 0;
  
-	  //RG_BC11_IPU_EN[1.0] = 10
+	 //RG_BC11_IPU_EN[1.0] = 10
 	 upmu_set_rg_bc11_ipu_en(0x2);
-	   //RG_BC11_IPD_EN[1.0] = 01
+	 //RG_BC11_IPD_EN[1.0] = 01
 	 upmu_set_rg_bc11_ipd_en(0x1);
-	  //RG_BC11_VREF_VTH = [1:0]=01
+	 //RG_BC11_VREF_VTH = [1:0]=01
 	 upmu_set_rg_bc11_vref_vth(0x1);
-	  //RG_BC11_CMP_EN[1.0] = 10
+	 //RG_BC11_CMP_EN[1.0] = 10
 	 upmu_set_rg_bc11_cmp_en(0x2);
  
 	 //msleep(20);
 	 mdelay(80);
 
  	 wChargerAvail = upmu_get_rgs_bc11_cmp_out();
-
-	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
-    {
-    	battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_DCD() \r\n");
+	 
+	 if(Enable_BATDRV_LOG == BAT_LOG_FULL)
+	 {
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_DCD() \r\n");
 		hw_bc11_dump_register();
-    }
+	 }
 	 
 	 //RG_BC11_IPU_EN[1.0] = 00
 	 upmu_set_rg_bc11_ipu_en(0x0);
@@ -258,139 +338,141 @@ kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_ui
  
  static U32 hw_bc11_stepA1(void)
  {
-	 U32 wChargerAvail = 0;
+	U32 wChargerAvail = 0;
 	  
-	  //RG_BC11_IPU_EN[1.0] = 10
-	 upmu_set_rg_bc11_ipu_en(0x2);
-	   //RG_BC11_VREF_VTH = [1:0]=10
-	 upmu_set_rg_bc11_vref_vth(0x2);
-	  //RG_BC11_CMP_EN[1.0] = 10
-	 upmu_set_rg_bc11_cmp_en(0x2);
+	//RG_BC11_IPU_EN[1.0] = 10
+	upmu_set_rg_bc11_ipu_en(0x2);
+	//RG_BC11_VREF_VTH = [1:0]=10
+	upmu_set_rg_bc11_vref_vth(0x2);
+	//RG_BC11_CMP_EN[1.0] = 10
+	upmu_set_rg_bc11_cmp_en(0x2);
  
-	 //msleep(80);
-	 mdelay(80);
+	//msleep(80);
+	mdelay(80);
  
-     wChargerAvail = upmu_get_rgs_bc11_cmp_out();
-
+	wChargerAvail = upmu_get_rgs_bc11_cmp_out();
+ 
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
-    {
-    	battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepA1() \r\n");
+	{
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepA1() \r\n");
 		hw_bc11_dump_register();
-    }
+	}
  
-	 //RG_BC11_IPU_EN[1.0] = 00
-	 upmu_set_rg_bc11_ipu_en(0x0);
-	  //RG_BC11_CMP_EN[1.0] = 00
-	 upmu_set_rg_bc11_cmp_en(0x0);
+	//RG_BC11_IPU_EN[1.0] = 00
+	upmu_set_rg_bc11_ipu_en(0x0);
+	//RG_BC11_CMP_EN[1.0] = 00
+	upmu_set_rg_bc11_cmp_en(0x0);
  
-	 return  wChargerAvail;
+	return  wChargerAvail;
  }
  
  
  static U32 hw_bc11_stepB1(void)
  {
-	 U32 wChargerAvail = 0;
+	U32 wChargerAvail = 0;
 	  
-	  //RG_BC11_IPU_EN[1.0] = 01
-	 upmu_set_rg_bc11_ipu_en(0x1);
-	  //RG_BC11_VREF_VTH = [1:0]=10
-	 upmu_set_rg_bc11_vref_vth(0x2);
-	  //RG_BC11_CMP_EN[1.0] = 01
-	 upmu_set_rg_bc11_cmp_en(0x1);
+	//RG_BC11_IPU_EN[1.0] = 01
+	//upmu_set_rg_bc11_ipu_en(0x1);
+	upmu_set_rg_bc11_ipd_en(0x1);
+	//RG_BC11_VREF_VTH = [1:0]=10
+	//upmu_set_rg_bc11_vref_vth(0x2);
+	upmu_set_rg_bc11_vref_vth(0x0);
+	//RG_BC11_CMP_EN[1.0] = 01
+	upmu_set_rg_bc11_cmp_en(0x1);
  
-	 //msleep(80);
-	 mdelay(80);
+	//msleep(80);
+	mdelay(80);
  
-    wChargerAvail = upmu_get_rgs_bc11_cmp_out();
-
+	wChargerAvail = upmu_get_rgs_bc11_cmp_out();
+ 
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
-    {
-    	battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepB1() \r\n");
+	{
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepB1() \r\n");
 		hw_bc11_dump_register();
-    }
+	}
  
-	 //RG_BC11_IPU_EN[1.0] = 00
-	 upmu_set_rg_bc11_ipu_en(0x0);
-	  //RG_BC11_CMP_EN[1.0] = 00
-	 upmu_set_rg_bc11_cmp_en(0x0);
-	   //RG_BC11_VREF_VTH = [1:0]=00
-	 upmu_set_rg_bc11_vref_vth(0x0);
+	//RG_BC11_IPU_EN[1.0] = 00
+	upmu_set_rg_bc11_ipu_en(0x0);
+	//RG_BC11_CMP_EN[1.0] = 00
+	upmu_set_rg_bc11_cmp_en(0x0);
+	//RG_BC11_VREF_VTH = [1:0]=00
+	upmu_set_rg_bc11_vref_vth(0x0);
  
-	 return  wChargerAvail;
+	return  wChargerAvail;
  }
  
  
  static U32 hw_bc11_stepC1(void)
  {
-	 U32 wChargerAvail = 0;
+	U32 wChargerAvail = 0;
 	  
-	  //RG_BC11_IPU_EN[1.0] = 01
-	 upmu_set_rg_bc11_ipu_en(0x1);
-	   //RG_BC11_VREF_VTH = [1:0]=10
-	 upmu_set_rg_bc11_vref_vth(0x2);
-	  //RG_BC11_CMP_EN[1.0] = 01
-	 upmu_set_rg_bc11_cmp_en(0x1);
+	//RG_BC11_IPU_EN[1.0] = 01
+	upmu_set_rg_bc11_ipu_en(0x1);
+	//RG_BC11_VREF_VTH = [1:0]=10
+	upmu_set_rg_bc11_vref_vth(0x2);
+	//RG_BC11_CMP_EN[1.0] = 01
+	upmu_set_rg_bc11_cmp_en(0x1);
  
-	 //msleep(80);
-	 mdelay(80);
+	//msleep(80);
+	mdelay(80);
  
-     wChargerAvail = upmu_get_rgs_bc11_cmp_out();
-
+	wChargerAvail = upmu_get_rgs_bc11_cmp_out();
+ 
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
-    {
-    	battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepC1() \r\n");
+	{
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepC1() \r\n");
 		hw_bc11_dump_register();
-    }
+	}
  
-	 //RG_BC11_IPU_EN[1.0] = 00
-	 upmu_set_rg_bc11_ipu_en(0x0);
-	  //RG_BC11_CMP_EN[1.0] = 00
-	 upmu_set_rg_bc11_cmp_en(0x0);
-	   //RG_BC11_VREF_VTH = [1:0]=00
-     upmu_set_rg_bc11_vref_vth(0x0);
+	//RG_BC11_IPU_EN[1.0] = 00
+	upmu_set_rg_bc11_ipu_en(0x0);
+	//RG_BC11_CMP_EN[1.0] = 00
+	upmu_set_rg_bc11_cmp_en(0x0);
+	//RG_BC11_VREF_VTH = [1:0]=00
+	upmu_set_rg_bc11_vref_vth(0x0);
  
-	 return  wChargerAvail;
+	return  wChargerAvail;
  }
  
  
  static U32 hw_bc11_stepA2(void)
  {
-	 U32 wChargerAvail = 0;
+	U32 wChargerAvail = 0;
 	  
-	 //RG_BC11_VSRC_EN[1.0] = 10 
-	 upmu_set_rg_bc11_vsrc_en(0x2);
-	 //RG_BC11_IPD_EN[1:0] = 01
-	 upmu_set_rg_bc11_ipd_en(0x1);
-	 //RG_BC11_VREF_VTH = [1:0]=00
-	 upmu_set_rg_bc11_vref_vth(0x0);
-	 //RG_BC11_CMP_EN[1.0] = 01
-	 upmu_set_rg_bc11_cmp_en(0x1);
+	//RG_BC11_VSRC_EN[1.0] = 10 
+	upmu_set_rg_bc11_vsrc_en(0x2);
+	//RG_BC11_IPD_EN[1:0] = 01
+	upmu_set_rg_bc11_ipd_en(0x1);
+	//RG_BC11_VREF_VTH = [1:0]=00
+	upmu_set_rg_bc11_vref_vth(0x0);
+	//RG_BC11_CMP_EN[1.0] = 01
+	upmu_set_rg_bc11_cmp_en(0x1);
  
-	 //msleep(80);
-	 mdelay(80);
-	 
-     wChargerAvail = upmu_get_rgs_bc11_cmp_out();
-
+	//msleep(80);
+	mdelay(80);
+ 
+	wChargerAvail = upmu_get_rgs_bc11_cmp_out();
+ 
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
-    {
-    	battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepA2() \r\n");
+	{
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepA2() \r\n");
 		hw_bc11_dump_register();
-    }
+	}
  
-	 //RG_BC11_VSRC_EN[1:0]=00
-	 upmu_set_rg_bc11_vsrc_en(0x0);
-	 //RG_BC11_IPD_EN[1.0] = 00
-	 upmu_set_rg_bc11_ipd_en(0x0);
-	 //RG_BC11_CMP_EN[1.0] = 00
-	 upmu_set_rg_bc11_cmp_en(0x0);
+	//RG_BC11_VSRC_EN[1:0]=00
+	upmu_set_rg_bc11_vsrc_en(0x0);
+	//RG_BC11_IPD_EN[1.0] = 00
+	upmu_set_rg_bc11_ipd_en(0x0);
+	//RG_BC11_CMP_EN[1.0] = 00
+	upmu_set_rg_bc11_cmp_en(0x0);
  
-	 return  wChargerAvail;
+	return  wChargerAvail;
  }
  
  
  static U32 hw_bc11_stepB2(void)
  {
-	 U32 wChargerAvail = 0;
+	U32 wChargerAvail = 0;
  
 	//RG_BC11_IPU_EN[1:0]=10
 	upmu_set_rg_bc11_ipu_en(0x2);
@@ -402,13 +484,13 @@ kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_ui
 	//msleep(80);
 	mdelay(80);
  
-    wChargerAvail = upmu_get_rgs_bc11_cmp_out();
-
+	wChargerAvail = upmu_get_rgs_bc11_cmp_out();
+ 
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
-    {
-    	battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepB2() \r\n");
+	{
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_stepB2() \r\n");
 		hw_bc11_dump_register();
-    }
+	}
  
 	//RG_BC11_IPU_EN[1.0] = 00
 	upmu_set_rg_bc11_ipu_en(0x0);
@@ -417,35 +499,35 @@ kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_ui
 	//RG_BC11_VREF_VTH = [1:0]=00
 	upmu_set_rg_bc11_vref_vth(0x0);
  
-	 return  wChargerAvail;
+	return  wChargerAvail;
  }
  
  
  static void hw_bc11_done(void)
  {
- 	 //RG_BC11_VSRC_EN[1:0]=00
-	 upmu_set_rg_bc11_vsrc_en(0x0);
-	 //RG_BC11_VREF_VTH = [1:0]=0
-	 upmu_set_rg_bc11_vref_vth(0x0);
-	 //RG_BC11_CMP_EN[1.0] = 00
-	 upmu_set_rg_bc11_cmp_en(0x0);
-	 //RG_BC11_IPU_EN[1.0] = 00
-	 upmu_set_rg_bc11_ipu_en(0x0);
-	 //RG_BC11_IPD_EN[1.0] = 00
-	 upmu_set_rg_bc11_ipd_en(0x0);
-	 //RG_BC11_BIAS_EN=0
-	 upmu_set_rg_bc11_bias_en(0x0); 
+	//RG_BC11_VSRC_EN[1:0]=00
+	upmu_set_rg_bc11_vsrc_en(0x0);
+	//RG_BC11_VREF_VTH = [1:0]=0
+	upmu_set_rg_bc11_vref_vth(0x0);
+	//RG_BC11_CMP_EN[1.0] = 00
+	upmu_set_rg_bc11_cmp_en(0x0);
+	//RG_BC11_IPU_EN[1.0] = 00
+	upmu_set_rg_bc11_ipu_en(0x0);
+	//RG_BC11_IPD_EN[1.0] = 00
+	upmu_set_rg_bc11_ipd_en(0x0);
+	//RG_BC11_BIAS_EN=0
+	upmu_set_rg_bc11_bias_en(0x0); 
  
-	 Charger_Detect_Release();
+	Charger_Detect_Release();
 
 	if(Enable_BATDRV_LOG == BAT_LOG_FULL)
-    {
-    	battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_done() \r\n");
+	{
+		battery_xlog_printk(BAT_LOG_FULL, "hw_bc11_done() \r\n");
 		hw_bc11_dump_register();
-    }
+	}
     
  }
-
+#endif
 
  static kal_uint32 charging_hw_init(void *data)
  {
@@ -459,6 +541,7 @@ kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_ui
     upmu_set_rg_vcdt_mode(0);       //VCDT_MODE
     upmu_set_rg_vcdt_hv_en(1);      //VCDT_HV_EN    
 
+	upmu_set_rg_usbdl_set(0);       //force leave USBDL mode
 	upmu_set_rg_usbdl_rst(1);		//force leave USBDL mode
 
     upmu_set_rg_bc11_bb_ctrl(1);    //BC11_BB_CTRL
@@ -468,8 +551,14 @@ kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_ui
     upmu_set_rg_vbat_ov_en(1);      //VBAT_OV_EN
 #ifdef HIGH_BATTERY_VOLTAGE_SUPPORT
 	upmu_set_rg_vbat_ov_vth(0x2);   //VBAT_OV_VTH, 4.4V,
+#elif defined(HIGH_VOLTAGE_BATTERY_FEATURE_SUPPORT)   
+printk("charging_hw_init  high_vlotage_charge = %d\n", high_vlotage_charge); 
+	if(KAL_FALSE==high_vlotage_charge )
+       upmu_set_rg_vbat_ov_vth(0x1);   //VBAT_OV_VTH, 4.3V,
+      else
+	upmu_set_rg_vbat_ov_vth(0x2);   //VBAT_OV_VTH, 4.4V,
 #else
-    upmu_set_rg_vbat_ov_vth(0x1);   //VBAT_OV_VTH, 4.3V,
+      upmu_set_rg_vbat_ov_vth(0x1);   //VBAT_OV_VTH, 4.3V,
 #endif
     upmu_set_rg_baton_en(1);        //BATON_EN
 
@@ -479,6 +568,20 @@ kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_ui
     
     upmu_set_rg_ulc_det_en(1);      // RG_ULC_DET_EN=1
     upmu_set_rg_low_ich_db(1);      // RG_LOW_ICH_DB=000001'b
+
+
+	#if defined(MTK_PUMP_EXPRESS_SUPPORT)
+	upmu_set_rg_csdac_dly(0x0); 			// CSDAC_DLY
+	upmu_set_rg_csdac_stp(0x1); 			// CSDAC_STP
+	upmu_set_rg_csdac_stp_inc(0x1); 		// CSDAC_STP_INC
+	upmu_set_rg_csdac_stp_dec(0x7); 		// CSDAC_STP_DEC
+	upmu_set_rg_cs_en(1);					// CS_EN	
+	
+	upmu_set_rg_hwcv_en(1); 		
+	upmu_set_rg_vbat_cv_en(1);				// CV_EN
+	upmu_set_rg_csdac_en(1);				// CSDAC_EN
+	upmu_set_rg_chr_en(1);					// CHR_EN
+	#endif
 
 	return status;
  }
@@ -519,6 +622,9 @@ kal_uint32 charging_value_to_parameter(const kal_uint32 *parameter, const kal_ui
 	    
 	    upmu_set_rg_vbat_cv_en(1);              // CV_EN
 	    upmu_set_rg_csdac_en(1);                // CSDAC_EN
+
+ 
+		upmu_set_rg_pchr_flag_en(1);		// enable debug falg output
 
 		upmu_set_rg_chr_en(1); 				// CHR_EN
 
@@ -653,17 +759,35 @@ static kal_uint32 charging_get_charger_det_status(void *data)
  {
 	   kal_uint32 status = STATUS_OK;
  
+#if defined(CHRDET_SW_MODE_EN)
+    kal_uint32 vchr_val=0;
+
+    vchr_val = PMIC_IMM_GetOneChannelValue(4,5,1);
+    vchr_val = (((330+39)*100*vchr_val)/39)/100;
+
+    if( vchr_val > 4300 )
+    {
+        battery_xlog_printk(BAT_LOG_FULL, "[CHRDET_SW_WORKAROUND_EN] upmu_is_chr_det=Y (%d)\n", vchr_val);
+        *(kal_uint32 *)data = KAL_TRUE;	
+    }
+    else
+    {
+        battery_xlog_printk(BAT_LOG_FULL, "[CHRDET_SW_WORKAROUND_EN] upmu_is_chr_det=N (%d)\n", vchr_val);
+        *(kal_uint32 *)data = KAL_FALSE;
+    }        
+#else
 	   *(kal_bool*)(data) = upmu_get_rgs_chrdet();
+#endif
 	   
 	   return status;
  }
 
 
- kal_bool charging_type_detection_done(void)
+kal_bool charging_type_detection_done(void)
  {
 	 return charging_type_det_done;
  }
- 
+
 
  static kal_uint32 charging_get_charger_type(void *data)
  {
@@ -686,13 +810,17 @@ static kal_uint32 charging_get_charger_det_status(void *data)
 			 /********* Step B1 ***************/
 			 if(1 == hw_bc11_stepB1())
 			 {
-				 *(CHARGER_TYPE*)(data) = NONSTANDARD_CHARGER;
-				 battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Non STANDARD CHARGER!\r\n");
+				 //*(CHARGER_TYPE*)(data) = NONSTANDARD_CHARGER;
+				 //battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Non STANDARD CHARGER!\r\n");
+				 *(CHARGER_TYPE*)(data) = APPLE_2_1A_CHARGER;
+				 battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Apple 2.1A CHARGER!\r\n");
 			 }	 
 			 else
 			 {
-				 *(CHARGER_TYPE*)(data) = APPLE_2_1A_CHARGER;
-				 battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Apple 2.1A CHARGER!\r\n");
+				 //*(CHARGER_TYPE*)(data) = APPLE_2_1A_CHARGER;
+				 //battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Apple 2.1A CHARGER!\r\n");
+				 *(CHARGER_TYPE*)(data) = NONSTANDARD_CHARGER;
+				 battery_xlog_printk(BAT_LOG_CRTI, "step B1 : Non STANDARD CHARGER!\r\n");
 			 }	 
 		 }
 		 else
@@ -744,7 +872,236 @@ static kal_uint32 charging_get_charger_det_status(void *data)
 	 return status;
 }
 
+ static kal_uint32 charging_get_is_pcm_timer_trigger(void *data)
+ {
+     kal_uint32 status = STATUS_OK;
+ 
+#if defined(CONFIG_MTK_FPGA) 
+     battery_xlog_printk(BAT_LOG_CRTI, "[Early porting] no slp_get_wake_reason at FPGA\n");
+ #else
+     if(slp_get_wake_reason() == WR_PCM_TIMER)
+         *(kal_bool*)(data) = KAL_TRUE;
+     else
+         *(kal_bool*)(data) = KAL_FALSE;
+ 
+     battery_xlog_printk(BAT_LOG_CRTI, "slp_get_wake_reason=%d\n", slp_get_wake_reason());
+#endif
+        
+     return status;
+ }
+ 
+ static kal_uint32 charging_set_platform_reset(void *data)
+ {
+     kal_uint32 status = STATUS_OK;
+ 
+     battery_xlog_printk(BAT_LOG_CRTI, "charging_set_platform_reset\n");
+  
+     arch_reset(0,NULL);
+         
+     return status;
+ }
+ 
+ static kal_uint32 charging_get_platfrom_boot_mode(void *data)
+ {
+     kal_uint32 status = STATUS_OK;
+   
+     *(kal_uint32*)(data) = get_boot_mode();
+ 
+     battery_xlog_printk(BAT_LOG_CRTI, "get_boot_mode=%d\n", get_boot_mode());
+          
+     return status;
+ }
 
+ static kal_uint32 charging_set_power_off(void *data)
+ {
+     kal_uint32 status = STATUS_OK;
+  
+     battery_xlog_printk(BAT_LOG_CRTI, "charging_set_power_off=%d\n");
+     mt_power_off();
+         
+     return status;
+ }
+
+ static kal_uint32 charging_get_power_srouce(void *data)
+ {
+ 	kal_uint32 status = STATUS_OK;
+
+#if defined(MTK_POWER_EXT_DETECT)
+ 	if (MT_BOARD_PHONE == mt_get_board_type())
+		*(kal_bool *)data = KAL_FALSE;
+	else
+ 	 	*(kal_bool *)data = KAL_TRUE;
+#else
+	 *(kal_bool *)data = KAL_FALSE;
+#endif
+
+	 return status;
+ }
+
+
+ static kal_uint32 charging_get_csdac_full_flag(void *data)
+ {
+ 	kal_uint32 status = STATUS_OK;
+	kal_uint32 csdac_value;
+
+	
+	csdac_value = charging_get_csdac_value();
+
+	if(csdac_value > 800)	//10 bit,  treat as full if csdac more than 800
+		*(kal_bool *)data = KAL_TRUE;
+	else
+		*(kal_bool *)data = KAL_FALSE;
+
+	return status;	
+ }
+
+
+ static kal_uint32 charging_set_ta_current_pattern(void *data)
+ {
+	kal_uint32 status = STATUS_OK;
+	kal_uint32 array_size; 
+	kal_uint32 ta_on_current = CHARGE_CURRENT_450_00_MA;
+	kal_uint32 ta_off_current= CHARGE_CURRENT_70_00_MA;
+	kal_uint32 set_ta_on_current_reg_value; 
+	kal_uint32 set_ta_off_current_reg_value;
+ 	kal_uint32 increase = *(kal_uint32*)(data);
+	
+	array_size = GETARRAYNUM(CS_VTH);
+	set_ta_on_current_reg_value = charging_parameter_to_value(CS_VTH, array_size ,ta_on_current);	
+	set_ta_off_current_reg_value = charging_parameter_to_value(CS_VTH, array_size ,ta_off_current);	
+
+	if(increase == KAL_TRUE)
+	{
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_increase() start\n");
+
+		 upmu_set_rg_cs_vth(set_ta_off_current_reg_value); 
+		 msleep(50);
+	 
+		 // patent start
+		 upmu_set_rg_cs_vth(set_ta_on_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_increase() on 1");
+		 msleep(100);
+		 upmu_set_rg_cs_vth(set_ta_off_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_increase() off 1");
+		 msleep(100);
+
+		 
+		 upmu_set_rg_cs_vth(set_ta_on_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_increase() on 2");
+		 msleep(100);
+		 upmu_set_rg_cs_vth(set_ta_off_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_increase() off 2");
+		 msleep(100);
+
+	 
+		 upmu_set_rg_cs_vth(set_ta_on_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_increase() on 3");
+		 msleep(300);
+		 upmu_set_rg_cs_vth(set_ta_off_current_reg_value);
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_increase() off 3");
+		 msleep(100);
+
+		 
+		 upmu_set_rg_cs_vth(set_ta_on_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_increase() on 4");
+		 msleep(300);
+		 upmu_set_rg_cs_vth(set_ta_off_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_increase() off 4");
+		 msleep(100);
+
+		 
+		 upmu_set_rg_cs_vth(set_ta_on_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_increase() on 5");
+		 msleep(300);
+		 upmu_set_rg_cs_vth(set_ta_off_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_increase() off 5");
+		 msleep(100);
+
+
+		 upmu_set_rg_cs_vth(set_ta_on_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_increase() on 6");
+		 msleep(500);
+
+		 upmu_set_rg_cs_vth(set_ta_off_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_increase() off 6");
+		 msleep(50);
+		 // patent end
+
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_increase() end \n");
+	}
+	else	//decrease
+	{
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_decrease() start\n");
+
+		 upmu_set_rg_cs_vth(set_ta_off_current_reg_value); 
+		 msleep(50);
+
+		 // patent start	
+		 upmu_set_rg_cs_vth(set_ta_on_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_decrease() on 1");
+		 msleep(300);
+		 upmu_set_rg_cs_vth(set_ta_off_current_reg_value);
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_decrease() off 1");
+		 msleep(100);
+		 
+		 
+		 upmu_set_rg_cs_vth(set_ta_on_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_decrease() on 2");
+		 msleep(300);
+		 upmu_set_rg_cs_vth(set_ta_off_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_decrease() off 2");
+		 msleep(100);
+
+		 
+		 upmu_set_rg_cs_vth(set_ta_on_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_decrease() on 3");
+		 msleep(300);
+		 upmu_set_rg_cs_vth(set_ta_off_current_reg_value); 
+	     battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_decrease() off 3");
+		 msleep(100);
+
+	 	 
+		 upmu_set_rg_cs_vth(set_ta_on_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_decrease() on 4");
+		 msleep(100);
+		 upmu_set_rg_cs_vth(set_ta_off_current_reg_value); 
+	 	 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_decrease() off 4");
+		 msleep(100);
+
+		 
+		 upmu_set_rg_cs_vth(set_ta_on_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_decrease() on 5");
+		 msleep(100);
+		 upmu_set_rg_cs_vth(set_ta_off_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_decrease() off 5");
+		 msleep(100);
+
+		 
+		 upmu_set_rg_cs_vth(set_ta_on_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_decrease() on 6");
+		 msleep(500);
+	    
+		 upmu_set_rg_cs_vth(set_ta_off_current_reg_value); 
+		 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_decrease() off 6");
+		 msleep(50);
+		  // patent end
+
+	 	 battery_xlog_printk(BAT_LOG_CRTI, "mtk_ta_decrease() end \n"); 
+	}
+
+	return status;	
+ }
+
+#if defined(HIGH_VOLTAGE_BATTERY_FEATURE_SUPPORT)   
+static kal_uint32 charging_set_high_vol_chr(void *data)
+{
+	kal_uint32 enable = *(kal_uint32*)(data);
+	if(KAL_TRUE==enable)
+	high_vlotage_charge = KAL_TRUE; 
+	else
+	high_vlotage_charge = KAL_FALSE; 
+}
+#endif
  static kal_uint32 (*charging_func[CHARGING_CMD_NUMBER])(void *data)=
  {
  	 charging_hw_init
@@ -761,6 +1118,16 @@ static kal_uint32 charging_get_charger_det_status(void *data)
 	,charging_get_battery_status
 	,charging_get_charger_det_status
 	,charging_get_charger_type
+	,charging_get_is_pcm_timer_trigger
+	,charging_set_platform_reset
+	,charging_get_platfrom_boot_mode
+	,charging_set_power_off
+    ,charging_get_power_srouce
+	,charging_get_csdac_full_flag
+	,charging_set_ta_current_pattern
+#if defined(HIGH_VOLTAGE_BATTERY_FEATURE_SUPPORT)   
+	,charging_set_high_vol_chr
+#endif
  };
  
  

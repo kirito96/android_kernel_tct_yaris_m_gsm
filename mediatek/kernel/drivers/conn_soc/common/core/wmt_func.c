@@ -287,6 +287,12 @@ INT32 wmt_func_bt_on(P_WMT_IC_OPS pOps, P_WMT_GEN_CONF pConf)
 		ctrlPa1 = BT_PALDO;
 		ctrlPa2 = PALDO_OFF;
 		wmt_core_ctrl(WMT_CTRL_SOC_PALDO_CTRL,&ctrlPa1,&ctrlPa2);
+
+		/*do coredump when bt on fail*/
+		wmt_core_set_coredump_state(DRV_STS_FUNC_ON);
+		ctrlPa1 = WMTDRV_TYPE_BT;
+		ctrlPa2 = 32;
+		wmt_core_ctrl(WMT_CTRL_EVT_ERR_TRG_ASSERT,&ctrlPa1,&ctrlPa2);
 		return -2;
 	}else
 	{
@@ -321,6 +327,11 @@ INT32 wmt_func_bt_off(P_WMT_IC_OPS pOps, P_WMT_GEN_CONF pConf)
 	}
 	if(iRet1 + iRet2)
 	{
+		/*do coredump when bt off fail*/
+		wmt_core_set_coredump_state(DRV_STS_FUNC_ON);
+		ctrlPa1 = WMTDRV_TYPE_BT;
+		ctrlPa2 = 32;
+		wmt_core_ctrl(WMT_CTRL_EVT_ERR_TRG_ASSERT,&ctrlPa1,&ctrlPa2);
 		return -1;
 	}
 
@@ -491,8 +502,9 @@ INT32 wmt_func_gps_on(P_WMT_IC_OPS pOps, P_WMT_GEN_CONF pConf)
     INT32 iRet = 0;
 	UINT32 ctrlPa1;
 	UINT32 ctrlPa2;
-
-	if((pConf->co_clock_flag) && (0 == pConf->wmt_gps_lna_enable)) //use external LNA
+	UCHAR co_clock_type = (pConf->co_clock_flag & 0x0f);
+	
+	if((co_clock_type) && (0 == pConf->wmt_gps_lna_enable)) //use SOC external LNA
 	{
 		if(!osal_test_bit(WMT_FM_ON,&gGpsFmState))
 		{
@@ -520,7 +532,7 @@ INT32 wmt_func_gps_on(P_WMT_IC_OPS pOps, P_WMT_GEN_CONF pConf)
 				wmt_core_ctrl(WMT_CTRL_BGW_DESENSE_CTRL,&ctrlPa1,&ctrlPa2);
 			}
 			
-			if((pConf->co_clock_flag) && (0 == pConf->wmt_gps_lna_enable)) //use external LNA
+			if((co_clock_type) && (0 == pConf->wmt_gps_lna_enable)) //use SOC external LNA
 			{
 				osal_set_bit(WMT_GPS_ON,&gGpsFmState);
 			}
@@ -534,8 +546,9 @@ INT32 wmt_func_gps_off(P_WMT_IC_OPS pOps, P_WMT_GEN_CONF pConf)
     INT32 iRet = 0;
 	UINT32 ctrlPa1 = 0;
 	UINT32 ctrlPa2 = 0;
-	
-    iRet = wmt_func_gps_pre_off(pOps, pConf);
+	UCHAR co_clock_type = (pConf->co_clock_flag & 0x0f);
+
+	iRet = wmt_func_gps_pre_off(pOps, pConf);
     if (0 == iRet)
     {
         iRet = wmt_func_gps_ctrl(FUNC_OFF);
@@ -552,7 +565,7 @@ INT32 wmt_func_gps_off(P_WMT_IC_OPS pOps, P_WMT_GEN_CONF pConf)
 		}
     }
 
-	if((pConf->co_clock_flag) && (0 == pConf->wmt_gps_lna_enable)) //use external LNA
+	if((co_clock_type) && (0 == pConf->wmt_gps_lna_enable)) //use SOC external LNA
 	{
 		if(osal_test_bit(WMT_FM_ON,&gGpsFmState))
 		{
@@ -587,8 +600,9 @@ INT32 wmt_func_fm_on(P_WMT_IC_OPS pOps, P_WMT_GEN_CONF pConf)
 	UINT32 ctrlPa1 = 0;
 	UINT32 ctrlPa2 = 0;
 	INT32 iRet = -1;
-
-	if(pConf->co_clock_flag)
+	UCHAR co_clock_type = (pConf->co_clock_flag & 0x0f);
+	
+	if(co_clock_type)
 	{
 		if(!osal_test_bit(WMT_GPS_ON,&gGpsFmState))
 		{
@@ -604,7 +618,7 @@ INT32 wmt_func_fm_on(P_WMT_IC_OPS pOps, P_WMT_GEN_CONF pConf)
 	iRet = wmt_core_func_ctrl_cmd(WMTDRV_TYPE_FM, MTK_WCN_BOOL_TRUE);
 	if(!iRet)
 	{
-		if(pConf->co_clock_flag)
+		if(co_clock_type)
 		{
 			osal_set_bit(WMT_FM_ON,&gGpsFmState);
 		}
@@ -619,10 +633,11 @@ INT32 wmt_func_fm_off(P_WMT_IC_OPS pOps, P_WMT_GEN_CONF pConf)
     UINT32 ctrlPa1 = 0;
 	UINT32 ctrlPa2 = 0;
 	INT32 iRet = -1;
-	
-    iRet = wmt_core_func_ctrl_cmd(WMTDRV_TYPE_FM, MTK_WCN_BOOL_FALSE);
+	UCHAR co_clock_type = (pConf->co_clock_flag & 0x0f);
 
-	if(pConf->co_clock_flag)
+	iRet = wmt_core_func_ctrl_cmd(WMTDRV_TYPE_FM, MTK_WCN_BOOL_FALSE);
+
+	if(co_clock_type)
 	{
 		if(osal_test_bit(WMT_GPS_ON,&gGpsFmState))
 		{

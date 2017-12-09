@@ -1,68 +1,12 @@
-
 #include <stdlib.h>
 #include <stdio.h>
 #include "camera_custom_if.h"
 
-//add by hongqi.tian.hz for PR480998 begin
-#include <cutils/properties.h>
-#define LOG_TAG "custm_SetExif"
-#include <utils/Log.h>
-//add by hongqi.tian.hz for PR480998 end
-
 namespace NSCamCustom
 {
-
-
-//#define EN_CUSTOM_EXIF_INFO
-#define EN_CUSTOM_EXIF_INFO//modified by hongqi.tian.hz for PR480998
-MINT32 custom_SetExif(void **ppCustomExifTag)
-{
-#ifdef EN_CUSTOM_EXIF_INFO
-  //add by hongqi.tian.hz for PR480998 begin
-//#define CUSTOM_EXIF_STRING_MAKE  "custom make"
-//#define CUSTOM_EXIF_STRING_MODEL "custom model"
-//#define CUSTOM_EXIF_STRING_SOFTWARE "custom software"
-//static customExifInfo_t exifTag = {CUSTOM_EXIF_STRING_MAKE,CUSTOM_EXIF_STRING_MODEL,CUSTOM_EXIF_STRING_SOFTWARE};
-    char model[32];
-    char manufacturer[32];
-    property_get("ro.product.display.model", model, "default");
-    ALOGI("custom_SetExif model= %s",model);
-    property_get("ro.product.manufacturer", manufacturer, "default");
-    ALOGI("custom_SetExif manufacturer= %s",manufacturer);
-    //#define CUSTOM_EXIF_STRING_MAKE  "custom make"
-    //#define CUSTOM_EXIF_STRING_MODEL "custom model"
-    static customExifInfo_t exifTag = { 0 };
-    for (int i = 0; i < 32; i++) {
-        if (model[i] != '\0' && i < strlen(model)) {
-            exifTag.strModel[i] = (unsigned char) model[i];
-        } else {
-            exifTag.strModel[i] = '\0';
-        }
-        if (manufacturer[i] != '\0' && i < strlen(manufacturer)) {
-            exifTag.strMake[i] = (unsigned char) manufacturer[i];
-        } else {
-            exifTag.strMake[i] = '\0';
-        }
-    }
-       //add by hongqi.tian.hz for PR480998 end
-    if (0 != ppCustomExifTag) {
-        *ppCustomExifTag = (void*)&exifTag;
-    }
-    return 0;
-#else
-    return -1;
-#endif
-}
-//
-customExif_t const&
-getCustomExif()
-{
-    static customExif_t inst = {
-        bEnCustom       :   false,  // default value: false.
-        u4ExpProgram    :   0,      // default value: 0.    '0' means not defined, '1' manual control, '2' program normal
-    };
-    return inst;
-}
+/*******************************************************************************
+* 
+*******************************************************************************/
 //
 MINT32 get_atv_disp_delay(MINT32 mode)
 {
@@ -75,7 +19,12 @@ MINT32 get_atv_input_data()
 }
 
 
-#define FLASHLIGHT_CALI_LED_GAIN_PRV_TO_CAP_10X 10
+/*******************************************************************************
+* Author : cotta
+* Functionality : custom flashlight gain between preview/capture flash
+*******************************************************************************/
+/*ersen.shang for flashlight 20141121 */
+#define FLASHLIGHT_CALI_LED_GAIN_PRV_TO_CAP_10X 11
 MUINT32 custom_GetFlashlightGain10X(void)
 {   
     // x10 , 1 mean 0.1x gain    
@@ -88,24 +37,50 @@ MUINT32 custom_BurstFlashlightGain10X(void)
 {
     return (MUINT32)FLASHLIGHT_CALI_LED_GAIN_PRV_TO_CAP_10X;
 }
+/*******************************************************************************
+* Author : Jiale
+* Functionality : custom yuv flashlight threshold
+*******************************************************************************/
 #define FLASHLIGHT_YUV_THRESHOlD 3.0
 double custom_GetYuvFlashlightThreshold(void)
 {    
     return (double)FLASHLIGHT_YUV_THRESHOlD;
 }
 
+/*******************************************************************************
+* Author : Jiale
+* Functionality : custom yuv sensor convergence frame count
+*******************************************************************************/
 #define FLASHLIGHT_YUV_CONVERGENCE_FRAME 7
 MINT32 custom_GetYuvFlashlightFrameCnt(void)
 {    
     return (int)FLASHLIGHT_YUV_CONVERGENCE_FRAME;
 }
 
+/*******************************************************************************
+* Author : CD
+* Functionality : custom yuv sensor preflash duty
+*******************************************************************************/
+#define FLASHLIGHT_YUV_TORCH_LEVEL 6
+MINT32 custom_GetYuvTorchDuty(void)
+{    
+    return (int)FLASHLIGHT_YUV_TORCH_LEVEL;
+}
+
+/*******************************************************************************
+* Author : CD
+* Functionality : custom yuv sensor preflash duty
+*******************************************************************************/
 #define FLASHLIGHT_YUV_NORMAL_LEVEL 12
 MINT32 custom_GetYuvFlashlightDuty(void)
 {    
     return (int)FLASHLIGHT_YUV_NORMAL_LEVEL;
 }
 
+/*******************************************************************************
+* Author : CD
+* Functionality : custom yuv sensor capture flash duty (high current mode)
+*******************************************************************************/
 #define FLASHLIGHT_YUV_MAIN_HI_LEVEL 12
 MINT32 custom_GetYuvFlashlightHighCurrentDuty(void)
 {
@@ -115,7 +90,12 @@ MINT32 custom_GetYuvFlashlightHighCurrentDuty(void)
     return (int)FLASHLIGHT_YUV_MAIN_HI_LEVEL;
 }
 
-#define FLASHLIGHT_YUV_MAIN_HI_TIMEOUT 500
+/*******************************************************************************
+* Author : CD
+* Functionality : custom yuv sensor capture flash timeout (high current mode)
+*******************************************************************************/
+/*xiaopu.zhu modify for camera mian flash 150*2*/
+#define FLASHLIGHT_YUV_MAIN_HI_TIMEOUT 150
 MINT32 custom_GetYuvFlashlightHighCurrentTimeout(void)
 {
     // if FLASHLIGHT_CALI_LED_GAIN_PRV_TO_CAP_10X > 10 (high current mode),
@@ -125,13 +105,41 @@ MINT32 custom_GetYuvFlashlightHighCurrentTimeout(void)
 }
 
 
+/*******************************************************************************
+* Author : CD
+* Functionality : custom yuv sensor flashlight step
+*******************************************************************************/
 #define FLASHLIGHT_YUV_STEP 7
 MINT32 custom_GetYuvFlashlightStep(void)
 {    
     return (int)FLASHLIGHT_YUV_STEP;
 }
 
+/*******************************************************************************
+* Author : CD
+* Functionality : custom yuv flashlight AF Lamp support
+*******************************************************************************/
+#define FLASHLIGHT_YUV_AF_LAMP 1
+MINT32 custom_GetYuvAfLampSupport(void)
+{
+    // 0: indicates no AF lamp when touch AF
+    // 1: indicates AF lamp support for touch AF
+    return (int)FLASHLIGHT_YUV_AF_LAMP;
+}
 
+/*******************************************************************************
+* Author : CD
+* Functionality : custom yuv flashlight AF Lamp support
+*******************************************************************************/
+#define FLASHLIGHT_YUV_AF_PREFLASH 0
+MINT32 custom_GetYuvPreflashAF(void)
+{
+    return (int)FLASHLIGHT_YUV_AF_PREFLASH;
+}
+
+/*******************************************************************************
+* 
+*******************************************************************************/
 
 };  //NSCamCustom
 

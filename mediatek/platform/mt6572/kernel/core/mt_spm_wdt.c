@@ -36,13 +36,15 @@ static const u32 spm_pcm_wdt[24] = {
 
 #define WAKE_SRC_FOR_WDT  WAKE_SRC_THERM
 
-void spm_irq_wdt_woof(int irq, void *dev_id)
+irqreturn_t spm_irq_wdt_woof(int irq, void *dev_id)
 {
     int i;
     for(i=0;i<20;i++){
        spm_error("!!!!!![SPM IRQ] WDT WOOF WOOF WOOF!!!!!\n");
        mdelay(1);
     }
+    
+    return 0;
 }
 
 void spm_fiq_wdt_woof(void *arg, void *regs, void *svc_sp)
@@ -54,9 +56,8 @@ void spm_fiq_wdt_woof(void *arg, void *regs, void *svc_sp)
     }
 }
 
-irqreturn_t (*spm_wdt_irq_bark)(int irq, void *dev_id) = &spm_fiq_wdt_woof;
+irqreturn_t (*spm_wdt_irq_bark)(int irq, void *dev_id) = &spm_irq_wdt_woof;
 void	(*spm_wdt_fiq_bark)(void *arg, void *regs, void *svc_sp) = &spm_fiq_wdt_woof;
-
 void spm_wdt_restart(void);
 
 SPM_PCM_CONFIG pcm_config_wdt ={
@@ -97,10 +98,9 @@ SPM_PCM_CONFIG pcm_config_wdt ={
      
 wake_reason_t spm_let_the_dog_out(void)
 {
-    unsigned long flags;
     static wake_reason_t last_wr = WR_NONE;
     
-    spm_notice("spm_let_the_dog_out\n");
+    //spm_notice("spm_let_the_dog_out\n");
 
     //spin_lock_irqsave(&spm_lock, flags);
     
@@ -120,7 +120,8 @@ wake_reason_t spm_let_the_dog_home(void)
     spm_wdt_restart();
     spm_write(SPM_PCM_SW_INT_CLEAR,0xf);
     spm_write(SPM_PCM_CON1, (spm_read(SPM_PCM_CON1) & ~CON1_PCM_WDT_EN) | CON1_CFG_KEY);
-    spm_notice("spm_let_the_dog_home\n");
+    //spm_notice("spm_let_the_dog_home\n");
+    return WR_NONE;
 }
 
 /***********************Exposed API*************************/
@@ -128,7 +129,7 @@ void spm_wdt_restart(void) //used to kick wdt.
 {
     spm_write(SPM_POWER_ON_VAL1,spm_read(SPM_POWER_ON_VAL1)| R7_wdt_kick_p);
     spm_write(SPM_POWER_ON_VAL1,spm_read(SPM_POWER_ON_VAL1)& ~R7_wdt_kick_p);
-		spm_notice("spm_wdt_restart\n");
+		//spm_notice("spm_wdt_restart\n");
 }
 
 void spm_wdt_config(bool enable)//used to enable/disable spm wdt.
@@ -142,18 +143,18 @@ void spm_wdt_config(bool enable)//used to enable/disable spm wdt.
 void spm_wdt_set_reset_length(unsigned int value)//used to set wdt timeout interval
 {
     pcm_config_wdt.wdt_val_ms = value;
-    spm_notice("spm_wdt_set_reset_length:%d\n",pcm_config_wdt.wdt_val_ms);
+    //spm_notice("spm_wdt_set_reset_length:%d\n",pcm_config_wdt.wdt_val_ms);
 }
 
 void spm_wdt_set_irq_cb(irq_handler_t FuncPtr)
 {
    spm_wdt_irq_bark = FuncPtr;          // C
-   spm_notice("spm_wdt_set_irq_cb:0x%X\n",FuncPtr);
+   //spm_notice("spm_wdt_set_irq_cb:0x%X\n",FuncPtr);
 }
 
 void spm_wdt_set_fiq_cb(fiq_isr_handler FuncPtr)
 {
    spm_wdt_fiq_bark = FuncPtr;          // C
-   spm_notice("spm_wdt_set_fiq_cb:0x%X\n",FuncPtr);
+   //spm_notice("spm_wdt_set_fiq_cb:0x%X\n",FuncPtr);
 }
 #endif

@@ -16,6 +16,7 @@
 #include <linux/proc_fs.h>
 #include <linux/rtc.h>
 #include <linux/xlog.h>
+#include <linux/time.h>
 
 #include <asm/uaccess.h>
 #include <mach/mt_typedefs.h>
@@ -27,6 +28,7 @@
 #include <mach/battery_meter_hal.h>
 #include "cust_battery_meter.h"
 #include "cust_battery_meter_table.h"
+#include "mach/mtk_rtc.h"
 
 // ============================================================ //
 // define
@@ -38,13 +40,17 @@ int Enable_FGADC_LOG = 1;
 // ============================================================ //
 // global variable
 // ============================================================ //
-BATTERY_METER_CONTROL battery_meter_ctrl;
+BATTERY_METER_CONTROL battery_meter_ctrl = NULL;
 
-static struct proc_dir_entry *proc_entry_fgadc;
+//static struct proc_dir_entry *proc_entry_fgadc;
 static char proc_fgadc_data[32]; 
 
 kal_bool gFG_Is_Charging = KAL_FALSE;
 kal_int32 g_auxadc_solution = 0;
+U32 g_spm_timer = 600;
+bool bat_spm_timeout = false;
+U32 _g_bat_sleep_total_time = 0;
+kal_int32 g_booting_vbat=0;
 
 ///////////////////////////////////////////////////////////////////////////////////////////
 //// PMIC AUXADC Related Variable
@@ -136,8 +142,200 @@ kal_int32 d5_count_time_rate=1;
 kal_int32 g_d_hw_ocv=0;
 kal_int32 g_vol_bat_hw_ocv=0;
 kal_int32 g_hw_ocv_before_sleep=0;
-kal_uint32 g_rtc_time_before_sleep=0;
+struct timespec g_rtc_time_before_sleep;
 kal_int32 g_sw_vbat_temp=0;
+struct timespec last_oam_run_time;
+
+// aging mechanism
+#ifdef MTK_ENABLE_AGING_ALGORITHM
+
+static kal_int32 aging_ocv_1 = 0;
+static kal_int32 aging_ocv_2 = 0;
+static kal_int32 aging_car_1 = 0;
+static kal_int32 aging_car_2 = 0;
+static kal_int32 aging_dod_1 = 0;
+static kal_int32 aging_dod_2 = 0;
+static time_t aging_resume_time_1 = 0;
+static time_t aging_resume_time_2 = 0;
+
+#ifndef SELF_DISCHARGE_CHECK_THRESHOLD
+#define SELF_DISCHARGE_CHECK_THRESHOLD 30
+#endif
+
+#ifndef OCV_RECOVER_TIME
+#define OCV_RECOVER_TIME 1800
+#endif
+
+#ifndef DOD1_ABOVE_THRESHOLD
+#define DOD1_ABOVE_THRESHOLD 30
+#endif
+
+#ifndef DOD2_BELOW_THRESHOLD
+#define DOD2_BELOW_THRESHOLD 70
+#endif
+
+#ifndef MIN_DOD_DIFF_THRESHOLD
+#define MIN_DOD_DIFF_THRESHOLD 60
+#endif
+
+#ifndef MIN_AGING_FACTOR
+#define MIN_AGING_FACTOR 90
+#endif
+
+#endif // aging mechanism
+
+// battery info
+#ifdef MTK_BATTERY_LIFETIME_DATA_SUPPORT
+
+kal_int32 gFG_battery_cycle = 0;
+kal_int32 gFG_aging_factor = 100;
+kal_int32 gFG_columb_sum = 0;
+kal_int32 gFG_pre_columb_count = 0;
+
+kal_int32 gFG_max_voltage = 0;
+kal_int32 gFG_min_voltage = 10000;
+kal_int32 gFG_max_current = 0;
+kal_int32 gFG_min_current = 0;
+kal_int32 gFG_max_temperature= -20;
+kal_int32 gFG_min_temperature= 100;
+
+#endif // battery info
+
+/* Temperature window size */
+#define TEMP_AVERAGE_SIZE 	30
+
+//BEGIN: add by fangjie for PR839399, add scud and oceansun battery
+//#ifndef MTK_MULTI_BAT_PROFILE_SUPPORT
+//#define MTK_MULTI_BAT_PROFILE_SUPPORT
+//#endif
+#ifndef BATT_ID_CHECK_SUPPORT
+#define BATT_ID_CHECK_SUPPORT
+#endif
+#ifdef BATT_ID_CHECK_SUPPORT
+#define BYD_MIN_VALID_BATT_ID  400
+#define BYD_MAX_VALID_BATT_ID  650
+#define SCUD_MIN_VALID_BATT_ID 1100
+#define SCUD_MAX_VALID_BATT_ID 1350
+#define OS_MIN_VALID_BATT_ID 1600 //temp test
+#define OS_MAX_VALID_BATT_ID 1850
+ #if defined(HIGH_VOLTAGE_BATTERY_FEATURE_SUPPORT)
+#define BYD016C_MIN_VALID_BATT_ID 750
+#define BYD016C_MAX_VALID_BATT_ID 950
+#define BYD016C_33K_MIN_VALID_BATT_ID 980
+#define BYD016C_33K_MAX_VALID_BATT_ID 1090
+#endif
+#endif
+#ifdef MTK_MULTI_BAT_PROFILE_SUPPORT
+kal_int32 g_Q_MAX_POS_50[] = {1444, 1406, 1719};
+kal_int32 g_Q_MAX_POS_25[] = {1426, 1359, 1711};
+kal_int32 g_Q_MAX_POS_0[] = {1319, 1235, 1537};
+kal_int32 g_Q_MAX_NEG_10[] = {1227, 1177, 1214}; 
+kal_int32 g_Q_MAX_POS_50_H_CURRENT[] = {1430, 1364, 1705};
+kal_int32 g_Q_MAX_POS_25_H_CURRENT[] = {1401, 1306, 1658};
+kal_int32 g_Q_MAX_POS_0_H_CURRENT[] = {1254, 1017, 1160};
+kal_int32 g_Q_MAX_NEG_10_H_CURRENT[] = {1180, 955, 629};
+/* Qmax for battery  */
+#endif
+//END: add by fangjie for PR839399, add scud and oceansun battery
+
+#ifdef MTK_MULTI_BAT_PROFILE_SUPPORT
+kal_uint32 g_fg_battery_id = 0;
+
+//BEGIN: add by fangjie for PR839399, add scud and oceansun battery
+//BYD:    R_ID=10k, Vbat_id=10/(10+24)*1.8V=529mV, the valid gap is 400~650
+//SCUD,: R_ID = 51k, Vbat_id=51/(51+24)*1.8V=1224mV, the valid gap is 1100~1350
+#ifdef BATT_ID_CHECK_SUPPORT
+extern kal_int32 battery_meter_get_battery_id_voltage(void);
+ kal_uint32 JRD_CheckBatteryType(void)
+{	
+	kal_int32 battery_id_voltage = 0 ; //unit: mA
+	 battery_id_voltage = battery_meter_get_battery_id_voltage();
+	printk("JRD_CheckBatteryType()\n");
+	printk("meter: battery_id_voltage= %d\n", battery_id_voltage);
+  	if(((battery_id_voltage < BYD_MIN_VALID_BATT_ID) || (battery_id_voltage > BYD_MAX_VALID_BATT_ID))
+             &&((battery_id_voltage < SCUD_MIN_VALID_BATT_ID) || (battery_id_voltage > SCUD_MAX_VALID_BATT_ID))
+        #if defined(HIGH_VOLTAGE_BATTERY_FEATURE_SUPPORT)
+            &&((battery_id_voltage < BYD016C_MIN_VALID_BATT_ID) || (battery_id_voltage > BYD016C_MAX_VALID_BATT_ID))
+             &&((battery_id_voltage < BYD016C_33K_MIN_VALID_BATT_ID) || (battery_id_voltage> BYD016C_33K_MAX_VALID_BATT_ID))
+        #endif
+		)
+	{
+        	battery_xlog_printk(BAT_LOG_CRTI, "meter [BATTERY] Battery ID error !!\n\r"); 
+		return 0; //default
+	}
+	else if((battery_id_voltage < BYD_MAX_VALID_BATT_ID)&&(battery_id_voltage > BYD_MIN_VALID_BATT_ID))
+  	{
+		printk("mter: battery id BYD, Vbat_id = %d!\n", battery_id_voltage);
+		return 0; //BYD
+  	}
+	else if((battery_id_voltage < SCUD_MAX_VALID_BATT_ID)&&(battery_id_voltage> SCUD_MIN_VALID_BATT_ID))
+  	{
+		printk("meter: battery id SCUD, Vbat_id = %d!\n", battery_id_voltage);
+		return 1; //SCUD
+	}
+	#if defined(HIGH_VOLTAGE_BATTERY_FEATURE_SUPPORT)
+	else  if(((battery_id_voltage < BYD016C_MAX_VALID_BATT_ID)&&(battery_id_voltage> BYD016C_MIN_VALID_BATT_ID))
+		||((battery_id_voltage < BYD016C_33K_MAX_VALID_BATT_ID)&&(battery_id_voltage> BYD016C_33K_MIN_VALID_BATT_ID)))
+  	{
+		printk("meter: battery id BYD016C, Vbat_id = %d!\n", battery_id_voltage);
+		return 2; 
+	}
+	#endif
+}
+#endif
+//END: add by fangjie for PR839399, add scud and oceansun battery
+
+extern int IMM_GetOneChannelValue_Cali(int Channel, int*voltage);
+#ifdef MTK_GET_BATTERY_ID_BY_AUXADC
+void fgauge_get_profile_id(void)
+{
+	int id_volt = 0;
+    int id = 0;
+	int ret = 0;
+
+	ret = IMM_GetOneChannelValue_Cali(BATTERY_ID_CHANNEL_NUM, &id_volt);
+	if(ret != 0)
+        bm_print(BM_LOG_CRTI, "[fgauge_get_profile_id]id_volt read fail\n");
+	else
+        bm_print(BM_LOG_CRTI, "[fgauge_get_profile_id]id_volt = %d\n", id_volt);
+
+    if ( (sizeof(g_battery_id_voltage)/sizeof(kal_int32)) != TOTAL_BATTERY_NUMBER)
+    {
+        bm_print(BM_LOG_CRTI, "[fgauge_get_profile_id]error! voltage range incorrect!\n");
+        return;
+    }
+
+    for (id = 0; id < TOTAL_BATTERY_NUMBER; id++)
+    {
+        if(id_volt < g_battery_id_voltage[id])
+        {
+            g_fg_battery_id = id;
+            break;
+        }
+        else if (g_battery_id_voltage[id] == -1)
+        {
+            g_fg_battery_id = TOTAL_BATTERY_NUMBER-1;
+        }
+    }
+
+    bm_print(BM_LOG_CRTI, "[fgauge_get_profile_id]Battery id (%d)\n", g_fg_battery_id);		
+}
+#elif defined(MTK_GET_BATTERY_ID_BY_GPIO)
+void fgauge_get_profile_id(void)
+{
+    g_fg_battery_id = 0;
+}
+#else
+void fgauge_get_profile_id(void) //use Battery R_id 
+{
+	#ifdef BATT_ID_CHECK_SUPPORT
+	g_fg_battery_id = JRD_CheckBatteryType(); //Add by fangjie for PR839399
+	#endif
+	printk("meter : g_fg_battery_id = %d\n", g_fg_battery_id); 
+}
+#endif
+#endif
+
 // ============================================================ //
 // function prototype
 // ============================================================ //
@@ -149,8 +347,8 @@ kal_int32 g_sw_vbat_temp=0;
 // ============================================================ //
 // extern function
 // ============================================================ //
-extern int get_rtc_spare_fg_value(void);
-extern unsigned long rtc_read_hw_time(void);
+//extern int get_rtc_spare_fg_value(void);
+//extern unsigned long rtc_read_hw_time(void);
 
 
 
@@ -160,6 +358,164 @@ int get_r_fg_value(void)
     return (R_FG_VALUE+CUST_R_FG_OFFSET);
 }
 
+#ifdef MTK_MULTI_BAT_PROFILE_SUPPORT
+int BattThermistorConverTemp(int Res)
+{
+    int i=0;
+    int RES1=0,RES2=0;
+    int TBatt_Value=-200,TMP1=0,TMP2=0;
+    //printk("BattThermistorConverTemp g_fg_battery_id = %d\n", g_fg_battery_id); 
+    BATT_TEMPERATURE *batt_temperature_table = &Batt_Temperature_Table[g_fg_battery_id];
+    if(Res>=batt_temperature_table[0].TemperatureR)
+    {
+        TBatt_Value = -20;
+    }
+    else if(Res<=batt_temperature_table[16].TemperatureR)
+    {
+        TBatt_Value = 60;
+    }
+    else
+    {
+        RES1=batt_temperature_table[0].TemperatureR;
+        TMP1=batt_temperature_table[0].BatteryTemp;
+
+        for(i=0;i<=16;i++)
+        {
+            if(Res>=batt_temperature_table[i].TemperatureR)
+            {
+                RES2=batt_temperature_table[i].TemperatureR;
+                TMP2=batt_temperature_table[i].BatteryTemp;
+                break;
+            }
+            else
+            {
+                RES1=batt_temperature_table[i].TemperatureR;
+                TMP1=batt_temperature_table[i].BatteryTemp;
+            }
+        }
+        
+        TBatt_Value = (((Res-RES2)*TMP1)+((RES1-Res)*TMP2))/(RES1-RES2);
+    }
+
+    return TBatt_Value;    
+}
+
+kal_int32 fgauge_get_Q_max(kal_int16 temperature)
+{
+    kal_int32 ret_Q_max=0;
+    kal_int32 low_temperature = 0, high_temperature = 0;
+    kal_int32 low_Q_max = 0, high_Q_max = 0;
+    //printk("fgauge_get_Q_max g_fg_battery_id = %d\n", g_fg_battery_id); 
+    if (temperature <= TEMPERATURE_T1)
+    {
+        low_temperature = (-10);
+        low_Q_max = g_Q_MAX_NEG_10[g_fg_battery_id];
+        high_temperature = TEMPERATURE_T1;
+        high_Q_max = g_Q_MAX_POS_0[g_fg_battery_id];
+
+        if(temperature < low_temperature)
+        {
+            temperature = low_temperature;
+        }
+    }
+    else if (temperature <= TEMPERATURE_T2)
+    {
+        low_temperature = TEMPERATURE_T1;
+        low_Q_max = g_Q_MAX_POS_0[g_fg_battery_id];
+        high_temperature = TEMPERATURE_T2;
+        high_Q_max = g_Q_MAX_POS_25[g_fg_battery_id];
+        
+        if(temperature < low_temperature)
+        {
+            temperature = low_temperature;
+        }
+    }
+    else
+    {
+        low_temperature  = TEMPERATURE_T2;
+        low_Q_max = g_Q_MAX_POS_25[g_fg_battery_id];
+        high_temperature = TEMPERATURE_T3;
+        high_Q_max = g_Q_MAX_POS_50[g_fg_battery_id];
+        
+        if(temperature > high_temperature)
+        {
+            temperature = high_temperature;
+        }
+    }
+
+    ret_Q_max = low_Q_max +
+    (
+        (
+            (temperature - low_temperature) * 
+            (high_Q_max - low_Q_max)
+        ) / 
+        (high_temperature - low_temperature)                
+    );
+
+    bm_print(BM_LOG_FULL, "[fgauge_get_Q_max] Q_max = %d\r\n", ret_Q_max);
+
+    return ret_Q_max;
+}
+
+
+kal_int32 fgauge_get_Q_max_high_current(kal_int16 temperature)
+{
+    kal_int32 ret_Q_max=0;
+    kal_int32 low_temperature = 0, high_temperature = 0;
+    kal_int32 low_Q_max = 0, high_Q_max = 0;
+
+    if (temperature <= TEMPERATURE_T1)
+    {
+        low_temperature = (-10);
+        low_Q_max = g_Q_MAX_NEG_10_H_CURRENT[g_fg_battery_id];
+        high_temperature = TEMPERATURE_T1;
+        high_Q_max = g_Q_MAX_POS_0_H_CURRENT[g_fg_battery_id];
+        
+        if(temperature < low_temperature)
+        {
+            temperature = low_temperature;
+        }
+    }
+    else if (temperature <= TEMPERATURE_T2)
+    {
+        low_temperature = TEMPERATURE_T1;
+        low_Q_max = g_Q_MAX_POS_0_H_CURRENT[g_fg_battery_id];
+        high_temperature = TEMPERATURE_T2;
+        high_Q_max = g_Q_MAX_POS_25_H_CURRENT[g_fg_battery_id];
+        
+        if(temperature < low_temperature)
+        {
+            temperature = low_temperature;
+        }
+    }
+    else
+    {
+        low_temperature  = TEMPERATURE_T2;
+        low_Q_max = g_Q_MAX_POS_25_H_CURRENT[g_fg_battery_id];
+        high_temperature = TEMPERATURE_T3;
+        high_Q_max = g_Q_MAX_POS_50_H_CURRENT[g_fg_battery_id];
+        
+        if(temperature > high_temperature)
+        {
+            temperature = high_temperature;
+        }
+    }
+
+    ret_Q_max = low_Q_max +
+    (
+        (
+            (temperature - low_temperature) * 
+            (high_Q_max - low_Q_max)
+        ) / 
+        (high_temperature - low_temperature)                
+    );
+
+    bm_print(BM_LOG_FULL, "[fgauge_get_Q_max_high_current] Q_max = %d\r\n", ret_Q_max);
+
+    return ret_Q_max;
+}
+
+#else
 int BattThermistorConverTemp(int Res)
 {
     int i=0;
@@ -200,17 +556,144 @@ int BattThermistorConverTemp(int Res)
     return TBatt_Value;    
 }
 
+kal_int32 fgauge_get_Q_max(kal_int16 temperature)
+{
+    kal_int32 ret_Q_max=0;
+    kal_int32 low_temperature = 0, high_temperature = 0;
+    kal_int32 low_Q_max = 0, high_Q_max = 0;
+
+    if (temperature <= TEMPERATURE_T1)
+    {
+        low_temperature = (-10);
+        low_Q_max = Q_MAX_NEG_10;
+        high_temperature = TEMPERATURE_T1;
+        high_Q_max = Q_MAX_POS_0;
+        
+        if(temperature < low_temperature)
+        {
+            temperature = low_temperature;
+        }
+    }
+    else if (temperature <= TEMPERATURE_T2)
+    {
+        low_temperature = TEMPERATURE_T1;
+        low_Q_max = Q_MAX_POS_0;
+        high_temperature = TEMPERATURE_T2;
+        high_Q_max = Q_MAX_POS_25;
+        
+        if(temperature < low_temperature)
+        {
+            temperature = low_temperature;
+        }
+    }
+    else
+    {
+        low_temperature  = TEMPERATURE_T2;
+        low_Q_max = Q_MAX_POS_25;
+        high_temperature = TEMPERATURE_T3;
+        high_Q_max = Q_MAX_POS_50;
+        
+        if(temperature > high_temperature)
+        {
+            temperature = high_temperature;
+        }
+    }
+
+    ret_Q_max = low_Q_max +
+    (
+        (
+            (temperature - low_temperature) * 
+            (high_Q_max - low_Q_max)
+        ) / 
+        (high_temperature - low_temperature)                
+    );
+
+    bm_print(BM_LOG_FULL, "[fgauge_get_Q_max] Q_max = %d\r\n", ret_Q_max);
+
+    return ret_Q_max;
+}
+
+
+kal_int32 fgauge_get_Q_max_high_current(kal_int16 temperature)
+{
+    kal_int32 ret_Q_max=0;
+    kal_int32 low_temperature = 0, high_temperature = 0;
+    kal_int32 low_Q_max = 0, high_Q_max = 0;
+
+    if (temperature <= TEMPERATURE_T1)
+    {
+        low_temperature = (-10);
+        low_Q_max = Q_MAX_NEG_10_H_CURRENT;
+        high_temperature = TEMPERATURE_T1;
+        high_Q_max = Q_MAX_POS_0_H_CURRENT;
+        
+        if(temperature < low_temperature)
+        {
+            temperature = low_temperature;
+        }
+    }
+    else if (temperature <= TEMPERATURE_T2)
+    {
+        low_temperature = TEMPERATURE_T1;
+        low_Q_max = Q_MAX_POS_0_H_CURRENT;
+        high_temperature = TEMPERATURE_T2;
+        high_Q_max = Q_MAX_POS_25_H_CURRENT;
+        
+        if(temperature < low_temperature)
+        {
+            temperature = low_temperature;
+        }
+    }
+    else
+    {
+        low_temperature  = TEMPERATURE_T2;
+        low_Q_max = Q_MAX_POS_25_H_CURRENT;
+        high_temperature = TEMPERATURE_T3;
+        high_Q_max = Q_MAX_POS_50_H_CURRENT;
+        
+        if(temperature > high_temperature)
+        {
+            temperature = high_temperature;
+        }
+    }
+
+    ret_Q_max = low_Q_max +
+    (
+        (
+            (temperature - low_temperature) * 
+            (high_Q_max - low_Q_max)
+        ) / 
+        (high_temperature - low_temperature)                
+    );
+
+    bm_print(BM_LOG_FULL, "[fgauge_get_Q_max_high_current] Q_max = %d\r\n", ret_Q_max);
+
+    return ret_Q_max;
+}
+
+#endif
+
 int BattVoltToTemp(int dwVolt)
 {
-    int TRes_temp;
-	int TRes;
+    kal_int64 TRes_temp;
+	kal_int64 TRes;
     int sBaTTMP = -100;
+	
+   	// TRes_temp = ((kal_int64)RBAT_PULL_UP_R*(kal_int64)dwVolt) / (RBAT_PULL_UP_VOLT-dwVolt); 
+	//TRes = (TRes_temp * (kal_int64)RBAT_PULL_DOWN_R)/((kal_int64)RBAT_PULL_DOWN_R - TRes_temp);
 
-    TRes_temp = (RBAT_PULL_UP_R*dwVolt) / (RBAT_PULL_UP_VOLT-dwVolt); 
-	TRes = (TRes_temp * RBAT_PULL_DOWN_R)/(RBAT_PULL_DOWN_R - TRes_temp);
+	TRes_temp = (RBAT_PULL_UP_R*(kal_int64)dwVolt); 
+	do_div(TRes_temp, (RBAT_PULL_UP_VOLT-dwVolt));
+
+#ifdef RBAT_PULL_DOWN_R
+	TRes = (TRes_temp * RBAT_PULL_DOWN_R);
+	do_div(TRes, abs(RBAT_PULL_DOWN_R - TRes_temp));
+#else
+    TRes = TRes_temp;
+#endif
 
     /* convert register to temperature */
-    sBaTTMP = BattThermistorConverTemp(TRes);
+    sBaTTMP = BattThermistorConverTemp((int)TRes);
       
     return sBaTTMP;
 }
@@ -265,6 +748,70 @@ int force_get_tbat(void)
 }
 EXPORT_SYMBOL(force_get_tbat);
 
+#ifdef MTK_MULTI_BAT_PROFILE_SUPPORT
+int fgauge_get_saddles(void)
+{
+    return sizeof(battery_profile_temperature) / sizeof(BATTERY_PROFILE_STRUC);
+}
+
+int fgauge_get_saddles_r_table(void)
+{
+    return sizeof(r_profile_temperature) / sizeof(R_PROFILE_STRUC);
+}
+
+BATTERY_PROFILE_STRUC_P fgauge_get_profile(kal_uint32 temperature)
+{
+    //printk("fgauge_get_profile g_fg_battery_id = %d\n", g_fg_battery_id); 
+    switch (temperature)
+    {
+        case TEMPERATURE_T0:
+            return &battery_profile_t0[g_fg_battery_id][0];
+            break;    
+        case TEMPERATURE_T1:
+            return &battery_profile_t1[g_fg_battery_id][0];
+            break;
+        case TEMPERATURE_T2:
+            return &battery_profile_t2[g_fg_battery_id][0];
+            break;
+        case TEMPERATURE_T3:
+            return &battery_profile_t3[g_fg_battery_id][0];
+            break;
+        case TEMPERATURE_T:
+            return &battery_profile_temperature[0];
+            break;
+        default:
+            return NULL;
+            break;
+    }
+}
+
+R_PROFILE_STRUC_P fgauge_get_profile_r_table(kal_uint32 temperature)
+{
+	//printk("fgauge_get_profile_r_table g_fg_battery_id = %d\n", g_fg_battery_id); 
+
+    switch (temperature)
+    {
+        case TEMPERATURE_T0:
+            return &r_profile_t0[g_fg_battery_id][0];
+            break;
+        case TEMPERATURE_T1:
+            return &r_profile_t1[g_fg_battery_id][0];
+            break;
+        case TEMPERATURE_T2:
+            return &r_profile_t2[g_fg_battery_id][0];
+            break;
+        case TEMPERATURE_T3:
+            return &r_profile_t3[g_fg_battery_id][0];
+            break;
+        case TEMPERATURE_T:
+            return &r_profile_temperature[0];
+            break;
+        default:
+            return NULL;
+            break;
+    }
+}
+#else
 int fgauge_get_saddles(void)
 {
     return sizeof(battery_profile_t2) / sizeof(BATTERY_PROFILE_STRUC);
@@ -324,7 +871,7 @@ R_PROFILE_STRUC_P fgauge_get_profile_r_table(kal_uint32 temperature)
             break;
     }
 }
-
+#endif
 
 kal_int32 fgauge_read_capacity_by_v(kal_int32 voltage)
 {    
@@ -797,6 +1344,49 @@ void fgauge_construct_r_table_profile(kal_int32 temperature, R_PROFILE_STRUC_P t
     
 }
 
+void fgauge_construct_table_by_temp(void)
+{
+#if defined(CONFIG_POWER_EXT)
+#else
+    kal_uint32 i;
+    static kal_int32 init_temp = KAL_TRUE;
+    static kal_int32 curr_temp, last_temp, avg_temp;
+    static kal_int32 battTempBuffer[TEMP_AVERAGE_SIZE];
+    static kal_int32 temperature_sum;
+    static kal_uint8 tempIndex = 0;
+
+    curr_temp = battery_meter_get_battery_temperature();
+
+    // Temperature window init
+    if (init_temp == KAL_TRUE)
+    {
+        for (i=0; i<TEMP_AVERAGE_SIZE; i++)
+		{
+            battTempBuffer[i] = curr_temp;            
+		}
+        last_temp = curr_temp;
+        temperature_sum = curr_temp * TEMP_AVERAGE_SIZE;
+        init_temp = KAL_FALSE;
+    }
+
+    // Temperature sliding window 
+	temperature_sum -= battTempBuffer[tempIndex];
+	temperature_sum += curr_temp;
+	battTempBuffer[tempIndex] = curr_temp;
+    avg_temp = (temperature_sum)/TEMP_AVERAGE_SIZE;
+
+    if (avg_temp != last_temp)
+    {
+        bm_print(BM_LOG_FULL, "[fgauge_construct_table_by_temp] reconstruct table by temperature change from (%d) to (%d)\r\n", last_temp, avg_temp);
+        fgauge_construct_r_table_profile(curr_temp, fgauge_get_profile_r_table(TEMPERATURE_T));
+        fgauge_construct_battery_profile(curr_temp, fgauge_get_profile(TEMPERATURE_T));
+        last_temp = avg_temp;
+    }
+
+    tempIndex = (tempIndex+1)%TEMP_AVERAGE_SIZE;
+
+#endif
+}
 
 void fg_qmax_update_for_aging(void)
 {
@@ -818,7 +1408,7 @@ void fg_qmax_update_for_aging(void)
 
             if(gFG_BATT_CAPACITY_aging == 0)
             {
-                gFG_BATT_CAPACITY_aging = Q_MAX_POS_25;
+                gFG_BATT_CAPACITY_aging = fgauge_get_Q_max(battery_meter_get_battery_temperature());
                 bm_print(BM_LOG_CRTI, "[fg_qmax_update_for_aging] error, restore gFG_BATT_CAPACITY_aging (%d)\n", gFG_BATT_CAPACITY_aging);
             }
             
@@ -851,9 +1441,15 @@ void dod_init(void)
         gFG_voltage, gFG_capacity_by_v, gFG_capacity_by_v_init);
     
     // compare with hw_ocv & sw_ocv, check if less than or equal to 5% tolerance 
-    if (abs(gFG_capacity_by_v_init - gFG_capacity_by_v) > 5) {
+    if ((abs(gFG_capacity_by_v_init - gFG_capacity_by_v) > 5) && (bat_is_charger_exist() == KAL_TRUE))
+    {
         gFG_capacity_by_v = gFG_capacity_by_v_init;
     }
+
+    #if defined(HW_FG_FORCE_USE_SW_OCV)
+    gFG_capacity_by_v = gFG_capacity_by_v_init;
+    bm_print(BM_LOG_CRTI, "[FGADC] HW_FG_FORCE_USE_SW_OCV : HW_SOC=%d, SW_SOC = %d\n", gFG_capacity_by_v, gFG_capacity_by_v_init);
+    #endif
     //-------------------------------------------------------------------------------
     #endif
     
@@ -862,54 +1458,12 @@ void dod_init(void)
     #else
     g_rtc_fg_soc = get_rtc_spare_fg_value();
     #endif
-    if(g_rtc_fg_soc >= gFG_capacity_by_v)
+    
+    if(((g_rtc_fg_soc != 0) && (((abs(g_rtc_fg_soc-gFG_capacity_by_v)) < CUST_POWERON_DELTA_CAPACITY_TOLRANCE)||(abs(g_rtc_fg_soc-g_booting_vbat)< CUST_POWERON_DELTA_CAPACITY_TOLRANCE)) &&(( gFG_capacity_by_v > CUST_POWERON_LOW_CAPACITY_TOLRANCE || bat_is_charger_exist() == KAL_TRUE)))
+		|| ((g_rtc_fg_soc != 0) &&(g_boot_reason == BR_WDT_BY_PASS_PWK || g_boot_reason == BR_WDT || g_boot_reason == BR_TOOL_BY_PASS_PWK || g_boot_reason == BR_2SEC_REBOOT || g_boot_mode == RECOVERY_BOOT)))
+        
     {
-    /*wangxingxing 20130826 Fix FR500580 start*/
-	if(bat_is_charger_exist() == KAL_TRUE)
-		{
-		     
-		          if(((g_rtc_fg_soc != 0) && ((g_rtc_fg_soc-gFG_capacity_by_v) < 40) &&(( gFG_capacity_by_v > 5 || bat_is_charger_exist() == KAL_TRUE)))
-					|| ((g_rtc_fg_soc != 0) &&(g_boot_reason == BR_WDT_BY_PASS_PWK || g_boot_reason == BR_WDT)))
-					      
-					        {
-					            gFG_capacity_by_v = g_rtc_fg_soc;            
-					        }
-		}
-	else
-		{
-				     if(((g_rtc_fg_soc != 0) && ((g_rtc_fg_soc-gFG_capacity_by_v) < 20) &&(( gFG_capacity_by_v > 5 || bat_is_charger_exist() == KAL_TRUE)))
-					|| ((g_rtc_fg_soc != 0) &&(g_boot_reason == BR_WDT_BY_PASS_PWK || g_boot_reason == BR_WDT)))
-					      
-					            
-					        {
-					            gFG_capacity_by_v = g_rtc_fg_soc;            
-					        }
-		}
-		/*wangxingxing 20130826 Fix FR500580 end*/
-    }
-    else
-    {
-        /*wangxingxing 20130826 Fix FR500580 start*/
-        if(bat_is_charger_exist() == KAL_TRUE)
-		{
-		       
-		          if(((g_rtc_fg_soc != 0) && ((gFG_capacity_by_v-g_rtc_fg_soc) < 40) &&(( gFG_capacity_by_v > 5 || bat_is_charger_exist() == KAL_TRUE)))
-					|| ((g_rtc_fg_soc != 0) &&(g_boot_reason == BR_WDT_BY_PASS_PWK || g_boot_reason == BR_WDT)))
-					                   
-					        {
-					            gFG_capacity_by_v = g_rtc_fg_soc;            
-					        }
-		}
-	else
-		{
-				     if(((g_rtc_fg_soc != 0) && ((gFG_capacity_by_v-g_rtc_fg_soc) < 20) &&(( gFG_capacity_by_v > 5 || bat_is_charger_exist() == KAL_TRUE)))
-					|| ((g_rtc_fg_soc != 0) &&(g_boot_reason == BR_WDT_BY_PASS_PWK || g_boot_reason == BR_WDT)))
-					     
-					        {
-					            gFG_capacity_by_v = g_rtc_fg_soc;            
-					        }
-		}
-		/*wangxingxing 20130826 Fix FR500580 end*/
+        gFG_capacity_by_v = g_rtc_fg_soc; 
     }        
 
     bm_print(BM_LOG_CRTI, "[FGADC] g_rtc_fg_soc=%d, gFG_capacity_by_v=%d\n", 
@@ -976,39 +1530,88 @@ kal_int32 mtk_imp_tracking(kal_int32 ori_voltage, kal_int32 ori_current, kal_int
     return ret_compensate_value;
 }
 
+extern char* saved_command_line;
 void oam_init(void)
 {
     int ret=0;
-	int vol_bat=0;
 	kal_int32 vbat_capacity = 0;
+	kal_bool charging_enable = KAL_FALSE;
+	kal_int32 sw_vol = 0;
+	kal_int32 sw_current = 0;
+	kal_int32 sw_r = 0;
+	kal_int32 sw_soc = 0;
+	char *p = NULL;
+	p = strstr(saved_command_line, "SW_VOL=");
+	if(p != NULL)
+	{
+		p += 7;
+		sw_vol = simple_strtol(p, NULL, 10);
+		printk("CHENFEI SW_VOL %d\n",sw_vol);
+	}
+	else
+	{
+		printk("CHENFEI saved_command_line get error \n");
+	}
+	p = strstr(saved_command_line, "SW_CUR=");
+	if(p != NULL)
+	{
+		p += 7;
+		sw_current = simple_strtol(p, NULL, 10);
+		printk("CHENFEI SW_CUR %d \n",sw_current);
+	}
+	else
+	{
+		printk("CHENFEI saved_command_line get error \n");
+	}
+	/*stop charging for vbat measurement*/
+	battery_charging_control(CHARGING_CMD_ENABLE,&charging_enable);
+
+	msleep(50);
 	
-	vol_bat = 5; //set avg times
-    ret = battery_meter_ctrl(BATTERY_METER_CMD_GET_ADC_V_BAT_SENSE, &vol_bat);
+	g_booting_vbat = 5; //set avg times
     ret = battery_meter_ctrl(BATTERY_METER_CMD_GET_HW_OCV, &gFG_voltage);
+    ret = battery_meter_ctrl(BATTERY_METER_CMD_GET_ADC_V_BAT_SENSE, &g_booting_vbat);
+
 
 	gFG_capacity_by_v = fgauge_read_capacity_by_v(gFG_voltage);
-	vbat_capacity = fgauge_read_capacity_by_v(vol_bat);
-	
+	vbat_capacity = fgauge_read_capacity_by_v(g_booting_vbat);
+	//add by feichen@tcl.com for PR700143,MTK platform issue,HW OCV is higher when charging power on.
+	//LK would get voltage and charging current and kernel meter initial OCV should calibrate the OCV by voltage,charging current and battery R.
+	if(sw_vol == 0)
+	{
     if(bat_is_charger_exist() == KAL_TRUE)
     {
     	bm_print(BM_LOG_CRTI, "[oam_init_inf] gFG_capacity_by_v=%d, vbat_capacity=%d, \n",gFG_capacity_by_v,vbat_capacity);
 
     	// to avoid plug in cable without battery, then plug in battery to make hw soc = 100% 
     	// if the difference bwtween ZCV and vbat is too large, using vbat instead ZCV
-    	if(((gFG_capacity_by_v == 100) && (vbat_capacity < 90)) ||(abs((gFG_capacity_by_v-vbat_capacity)>30)))	
+    	if(((gFG_capacity_by_v == 100) && (vbat_capacity < CUST_POWERON_MAX_VBAT_TOLRANCE)) ||(abs(gFG_capacity_by_v-vbat_capacity)>CUST_POWERON_DELTA_VBAT_TOLRANCE))	
     	{
-			bm_print(BM_LOG_CRTI, "[oam_init] fg_vbat=(%d), vbat=(%d), set fg_vat as vat\n", gFG_voltage,vol_bat);
+			bm_print(BM_LOG_CRTI, "[oam_init] fg_vbat=(%d), vbat=(%d), set fg_vat as vat\n", gFG_voltage,g_booting_vbat);
 			
-			gFG_voltage = vol_bat;
+			gFG_voltage = g_booting_vbat;
 			gFG_capacity_by_v = vbat_capacity;
     	}
    	}
+	}
+	else
+	{
+		sw_r = fgauge_read_r_bat_by_v(sw_vol);
+		sw_vol = sw_vol - (sw_current*sw_r/1000);
+		sw_soc = fgauge_read_capacity_by_v(sw_vol);
+		printk("CHENFEI SW_VOL = %d, SW_SOC = %d , HW_VOL = %d , HW_SOC = %d \n",sw_vol,sw_soc,gFG_voltage,gFG_capacity_by_v);
+		if((sw_soc < gFG_capacity_by_v) && ((gFG_capacity_by_v - sw_soc) >= 5))
+		{
+			gFG_voltage = sw_vol;
+			gFG_capacity_by_v = sw_soc;
+		}
+	}
 	
     gFG_capacity_by_v_init = gFG_capacity_by_v;
 
     dod_init();
 
-    gFG_BATT_CAPACITY_aging = Q_MAX_POS_25;
+    gFG_BATT_CAPACITY_aging = fgauge_get_Q_max(battery_meter_get_battery_temperature());
 
     //oam_v_ocv_1 = gFG_voltage;
     //oam_v_ocv_2 = gFG_voltage;
@@ -1056,8 +1659,24 @@ void oam_run(void)
     //int d_hw_ocv=0;
     int charging_current=0;
     int ret=0;
+	//kal_uint32 now_time;
+	struct timespec now_time;
+	kal_int32 delta_time = 0;
 
+	//now_time = rtc_read_hw_time();
+	getrawmonotonic(&now_time);
+
+	//delta_time = now_time - last_oam_run_time;
+	delta_time = now_time.tv_sec - last_oam_run_time.tv_sec;
+
+	bm_print(BM_LOG_FULL, "[oam_run_time] last time=%d, now time=%d, delta time=%d\n", 
+        last_oam_run_time.tv_sec, now_time.tv_sec, delta_time);
 	
+	last_oam_run_time = now_time;
+		
+    // Reconstruct table if temp changed;
+    fgauge_construct_table_by_temp();
+		
     vol_bat = 15; //set avg times
     ret = battery_meter_ctrl(BATTERY_METER_CMD_GET_ADC_V_BAT_SENSE, &vol_bat);
 	
@@ -1067,8 +1686,8 @@ void oam_run(void)
     oam_i_1 = (((oam_v_ocv_1-vol_bat)*1000)*10) / oam_r_1;    //0.1mA
     oam_i_2 = (((oam_v_ocv_2-vol_bat)*1000)*10) / oam_r_2;    //0.1mA
 
-    oam_car_1 = (oam_i_1*10/3600) + oam_car_1; //0.1mAh
-    oam_car_2 = (oam_i_2*10/3600) + oam_car_2; //0.1mAh
+    oam_car_1 = (oam_i_1*delta_time/3600) + oam_car_1; //0.1mAh
+    oam_car_2 = (oam_i_2*delta_time/3600) + oam_car_2; //0.1mAh
 
     oam_d_1 = oam_d0 + (oam_car_1*100/10)/gFG_BATT_CAPACITY_aging;
     if(oam_d_1 < 0)   oam_d_1 = 0;
@@ -1281,123 +1900,6 @@ void update_fg_dbg_tool_value(void)
     g_fg_dbg_percentage_voltmode = gfg_percent_check_point;
 }
 
-
-kal_int32 fgauge_get_Q_max(kal_int16 temperature)
-{
-    kal_int32 ret_Q_max=0;
-    kal_int32 low_temperature = 0, high_temperature = 0;
-    kal_int32 low_Q_max = 0, high_Q_max = 0;
-
-    if (temperature <= TEMPERATURE_T1)
-    {
-        low_temperature = (-10);
-        low_Q_max = Q_MAX_NEG_10;
-        high_temperature = TEMPERATURE_T1;
-        high_Q_max = Q_MAX_POS_0;
-        
-        if(temperature < low_temperature)
-        {
-            temperature = low_temperature;
-        }
-    }
-    else if (temperature <= TEMPERATURE_T2)
-    {
-        low_temperature = TEMPERATURE_T1;
-        low_Q_max = Q_MAX_POS_0;
-        high_temperature = TEMPERATURE_T2;
-        high_Q_max = Q_MAX_POS_25;
-        
-        if(temperature < low_temperature)
-        {
-            temperature = low_temperature;
-        }
-    }
-    else
-    {
-        low_temperature  = TEMPERATURE_T2;
-        low_Q_max = Q_MAX_POS_25;
-        high_temperature = TEMPERATURE_T3;
-        high_Q_max = Q_MAX_POS_50;
-        
-        if(temperature > high_temperature)
-        {
-            temperature = high_temperature;
-        }
-    }
-
-    ret_Q_max = low_Q_max +
-    (
-        (
-            (temperature - low_temperature) * 
-            (high_Q_max - low_Q_max)
-        ) / 
-        (high_temperature - low_temperature)                
-    );
-
-    bm_print(BM_LOG_FULL, "[fgauge_get_Q_max] Q_max = %d\r\n", ret_Q_max);
-
-    return ret_Q_max;
-}
-
-
-kal_int32 fgauge_get_Q_max_high_current(kal_int16 temperature)
-{
-    kal_int32 ret_Q_max=0;
-    kal_int32 low_temperature = 0, high_temperature = 0;
-    kal_int32 low_Q_max = 0, high_Q_max = 0;
-
-    if (temperature <= TEMPERATURE_T1)
-    {
-        low_temperature = (-10);
-        low_Q_max = Q_MAX_NEG_10_H_CURRENT;
-        high_temperature = TEMPERATURE_T1;
-        high_Q_max = Q_MAX_POS_0_H_CURRENT;
-        
-        if(temperature < low_temperature)
-        {
-            temperature = low_temperature;
-        }
-    }
-    else if (temperature <= TEMPERATURE_T2)
-    {
-        low_temperature = TEMPERATURE_T1;
-        low_Q_max = Q_MAX_POS_0_H_CURRENT;
-        high_temperature = TEMPERATURE_T2;
-        high_Q_max = Q_MAX_POS_25_H_CURRENT;
-        
-        if(temperature < low_temperature)
-        {
-            temperature = low_temperature;
-        }
-    }
-    else
-    {
-        low_temperature  = TEMPERATURE_T2;
-        low_Q_max = Q_MAX_POS_25_H_CURRENT;
-        high_temperature = TEMPERATURE_T3;
-        high_Q_max = Q_MAX_POS_50_H_CURRENT;
-        
-        if(temperature > high_temperature)
-        {
-            temperature = high_temperature;
-        }
-    }
-
-    ret_Q_max = low_Q_max +
-    (
-        (
-            (temperature - low_temperature) * 
-            (high_Q_max - low_Q_max)
-        ) / 
-        (high_temperature - low_temperature)                
-    );
-
-    bm_print(BM_LOG_FULL, "[fgauge_get_Q_max_high_current] Q_max = %d\r\n", ret_Q_max);
-
-    return ret_Q_max;
-}
-
-
 kal_int32 fgauge_compensate_battery_voltage(kal_int32 ori_voltage)
 {
     kal_int32 ret_compensate_value = 0;
@@ -1598,9 +2100,11 @@ kal_int32 fgauge_read_capacity(kal_int32 type)
     kal_int32 temperature;
     kal_int32 dvalue = 0;
     
+#ifndef CUST_DISABLE_CAPACITY_OCV2CV_TRANSFORM    
     kal_int32 C_0mA=0;
     kal_int32 C_400mA=0;
     kal_int32 dvalue_new=0;
+#endif    
     
     kal_int32 temp_val = 0;
 
@@ -1619,6 +2123,7 @@ kal_int32 fgauge_read_capacity(kal_int32 type)
 
     gFG_DOD1 = dvalue;
 
+#ifndef CUST_DISABLE_CAPACITY_OCV2CV_TRANSFORM
     //User View on HT~LT----------------------------------------------------------
     gFG_temp = battery_meter_get_battery_temperature();
     C_0mA = fgauge_get_Q_max(gFG_temp);
@@ -1631,6 +2136,7 @@ kal_int32 fgauge_read_capacity(kal_int32 type)
     bm_print(BM_LOG_FULL, "[fgauge_read_capacity] %d,%d,%d,%d,%d,D1=%d,D0=%d\r\n", 
             gFG_temp, C_0mA, C_400mA, dvalue, dvalue_new, gFG_DOD1, gFG_DOD0);
     //----------------------------------------------------------------------------
+#endif /* CUST_DISABLE_CAPACITY_OCV2CV_TRANSFORM */
 
     #if 0
     //Battery Aging update ----------------------------------------------------------
@@ -1683,6 +2189,13 @@ void fgauge_algo_run(void)
 {
     int i=0;
     int ret=0;
+#ifdef MTK_BATTERY_LIFETIME_DATA_SUPPORT
+    int columb_delta = 0;
+    int charge_current = 0;
+#endif
+    
+    // Reconstruct table if temp changed;
+    fgauge_construct_table_by_temp();
     
 //1. Get Raw Data  
     ret=battery_meter_ctrl(BATTERY_METER_CMD_GET_HW_FG_CURRENT, &gFG_current);
@@ -1694,6 +2207,37 @@ void fgauge_algo_run(void)
     gFG_voltage = gFG_voltage + OCV_BOARD_COMPESATE;
 
     ret = battery_meter_ctrl(BATTERY_METER_CMD_GET_HW_FG_CAR, &gFG_columb);
+
+#ifdef MTK_BATTERY_LIFETIME_DATA_SUPPORT
+    if (gFG_Is_Charging)
+    {
+        charge_current -= gFG_current;
+        if (charge_current < gFG_min_current)
+            gFG_min_current = charge_current;
+    }
+    else
+    {
+        if (gFG_current > gFG_max_current)
+            gFG_max_current = gFG_current;
+    }
+
+    columb_delta = gFG_pre_columb_count - gFG_columb;
+
+    if (columb_delta < 0)
+        columb_delta = columb_delta - 2*columb_delta; //absolute value
+
+    gFG_pre_columb_count = gFG_columb;
+    gFG_columb_sum += columb_delta;
+
+    // should we use gFG_BATT_CAPACITY or gFG_BATT_CAPACITY_aging ??
+    if (gFG_columb_sum >= 2*gFG_BATT_CAPACITY_aging)
+    {
+        gFG_battery_cycle++;
+        gFG_columb_sum -= 2*gFG_BATT_CAPACITY_aging;
+        bm_print(BM_LOG_CRTI, "Update battery cycle count to %d. \r\n", gFG_battery_cycle);
+    }
+    bm_print(BM_LOG_FULL, "@@@ bat cycle count %d, columb sum %d. \r\n", gFG_battery_cycle, gFG_columb_sum);
+#endif
 
 //1.1 Average FG_voltage
     /**************** Averaging : START ****************/
@@ -1735,7 +2279,7 @@ void fgauge_algo_run(void)
     }
 
 //2. Calculate battery capacity by VBAT    
-    gFG_capacity_by_v = fgauge_read_capacity_by_v();
+    gFG_capacity_by_v = fgauge_read_capacity_by_v(gFG_voltage);
 
 //3. Calculate battery capacity by Coulomb Counter
     gFG_capacity_by_c = fgauge_read_capacity(1);
@@ -1776,6 +2320,9 @@ void fgauge_algo_run_init(void)
     gFG_voltage = gFG_voltage + fgauge_compensate_battery_voltage_recursion(gFG_voltage,5); //mV  
     gFG_voltage = gFG_voltage + OCV_BOARD_COMPESATE;
 
+    bm_print(BM_LOG_CRTI, "[FGADC] SWOCV : %d,%d,%d,%d,%d,%d\n", 
+        gFG_voltage_init, gFG_voltage, gFG_current, gFG_Is_Charging, gFG_resistance_bat, gFG_compensate_value);
+
     ret = battery_meter_ctrl(BATTERY_METER_CMD_GET_HW_FG_CAR, &gFG_columb);
 
 //1.1 Average FG_voltage
@@ -1787,7 +2334,7 @@ void fgauge_algo_run_init(void)
     gFG_voltage_AVG = gFG_voltage;
     
 //2. Calculate battery capacity by VBAT    
-    gFG_capacity_by_v = fgauge_read_capacity_by_v();
+    gFG_capacity_by_v = fgauge_read_capacity_by_v(gFG_voltage);
     gFG_capacity_by_v_init = gFG_capacity_by_v;
     
 //3. Calculate battery capacity by Coulomb Counter
@@ -1866,8 +2413,8 @@ void fgauge_initialization(void)
     int i = 0;
     kal_uint32 ret=0;
 
-    gFG_BATT_CAPACITY_init_high_current = Q_MAX_POS_25_H_CURRENT;    
-    gFG_BATT_CAPACITY_aging = Q_MAX_POS_25;
+    //gFG_BATT_CAPACITY_init_high_current = fgauge_get_Q_max_high_current(25);    
+    //gFG_BATT_CAPACITY_aging = fgauge_get_Q_max(25);
 
     // 1. HW initialization
     ret = battery_meter_ctrl(BATTERY_METER_CMD_HW_FG_INIT, NULL);
@@ -1900,6 +2447,9 @@ void fgauge_initialization(void)
 
     gFG_BATT_CAPACITY = fgauge_get_Q_max(gFG_temp);
 
+    gFG_BATT_CAPACITY_init_high_current = fgauge_get_Q_max_high_current(gFG_temp);    
+    gFG_BATT_CAPACITY_aging = fgauge_get_Q_max(gFG_temp);
+
     ret = battery_meter_ctrl(BATTERY_METER_CMD_DUMP_REGISTER, NULL);
     
     bm_print(BM_LOG_CRTI, "[fgauge_initialization] Done\n");
@@ -1916,26 +2466,34 @@ kal_int32 get_dynamic_period(int first_use, int first_wakeup_time, int battery_c
 #elif defined(SOC_BY_AUXADC) ||  defined(SOC_BY_SW_FG)
 
     kal_int32 vbat_val = 0;
-    kal_int32 vbat_thd = 3500;
-    kal_int32 ret_time = 600;
+
+#ifdef MTK_POWER_EXT_DETECT
+    if(KAL_TRUE == bat_is_ext_power())
+        return NORMAL_WAKEUP_PERIOD;
+#endif
 
     vbat_val = g_sw_vbat_temp;    
     
-    if(vbat_val > vbat_thd)
-        ret_time = 90*60;	// 90 min
+    // change wake up period when system suspend.
+    if(vbat_val > VBAT_NORMAL_WAKEUP)				//3.6v
+        g_spm_timer = NORMAL_WAKEUP_PERIOD; // 90 min
+    else if(vbat_val > VBAT_LOW_POWER_WAKEUP)     //3.5v   
+        g_spm_timer = LOW_POWER_WAKEUP_PERIOD; // 5 min
     else
-        ret_time = 10*60;	// 10 min
+        g_spm_timer = CLOSE_POWEROFF_WAKEUP_PERIOD; // 0.5 min
 
-    bm_print(BM_LOG_CRTI, "vbat_val=%d, ret_time=%d\n", vbat_val, ret_time);
 
-    return ret_time;    
+
+    bm_print(BM_LOG_CRTI, "vbat_val=%d, g_spm_timer=%d\n", vbat_val, g_spm_timer);
+
+    return g_spm_timer;    
 #else
 
     kal_int32 car_instant=0;
     kal_int32 current_instant=0;
-    kal_int32 car_sleep=0;
+    static kal_int32 car_sleep=0;
     kal_int32 car_wakeup=0;
-    kal_int32 last_time=0;
+    static kal_int32 last_time=0;
 
     kal_int32 ret_val=-1;
     int check_fglog=0;
@@ -2037,8 +2595,36 @@ kal_int32 battery_meter_get_battery_voltage(void)
 
     g_sw_vbat_temp = val;
 
+#ifdef MTK_BATTERY_LIFETIME_DATA_SUPPORT
+    if (g_sw_vbat_temp > gFG_max_voltage)
+    {
+        gFG_max_voltage = g_sw_vbat_temp;
+    }
+
+    if (g_sw_vbat_temp < gFG_min_voltage )
+    {
+        gFG_min_voltage = g_sw_vbat_temp;
+    }
+#endif
+
     return val;
 }
+
+
+kal_int32 battery_meter_get_charging_current_imm(void)
+{
+	 int ret;
+	 kal_int32 ADC_I_SENSE=1;   // 1 measure time
+	 kal_int32 ADC_BAT_SENSE=1;	// 1 measure time
+ 	 int ICharging=0;
+
+	 ret = battery_meter_ctrl(BATTERY_METER_CMD_GET_ADC_V_BAT_SENSE, &ADC_BAT_SENSE);
+ 	 ret =  battery_meter_ctrl(BATTERY_METER_CMD_GET_ADC_V_I_SENSE, &ADC_I_SENSE);
+
+	 ICharging = (ADC_I_SENSE - ADC_BAT_SENSE + g_I_SENSE_offset)*1000/CUST_R_SENSE;
+	 return ICharging;
+}
+
 
 kal_int32 battery_meter_get_charging_current(void)
 {
@@ -2184,7 +2770,18 @@ kal_int32 battery_meter_get_car(void)
 
 kal_int32 battery_meter_get_battery_temperature(void)
 {
+#ifdef MTK_BATTERY_LIFETIME_DATA_SUPPORT    
+    kal_int32 batt_temp = force_get_tbat();
+
+    if (batt_temp > gFG_max_temperature)
+        gFG_max_temperature = batt_temp;
+    if (batt_temp < gFG_min_temperature)
+        gFG_min_temperature = batt_temp;
+    
+    return batt_temp;
+#else
     return force_get_tbat();
+#endif
 }
 
 kal_int32 battery_meter_get_charger_voltage(void)
@@ -2242,29 +2839,37 @@ kal_int32 battery_meter_initial(void)
 #if defined(CONFIG_POWER_EXT)
     return 0;
 #else
-    //select battery meter control method
-     battery_meter_ctrl = bm_ctrl_cmd;
+	static kal_bool  meter_initilized = KAL_FALSE;
 
-    #if defined(SOC_BY_AUXADC)
-    g_auxadc_solution = 1;
-    table_init();
-    bm_print(BM_LOG_CRTI, "[battery_meter_initial] SOC_BY_AUXADC done\n");
-    #endif
+	mutex_lock(&FGADC_mutex);
+	if(meter_initilized == KAL_FALSE) {
+#ifdef MTK_MULTI_BAT_PROFILE_SUPPORT
+		fgauge_get_profile_id();
+#endif
 
-    #if defined(SOC_BY_HW_FG)
-    fgauge_initialization();
-    fgauge_algo_run_init();
-    bm_print(BM_LOG_CRTI, "[battery_meter_initial] SOC_BY_HW_FG done\n");
-    #endif
+#if defined(SOC_BY_AUXADC)
+		g_auxadc_solution = 1;
+		table_init();
+		bm_print(BM_LOG_CRTI, "[battery_meter_initial] SOC_BY_AUXADC done\n");
+#endif
 
-    #if defined(SOC_BY_SW_FG)
-    g_auxadc_solution = 1;
-    table_init();
-    oam_init();
-    bm_print(BM_LOG_CRTI, "[battery_meter_initial] SOC_BY_SW_FG done\n");
-    #endif
+#if defined(SOC_BY_HW_FG)
+		fgauge_initialization();
+		fgauge_algo_run_init();
+		bm_print(BM_LOG_CRTI, "[battery_meter_initial] SOC_BY_HW_FG done\n");
+#endif
 
-    return 0;
+#if defined(SOC_BY_SW_FG)
+		g_auxadc_solution = 1;
+		table_init();
+		oam_init();
+		bm_print(BM_LOG_CRTI, "[battery_meter_initial] SOC_BY_SW_FG done\n");
+#endif
+
+		meter_initilized = KAL_TRUE;
+	}
+	mutex_unlock(&FGADC_mutex);
+	return 0;
 #endif
 }
 
@@ -2274,6 +2879,16 @@ void reset_parameter_car(void)
     int ret = 0;
     ret = battery_meter_ctrl(BATTERY_METER_CMD_HW_RESET, NULL);    
     gFG_columb = 0;
+
+    #ifdef MTK_BATTERY_LIFETIME_DATA_SUPPORT
+    gFG_pre_columb_count = 0;
+    #endif
+    
+    #ifdef MTK_ENABLE_AGING_ALGORITHM
+    aging_ocv_1 = 0;
+    aging_ocv_2 = 0;
+    #endif
+
     #endif
 
     #if defined(SOC_BY_SW_FG)
@@ -2426,8 +3041,8 @@ kal_int32 battery_meter_get_VSense(void)
 }
 
 // ============================================================ //
-ssize_t fgadc_log_write( struct file *filp, const char __user *buff,
-                        unsigned long len, void *data )
+static ssize_t fgadc_log_write( struct file *filp, const char __user *buff,
+                        size_t len, loff_t *data )
 {
     if (copy_from_user( &proc_fgadc_data, buff, len )) {
         bm_print(BM_LOG_CRTI, "fgadc_log_write error.\n");
@@ -2448,9 +3063,18 @@ ssize_t fgadc_log_write( struct file *filp, const char __user *buff,
     return len;
 }
 
+static const struct file_operations fgadc_proc_fops = { 
+    .write = fgadc_log_write,
+};
+
 int init_proc_log_fg(void)
 {
     int ret=0;
+
+#if 1
+    proc_create("fgadc_log", 0644, NULL, &fgadc_proc_fops);
+    bm_print(BM_LOG_CRTI, "proc_create fgadc_proc_fops\n");
+#else
     proc_entry_fgadc = create_proc_entry( "fgadc_log", 0644, NULL );
     
     if (proc_entry_fgadc == NULL) {
@@ -2460,9 +3084,304 @@ int init_proc_log_fg(void)
         proc_entry_fgadc->write_proc = fgadc_log_write;
         bm_print(BM_LOG_CRTI, "init_proc_log_fg loaded.\n");
     }
+#endif
   
     return ret;
 }
+
+#ifdef MTK_BATTERY_LIFETIME_DATA_SUPPORT
+
+// ============================================================ //
+
+#ifdef CUSTOM_BATTERY_CYCLE_AGING_DATA
+
+kal_int32 get_battery_aging_factor(kal_int32 cycle)
+{
+    kal_int32 i, f1, f2, c1, c2;
+    kal_int32 saddles;
+
+    saddles = sizeof(battery_aging_table)/sizeof(BATTERY_CYCLE_STRUC);
+    
+    for (i = 0; i < saddles; i++)
+    {
+        if (battery_aging_table[i].cycle == cycle)
+        {
+            return battery_aging_table[i].aging_factor;
+        }
+
+        if (battery_aging_table[i].cycle > cycle)
+        {
+            if (i == 0)
+            {
+                return 100;
+            }
+
+            if (battery_aging_table[i].aging_factor > battery_aging_table[i-1].aging_factor)
+            {
+                f1 = battery_aging_table[i].aging_factor;
+                f2 = battery_aging_table[i-1].aging_factor;
+                c1 = battery_aging_table[i].cycle;
+                c2 = battery_aging_table[i-1].cycle;
+                return (f2 + ((cycle - c2) * (f1 - f2))/(c1-c2));
+            }
+            else
+            {
+                f1 = battery_aging_table[i-1].aging_factor;
+                f2 = battery_aging_table[i].aging_factor;
+                c1 = battery_aging_table[i].cycle;
+                c2 = battery_aging_table[i-1].cycle;
+                return (f2 + ((cycle - c2) * (f1 - f2))/(c1-c2));                
+            }
+        }
+    }
+
+    return battery_aging_table[saddles-1].aging_factor;
+}
+
+#endif
+
+static ssize_t show_FG_Battery_Cycle(struct device *dev,struct device_attribute *attr, char *buf)
+{    
+    bm_print(BM_LOG_CRTI, "[FG] gFG_battery_cycle  : %d\n", gFG_battery_cycle );
+    return sprintf(buf, "%d\n", gFG_battery_cycle );
+}
+static ssize_t store_FG_Battery_Cycle(struct device *dev,struct device_attribute *attr, const char *buf, size_t size)
+{
+    kal_int32 cycle;
+		
+	#ifdef CUSTOM_BATTERY_CYCLE_AGING_DATA    
+    kal_int32 aging_capacity;
+    kal_int32 factor;
+    #endif
+    
+    if (1 == sscanf(buf, "%d", &cycle))
+    {
+        bm_print(BM_LOG_CRTI,"[FG] update battery cycle count: %d\n", cycle);
+        gFG_battery_cycle = cycle;
+
+        #ifdef CUSTOM_BATTERY_CYCLE_AGING_DATA
+        //perform cycle aging calculation
+
+        factor = get_battery_aging_factor(gFG_battery_cycle);
+        if (factor > 0 && factor <100)
+        {
+            bm_print(BM_LOG_CRTI, "[FG] cycle count to aging factor %d\n", factor);
+            aging_capacity = gFG_BATT_CAPACITY * factor / 100;
+            if (aging_capacity < gFG_BATT_CAPACITY_aging)
+            {
+                bm_print(BM_LOG_CRTI, "[FG] update gFG_BATT_CAPACITY_aging to %d\n", aging_capacity);
+                gFG_BATT_CAPACITY_aging = aging_capacity;
+            }
+        }    
+        #endif
+    }
+    else
+    {
+        bm_print(BM_LOG_CRTI, "[FG] format error!\n");    
+    }
+    return size;
+}
+static DEVICE_ATTR(FG_Battery_Cycle, 0664, show_FG_Battery_Cycle, store_FG_Battery_Cycle);
+
+//-------------------------------------------------------------------------------------------
+
+static ssize_t show_FG_Max_Battery_Voltage(struct device *dev,struct device_attribute *attr, char *buf)
+{    
+    bm_print(BM_LOG_CRTI, "[FG] gFG_max_voltage  : %d\n", gFG_max_voltage );
+    return sprintf(buf, "%d\n", gFG_max_voltage );
+}
+static ssize_t store_FG_Max_Battery_Voltage(struct device *dev,struct device_attribute *attr, const char *buf, size_t size)
+{
+    kal_int32 voltage;
+    if (1 == sscanf(buf, "%d", &voltage))
+    {
+        if (voltage > gFG_max_voltage)
+        {
+            bm_print(BM_LOG_CRTI, "[FG] update battery max voltage: %d\n", voltage);
+            gFG_max_voltage = voltage;
+        }
+    }
+    else
+    {
+        bm_print(BM_LOG_CRTI, "[FG] format error!\n");    
+    }    
+    return size;
+}
+static DEVICE_ATTR(FG_Max_Battery_Voltage, 0664, show_FG_Max_Battery_Voltage, store_FG_Max_Battery_Voltage);
+
+//-------------------------------------------------------------------------------------------
+
+static ssize_t show_FG_Min_Battery_Voltage(struct device *dev,struct device_attribute *attr, char *buf)
+{    
+    bm_print(BM_LOG_CRTI, "[FG] gFG_min_voltage  : %d\n", gFG_min_voltage );
+    return sprintf(buf, "%d\n", gFG_min_voltage );
+}
+static ssize_t store_FG_Min_Battery_Voltage(struct device *dev,struct device_attribute *attr, const char *buf, size_t size)
+{
+    kal_int32 voltage;
+    if (1 == sscanf(buf, "%d", &voltage))
+    {
+        if (voltage < gFG_min_voltage)
+        {
+            bm_print(BM_LOG_CRTI, "[FG] update battery min voltage: %d\n", voltage);
+            gFG_min_voltage = voltage;
+        }
+    }
+    else
+    {
+        bm_print(BM_LOG_CRTI, "[FG] format error!\n");    
+    }    
+    return size;
+}
+static DEVICE_ATTR(FG_Min_Battery_Voltage, 0664, show_FG_Min_Battery_Voltage, store_FG_Min_Battery_Voltage);
+
+//-------------------------------------------------------------------------------------------
+
+static ssize_t show_FG_Max_Battery_Current(struct device *dev,struct device_attribute *attr, char *buf)
+{    
+    bm_print(BM_LOG_CRTI, "[FG] gFG_max_current  : %d\n", gFG_max_current );
+    return sprintf(buf, "%d\n", gFG_max_current );
+}
+static ssize_t store_FG_Max_Battery_Current(struct device *dev,struct device_attribute *attr, const char *buf, size_t size)
+{
+    kal_int32 bat_current;
+    if (1 == sscanf(buf, "%d", &bat_current))
+    {
+        if (bat_current > gFG_max_current)
+        {
+            bm_print(BM_LOG_CRTI, "[FG] update battery max current: %d\n", bat_current);
+            gFG_max_current = bat_current;
+        }
+    }
+    else
+    {
+        bm_print(BM_LOG_CRTI, "[FG] format error!\n");    
+    }        
+    return size;
+}
+static DEVICE_ATTR(FG_Max_Battery_Current, 0664, show_FG_Max_Battery_Current, store_FG_Max_Battery_Current);
+
+//-------------------------------------------------------------------------------------------
+
+static ssize_t show_FG_Min_Battery_Current(struct device *dev,struct device_attribute *attr, char *buf)
+{    
+    bm_print(BM_LOG_CRTI, "[FG] gFG_min_current  : %d\n", gFG_min_current );
+    return sprintf(buf, "%d\n", gFG_min_current );
+}
+static ssize_t store_FG_Min_Battery_Current(struct device *dev,struct device_attribute *attr, const char *buf, size_t size)
+{
+    kal_int32 bat_current;
+    if (1 == sscanf(buf, "%d", &bat_current))
+    {
+        if (bat_current < gFG_min_current)
+        {
+            bm_print(BM_LOG_CRTI, "[FG] update battery min current: %d\n", bat_current);
+            gFG_min_current = bat_current;
+        }
+    }
+    else
+    {
+        bm_print(BM_LOG_CRTI, "[FG] format error!\n");    
+    }      
+    return size;
+}
+static DEVICE_ATTR(FG_Min_Battery_Current, 0664, show_FG_Min_Battery_Current, store_FG_Min_Battery_Current);
+
+//-------------------------------------------------------------------------------------------
+
+static ssize_t show_FG_Max_Battery_Temperature(struct device *dev,struct device_attribute *attr, char *buf)
+{    
+    bm_print(BM_LOG_CRTI, "[FG] gFG_max_temperature  : %d\n", gFG_max_temperature );
+    return sprintf(buf, "%d\n", gFG_max_temperature );
+}
+static ssize_t store_FG_Max_Battery_Temperature(struct device *dev,struct device_attribute *attr, const char *buf, size_t size)
+{
+    kal_int32 temp;
+    if (1 == sscanf(buf, "%d", &temp))
+    {
+        if (temp > gFG_max_temperature)
+        {
+            bm_print(BM_LOG_CRTI, "[FG] update battery max temp: %d\n", temp);
+            gFG_max_temperature = temp;
+        }
+    }
+    else
+    {
+        bm_print(BM_LOG_CRTI, "[FG] format error!\n");    
+    }      
+    return size;
+}
+static DEVICE_ATTR(FG_Max_Battery_Temperature, 0664, show_FG_Max_Battery_Temperature, store_FG_Max_Battery_Temperature);
+
+//-------------------------------------------------------------------------------------------
+
+static ssize_t show_FG_Min_Battery_Temperature(struct device *dev,struct device_attribute *attr, char *buf)
+{    
+    bm_print(BM_LOG_CRTI, "[FG] gFG_min_temperature  : %d\n", gFG_min_temperature );
+    return sprintf(buf, "%d\n", gFG_min_temperature );
+}
+static ssize_t store_FG_Min_Battery_Temperature(struct device *dev,struct device_attribute *attr, const char *buf, size_t size)
+{
+    kal_int32 temp;
+    if (1 == sscanf(buf, "%d", &temp))
+    {
+        if (temp < gFG_min_temperature)
+        {
+            bm_print(BM_LOG_CRTI, "[FG] update battery min temp: %d\n", temp);
+            gFG_min_temperature = temp;
+        }
+    }
+    else
+    {
+        bm_print(BM_LOG_CRTI, "[FG] format error!\n");    
+    }       
+    return size;
+}
+static DEVICE_ATTR(FG_Min_Battery_Temperature, 0664, show_FG_Min_Battery_Temperature, store_FG_Min_Battery_Temperature);
+
+//-------------------------------------------------------------------------------------------
+
+static ssize_t show_FG_Aging_Factor(struct device *dev,struct device_attribute *attr, char *buf)
+{    
+    bm_print(BM_LOG_CRTI, "[FG] gFG_aging_factor  : %d\n", gFG_aging_factor );
+    return sprintf(buf, "%d\n", gFG_aging_factor );
+}
+static ssize_t store_FG_Aging_Factor(struct device *dev,struct device_attribute *attr, const char *buf, size_t size)
+{
+    kal_int32 factor;
+    kal_int32 aging_capacity;
+    
+    if (1 == sscanf(buf, "%d", &factor))
+    {
+        if (factor <= 100 && factor >= 0)
+        {
+            bm_print(BM_LOG_CRTI, "[FG] update battery aging factor: old(%d), new(%d)\n", gFG_aging_factor, factor);
+
+            gFG_aging_factor = factor;
+
+            if (gFG_aging_factor != 100)
+            {
+                aging_capacity = gFG_BATT_CAPACITY * gFG_aging_factor / 100;
+                if (aging_capacity < gFG_BATT_CAPACITY_aging)
+                {
+                    bm_print(BM_LOG_CRTI, "[FG] update gFG_BATT_CAPACITY_aging to %d\n", aging_capacity);
+                    gFG_BATT_CAPACITY_aging = aging_capacity;
+                }
+            }
+        }
+    }
+    else
+    {
+        bm_print(BM_LOG_CRTI, "[FG] format error!\n");    
+    }
+    
+    return size;
+}
+static DEVICE_ATTR(FG_Aging_Factor, 0664, show_FG_Aging_Factor, store_FG_Aging_Factor);
+
+//-------------------------------------------------------------------------------------------
+
+#endif
 
 // ============================================================ //
 static ssize_t show_FG_Current(struct device *dev,struct device_attribute *attr, char *buf)
@@ -2631,11 +3550,16 @@ static int battery_meter_probe(struct platform_device *dev)
 {
     int ret_device_file = 0;
 
+	battery_meter_ctrl = bm_ctrl_cmd;
+
     bm_print(BM_LOG_CRTI, "[battery_meter_probe] probe\n");
-    
+    //select battery meter control method
+     battery_meter_ctrl = bm_ctrl_cmd;
     //LOG System Set
     init_proc_log_fg();
 
+	//last_oam_run_time = rtc_read_hw_time(); 
+	getrawmonotonic(&last_oam_run_time);
     //Create File For FG UI DEBUG
     ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_Current);    
     ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_g_fg_dbg_bat_volt);
@@ -2650,6 +3574,17 @@ static int battery_meter_probe(struct platform_device *dev)
     ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_g_fg_dbg_percentage);
     ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_g_fg_dbg_percentage_fg);
     ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_g_fg_dbg_percentage_voltmode);
+
+#ifdef MTK_BATTERY_LIFETIME_DATA_SUPPORT
+    ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_Battery_Cycle);
+    ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_Aging_Factor);
+    ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_Max_Battery_Voltage);
+    ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_Min_Battery_Voltage);
+    ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_Max_Battery_Current);
+    ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_Min_Battery_Current);
+    ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_Max_Battery_Temperature);
+    ret_device_file = device_create_file(&(dev->dev), &dev_attr_FG_Min_Battery_Temperature);
+#endif
 
     return 0;
 }
@@ -2669,25 +3604,221 @@ static int battery_meter_suspend(struct platform_device *dev, pm_message_t state
 {
 #if defined(CONFIG_POWER_EXT)
 
+#elif defined(SOC_BY_SW_FG) || defined(SOC_BY_HW_FG)
+	struct timespec xts, tom;
+#endif
+	// -- hibernation path
+	if (state.event == PM_EVENT_FREEZE) {
+		pr_warn("[%s] %p:%p\n", __func__, battery_meter_ctrl, &bm_ctrl_cmd);
+		battery_meter_ctrl = bm_ctrl_cmd;
+	}
+    	// -- end of hibernation path
+#if defined(CONFIG_POWER_EXT)
+
 #elif defined(SOC_BY_SW_FG)
-	g_rtc_time_before_sleep = rtc_read_hw_time(); 
+{
+#ifdef MTK_POWER_EXT_DETECT
+	if(KAL_TRUE == bat_is_ext_power())
+		return 0;
+#endif
+
+	get_xtime_and_monotonic_and_sleep_offset(&xts, &tom, &g_rtc_time_before_sleep);
+	if (_g_bat_sleep_total_time < g_spm_timer) {
+		return 0;
+	}
 	battery_meter_ctrl(BATTERY_METER_CMD_GET_HW_OCV, &g_hw_ocv_before_sleep);
-#endif	
-	
-    bm_print(BM_LOG_CRTI, "[battery_meter_suspend]\n");
-    return 0;
 }
+#elif defined (SOC_BY_HW_FG)
+{
+	get_xtime_and_monotonic_and_sleep_offset(&xts, &tom, &g_rtc_time_before_sleep);
+	battery_meter_ctrl(BATTERY_METER_CMD_GET_HW_OCV, &g_hw_ocv_before_sleep);
+}	
+#endif	
+	bm_print(BM_LOG_CRTI, "[battery_meter_suspend]\n");
+	return 0;
+}
+
+#ifdef MTK_ENABLE_AGING_ALGORITHM
+static void battery_aging_check(void)
+{
+    kal_int32 hw_ocv_after_sleep;
+    struct timespec xts, tom, time_after_sleep;
+
+    kal_int32 vbat;
+    kal_int32 DOD_hwocv;
+    kal_int32 DOD_now;
+    kal_int32 qmax_aging = 0;
+    kal_int32 dod_gap = 10;
+        
+    battery_meter_ctrl(BATTERY_METER_CMD_GET_HW_OCV, &hw_ocv_after_sleep);    
+
+    vbat = battery_meter_get_battery_voltage();
+    
+    bm_print(BM_LOG_CRTI, "@@@ HW_OCV=%d, VBAT=%d\n", hw_ocv_after_sleep, vbat);
+
+    get_xtime_and_monotonic_and_sleep_offset(&xts, &tom, &time_after_sleep);
+
+    bm_print(BM_LOG_CRTI, "@@@ suspend_time %lu resume time %lu\n", g_rtc_time_before_sleep.tv_sec, time_after_sleep.tv_sec);
+
+    // aging
+    if(time_after_sleep.tv_sec - g_rtc_time_before_sleep.tv_sec > OCV_RECOVER_TIME)
+    {
+        if (aging_ocv_1 == 0)
+        {
+            aging_ocv_1 = hw_ocv_after_sleep;
+            battery_meter_ctrl(BATTERY_METER_CMD_GET_HW_FG_CAR, &aging_car_1);
+            aging_resume_time_1 = time_after_sleep.tv_sec;
+
+            if (fgauge_read_d_by_v(aging_ocv_1) > DOD1_ABOVE_THRESHOLD)
+            {
+                aging_ocv_1 = 0;
+                bm_print(BM_LOG_CRTI, "[aging check] reset and find next aging_ocv1 for better precision\n");
+            }
+        }
+        else if (aging_ocv_2 == 0)
+        {
+            aging_ocv_2 = hw_ocv_after_sleep;
+            battery_meter_ctrl(BATTERY_METER_CMD_GET_HW_FG_CAR, &aging_car_2);
+            aging_resume_time_2 = time_after_sleep.tv_sec;
+
+            if (fgauge_read_d_by_v(aging_ocv_2) < DOD2_BELOW_THRESHOLD)
+            {
+                aging_ocv_2 = 0;
+                bm_print(BM_LOG_CRTI, "[aging check] reset and find next aging_ocv2 for better precision\n");
+            }
+        }
+        else
+        {
+            aging_ocv_1 = aging_ocv_2;
+            aging_car_1 = aging_car_2;
+            aging_resume_time_1 = aging_resume_time_2;
+            
+            aging_ocv_2 = hw_ocv_after_sleep;
+            battery_meter_ctrl(BATTERY_METER_CMD_GET_HW_FG_CAR, &aging_car_2);
+            aging_resume_time_2 = time_after_sleep.tv_sec;
+        }
+
+        if (aging_ocv_2 > 0)
+        {
+            aging_dod_1 = fgauge_read_d_by_v(aging_ocv_1);
+            aging_dod_2 = fgauge_read_d_by_v(aging_ocv_2);
+            
+            // check if current too small to get accurate car
+            if (aging_car_2 > aging_car_1)
+            {
+                
+            }
+
+            // check dod region to avoid hwocv error margin
+            dod_gap = MIN_DOD_DIFF_THRESHOLD;
+
+            // check if DOD gap bigger than setting
+            if(aging_dod_2 > aging_dod_1 && (aging_dod_2 - aging_dod_1) >= dod_gap)
+            {
+                // do aging calculation
+                qmax_aging = (100*(aging_car_1 - aging_car_2))/(aging_dod_2 - aging_dod_1);
+
+                // update if aging over 10%.
+                if (gFG_BATT_CAPACITY > qmax_aging && ((gFG_BATT_CAPACITY-qmax_aging) > (gFG_BATT_CAPACITY/(100-MIN_AGING_FACTOR))))
+                {
+                    bm_print(BM_LOG_CRTI, "[aging check] before apply aging, qmax_aging(%d) qmax_now(%d) ocv1(%d) dod1(%d) car1(%d) ocv2(%d) dod2(%d) car2(%d) \n",
+                       qmax_aging, gFG_BATT_CAPACITY,aging_ocv_1, aging_dod_1, aging_car_1,aging_ocv_2, aging_dod_2,  aging_car_2);
+
+                    #ifdef MTK_BATTERY_LIFETIME_DATA_SUPPORT
+                    gFG_aging_factor =  ((gFG_BATT_CAPACITY - qmax_aging)*100)/gFG_BATT_CAPACITY;
+                    #endif
+
+                    if (gFG_BATT_CAPACITY_aging > qmax_aging)
+                    {
+                        bm_print(BM_LOG_CRTI, "[aging check] new qmax_aging %d old qmax_aging %d\n", qmax_aging, gFG_BATT_CAPACITY_aging);
+                        gFG_BATT_CAPACITY_aging = qmax_aging;
+                        gFG_DOD0 = aging_dod_2;
+                        gFG_DOD1 = gFG_DOD0;
+                        reset_parameter_car();
+                    }
+                    else
+                    {
+                        bm_print(BM_LOG_CRTI, "[aging check] current qmax_aging %d is smaller than calculated qmax_aging %d\n", gFG_BATT_CAPACITY_aging, qmax_aging);
+                    }
+                }
+                else
+                {
+                    aging_ocv_2 = 0;
+                    bm_print(BM_LOG_CRTI, "[aging check] show no degrade, qmax_aging(%d) qmax_now(%d) ocv1(%d) dod1(%d) car1(%d) ocv2(%d) dod2(%d) car2(%d) \n",
+                       qmax_aging, gFG_BATT_CAPACITY,aging_ocv_1, aging_dod_1, aging_car_1,aging_ocv_2, aging_dod_2,  aging_car_2);
+                    bm_print(BM_LOG_CRTI, "[aging check] reset and find next aging_ocv2\n");
+                }
+            }
+            else
+            {
+                aging_ocv_2 = 0;
+                bm_print(BM_LOG_CRTI, "[aging check] reset and find next aging_ocv2\n");
+            }
+            bm_print(BM_LOG_CRTI, "[aging check] qmax_aging(%d) qmax_now(%d) ocv1(%d) dod1(%d) car1(%d) ocv2(%d) dod2(%d) car2(%d) \n",
+               qmax_aging, gFG_BATT_CAPACITY,aging_ocv_1, aging_dod_1, aging_car_1,aging_ocv_2, aging_dod_2,  aging_car_2);
+        }
+    }
+
+    // self-discharging
+    if(hw_ocv_after_sleep < vbat)
+    {
+        bm_print(BM_LOG_CRTI, "Ignore HW_OCV : smaller than VBAT\n");
+    }
+    else
+    {
+        if(time_after_sleep.tv_sec - g_rtc_time_before_sleep.tv_sec > OCV_RECOVER_TIME)   //30 mins
+        {
+            DOD_hwocv = fgauge_read_d_by_v(hw_ocv_after_sleep);
+
+            battery_meter_ctrl(BATTERY_METER_CMD_GET_HW_FG_CAR, &gFG_columb); //update columb counter to get DOD_now.
+            DOD_now = 100 - fgauge_read_capacity(1);
+
+            if (DOD_hwocv > DOD_now && (DOD_hwocv - DOD_now > SELF_DISCHARGE_CHECK_THRESHOLD))
+            {
+                gFG_DOD0 = DOD_hwocv;
+                gFG_DOD1 = gFG_DOD0;
+                reset_parameter_car();
+                bm_print(BM_LOG_CRTI, "[self-discharge check] reset to HWOCV. dod_ocv(%d) dod_now(%d) \n", DOD_hwocv, DOD_now);
+            }
+            bm_print(BM_LOG_CRTI, "[self-discharge check] dod_ocv(%d) dod_now(%d) \n", DOD_hwocv, DOD_now);
+        }
+        bm_print(BM_LOG_CRTI, "sleeptime=(%d)s, be_ocv=(%d), af_ocv=(%d), D0=(%d), car=(%d)\n",
+            time_after_sleep.tv_sec - g_rtc_time_before_sleep.tv_sec, g_hw_ocv_before_sleep, hw_ocv_after_sleep,gFG_DOD0, gFG_columb);
+    }
+}
+#endif
 
 static int battery_meter_resume(struct platform_device *dev)
 {
 #if defined(CONFIG_POWER_EXT)
 
+#elif defined(SOC_BY_HW_FG)
+
+#ifdef MTK_ENABLE_AGING_ALGORITHM
+    if(bat_is_charger_exist() == KAL_FALSE)
+    {
+        battery_aging_check();
+    }
+#endif      
+
 #elif defined(SOC_BY_SW_FG)
 	kal_int32 hw_ocv_after_sleep;
-	kal_uint32 rtc_time_after_sleep;
+    struct timespec xts, tom, rtc_time_after_sleep;
 //    kal_int32 sw_vbat;
 //    kal_int32 vbat_diff = 200;
- 
+
+#ifdef MTK_POWER_EXT_DETECT
+	if(KAL_TRUE == bat_is_ext_power())
+		return 0;
+#endif
+
+	get_xtime_and_monotonic_and_sleep_offset(&xts, &tom, &rtc_time_after_sleep);
+	_g_bat_sleep_total_time += rtc_time_after_sleep.tv_sec - g_rtc_time_before_sleep.tv_sec;
+	battery_xlog_printk(BAT_LOG_CRTI, "[battery_meter_resume] sleep time = %d, g_spm_timer = %d\n", _g_bat_sleep_total_time, g_spm_timer);
+	if (_g_bat_sleep_total_time < g_spm_timer) {
+		return 0;
+	}
+	bat_spm_timeout = true;
 	battery_meter_ctrl(BATTERY_METER_CMD_GET_HW_OCV, &hw_ocv_after_sleep);
 #if 0    
     sw_vbat = battery_meter_get_battery_voltage();
@@ -2705,30 +3836,32 @@ static int battery_meter_resume(struct platform_device *dev)
     else
 #endif        
     {
-        rtc_time_after_sleep = rtc_read_hw_time();
         
-    	if(rtc_time_after_sleep - g_rtc_time_before_sleep > 3600)	//1hr
+        
+    	if(_g_bat_sleep_total_time > 3600)	//1hr
     	{
-    		if(hw_ocv_after_sleep != g_hw_ocv_before_sleep)
+    		//if(hw_ocv_after_sleep != g_hw_ocv_before_sleep)
+    		if(hw_ocv_after_sleep < g_hw_ocv_before_sleep)  //jiangjingjing modify-for_PR848343-according to MTk email 20141121
     		{
-    			 gFG_DOD0 = fgauge_read_d_by_v(hw_ocv_after_sleep); 
-    			 oam_v_ocv_2 = oam_v_ocv_1 = hw_ocv_after_sleep;
+    			// gFG_DOD0 = fgauge_read_d_by_v(hw_ocv_after_sleep);
+    			 oam_d0 = fgauge_read_d_by_v(hw_ocv_after_sleep); //jiangjingjing modify-for_PR848343-according to MTk email 20141121
+    	    		 oam_v_ocv_2 = oam_v_ocv_1 = hw_ocv_after_sleep;
     			 oam_car_1 = 0;
     			 oam_car_2 = 0;
     		}
     		else
     		{
-    			 oam_car_1 = oam_car_1 + (40* (rtc_time_after_sleep - g_rtc_time_before_sleep)/3600); //0.1mAh
-    		     oam_car_2 = oam_car_2 + (40* (rtc_time_after_sleep - g_rtc_time_before_sleep)/3600); //0.1mAh	
+    			 oam_car_1 = oam_car_1 + (40* (rtc_time_after_sleep.tv_sec - g_rtc_time_before_sleep.tv_sec)/3600); //0.1mAh
+    		     oam_car_2 = oam_car_2 + (40* (rtc_time_after_sleep.tv_sec - g_rtc_time_before_sleep.tv_sec)/3600); //0.1mAh	
     		}
     	}
     	else
     	{
-    			oam_car_1 = oam_car_1 + (20* (rtc_time_after_sleep - g_rtc_time_before_sleep)/3600); //0.1mAh
-    			oam_car_2 = oam_car_2 + (20* (rtc_time_after_sleep - g_rtc_time_before_sleep)/3600); //0.1mAh	
+    			oam_car_1 = oam_car_1 + (20* (rtc_time_after_sleep.tv_sec - g_rtc_time_before_sleep.tv_sec)/3600); //0.1mAh
+    			oam_car_2 = oam_car_2 + (20* (rtc_time_after_sleep.tv_sec - g_rtc_time_before_sleep.tv_sec)/3600); //0.1mAh	
     	}	
         bm_print(BM_LOG_CRTI, "sleeptime=(%d)s, be_ocv=(%d), af_ocv=(%d), D0=(%d), car1=(%d), car2=(%d) \n",
-    		rtc_time_after_sleep - g_rtc_time_before_sleep, g_hw_ocv_before_sleep, hw_ocv_after_sleep,gFG_DOD0, oam_car_1, oam_car_2);
+    		rtc_time_after_sleep.tv_sec - g_rtc_time_before_sleep.tv_sec, g_hw_ocv_before_sleep, hw_ocv_after_sleep,oam_d0/*gFG_DOD0*/, oam_car_1, oam_car_2);
     }
 #endif		
     bm_print(BM_LOG_CRTI, "[battery_meter_resume]\n");

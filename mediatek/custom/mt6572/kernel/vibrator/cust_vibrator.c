@@ -31,13 +31,13 @@ typedef enum MT65XX_POWER_VOL_TAG
 static struct vibrator_hw cust_vibrator_hw = {
 	.vib_timer = 50,
   #ifdef CUST_VIBR_LIMIT
-	.vib_limit = 10,
+	.vib_limit = 9,
   #endif
-  	.vosel = VOL_1200,
+	.vosel = VOL_1200,
 };
 
 struct vibrator_hw *get_cust_vibrator_hw(void)
-{
+{	
     return &cust_vibrator_hw;
 }
 

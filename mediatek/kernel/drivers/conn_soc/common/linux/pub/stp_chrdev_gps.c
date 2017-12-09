@@ -35,9 +35,9 @@ MODULE_LICENSE("GPL");
 
 #define COMBO_IOC_GPS_HWVER          6
 #define COMBO_IOC_RTC_FLAG			 7
-extern bool rtc_low_power_detected(void);
+#define COMBO_IOC_CO_CLOCK_FLAG		 8
 
-unsigned int gDbgLevel = GPS_LOG_DBG;
+static unsigned int gDbgLevel = GPS_LOG_DBG;
 
 #define GPS_DBG_FUNC(fmt, arg...)    if(gDbgLevel >= GPS_LOG_DBG){ printk(PFX "%s: "  fmt, __FUNCTION__ ,##arg);}
 #define GPS_INFO_FUNC(fmt, arg...)   if(gDbgLevel >= GPS_LOG_INFO){ printk(PFX "%s: "  fmt, __FUNCTION__ ,##arg);}
@@ -56,8 +56,24 @@ static unsigned char o_buf[MTKSTP_BUFFER_SIZE];    // output buffer of write()
 static struct semaphore wr_mtx, rd_mtx;
 static DECLARE_WAIT_QUEUE_HEAD(GPS_wq);
 static int flag = 0;
+static volatile int retflag = 0;
+
+extern bool rtc_low_power_detected(void);
 
 static void GPS_event_cb(void);
+
+bool rtc_GPS_low_power_detected(void)
+{
+	static bool first_query = true;
+	if(first_query)
+	{
+		first_query = false;
+		return rtc_low_power_detected();
+	}else
+	{
+		return false;
+	}
+}
 
 ssize_t GPS_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos)
 {
@@ -245,9 +261,13 @@ long GPS_unlocked_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			
 		case COMBO_IOC_RTC_FLAG:
 			
-			retval = rtc_low_power_detected();
+			retval = rtc_GPS_low_power_detected();
 			
 			GPS_INFO_FUNC(KERN_INFO "GPS_ioctl(): low power flag (%d)\n", retval);
+		break;
+		case COMBO_IOC_CO_CLOCK_FLAG:
+			retval = mtk_wcn_wmt_co_clock_flag_get();
+			GPS_INFO_FUNC(KERN_INFO "GPS_ioctl(): GPS co_clock_flag (%d)\n", retval);
 		break;
         default:
             retval = -EFAULT;
@@ -282,11 +302,13 @@ static void gps_cdev_rst_cb(
                         GPS_INFO_FUNC("gps restart start!\n");
 
                         /*reset_start message handling*/
+						retflag = 1;
                         
                     } else if(rst_msg == WMTRSTMSG_RESET_END){
                         GPS_INFO_FUNC("gps restart end!\n");
 
                         /*reset_end message handling*/
+						retflag = 0;
                     }
         }
     } else {
@@ -301,7 +323,11 @@ static int GPS_open(struct inode *inode, struct file *file)
         iminor(inode),
         current->pid
         );
-
+	if(retflag == 1)
+	{
+		GPS_WARN_FUNC("whole chip resetting...\n");
+		return -EPERM;
+	}
 #if 1 /* GeorgeKuo: turn on function before check stp ready */
      /* turn on BT */
 
@@ -345,7 +371,11 @@ static int GPS_close(struct inode *inode, struct file *file)
         iminor(inode),
         current->pid
         );
-
+	if(retflag == 1)
+	{
+		GPS_WARN_FUNC("whole chip resetting...\n");
+		return -EPERM;
+	}
     /*Flush Rx Queue*/
     mtk_wcn_stp_register_event_cb(GPS_TASK_INDX, 0x0);  // unregister event callback function
     mtk_wcn_wmt_msgcb_unreg(WMTDRV_TYPE_GPS);
@@ -424,8 +454,28 @@ static void GPS_exit(void)
     printk(KERN_ALERT "%s driver removed.\n", GPS_DRIVER_NAME);
 }
 
+
+#ifdef MTK_WCN_REMOVE_KERNEL_MODULE
+	
+int mtk_wcn_stpgps_drv_init(void)
+{
+	return GPS_init();
+
+}
+
+void mtk_wcn_stpgps_drv_exit (void)
+{
+	return GPS_exit();
+}
+
+
+EXPORT_SYMBOL(mtk_wcn_stpgps_drv_init);
+EXPORT_SYMBOL(mtk_wcn_stpgps_drv_exit);
+#else
+	
 module_init(GPS_init);
 module_exit(GPS_exit);
+	
+#endif
 
-EXPORT_SYMBOL(GPS_event_cb);
 

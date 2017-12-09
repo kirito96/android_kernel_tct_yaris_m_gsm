@@ -7,7 +7,8 @@ LOCAL_SRC_FILES:= \
 LOCAL_C_INCLUDES += \
         $(KERNEL_HEADERS) \
         $(TOP)/frameworks/base/include \
-        $(MTK_PATH_PLATFORM)/kernel/drivers/dispsys
+        $(MTK_PATH_PLATFORM)/kernel/drivers/dispsys \
+        $(MTK_PATH_PLATFORM)/../../hardware/dpframework/inc
 
 LOCAL_SHARED_LIBRARIES := \
     libutils \
@@ -16,5 +17,4 @@ LOCAL_SHARED_LIBRARIES := \
 LOCAL_MODULE:= pq
 
 include $(BUILD_EXECUTABLE)
-
 include $(call all-makefiles-under,$(LOCAL_PATH))

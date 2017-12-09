@@ -4,24 +4,26 @@
 #include <linux/xlog.h>
 #include <linux/mutex.h>
 #include <mach/mt_clkmgr.h>
-#include "smi_common.h"
+#include <mach/mt_smi.h>
 
 #include "ddp_drv.h"
 #include "ddp_reg.h"
 #include "ddp_debug.h"
-#include "ddp_path.h"
 #include "ddp_bls.h"
 #include "disp_drv.h"
+#include "ddp_hal.h"
 
 
-//#define DDP_GAMMA_SUPPORT
+#define DDP_GAMMA_SUPPORT
 
 #define POLLING_TIME_OUT 1000
 
 #define PWM_LOW_LIMIT 1  //PWM output lower bound = 8
 
 #if !defined(MTK_AAL_SUPPORT)
-static int gBLSMutexID = 3;
+    #ifdef USE_DISP_BLS_MUTEX
+        static int gBLSMutexID = 3;
+    #endif
 static int gBLSPowerOn = 0;
 #endif
 static int gMaxLevel = 1023;
@@ -167,6 +169,7 @@ static unsigned int brightness_mapping(unsigned int level)
 }
 
 #if !defined(MTK_AAL_SUPPORT)
+#ifdef USE_DISP_BLS_MUTEX
 static int disp_poll_for_reg(unsigned int addr, unsigned int value, unsigned int mask, unsigned int timeout)
 {
     unsigned int cnt = 0;
@@ -185,7 +188,6 @@ static int disp_poll_for_reg(unsigned int addr, unsigned int value, unsigned int
 
 }
 
-#ifdef USE_DISP_BLS_MUTEX
 static int disp_bls_get_mutex(void)
 {
     if (gBLSMutexID < 0)
@@ -224,7 +226,6 @@ void disp_bls_update_gamma_lut(void)
 {
 #if defined(DDP_GAMMA_SUPPORT)
         int index, i;
-        unsigned long regValue;
         unsigned long CurVal, Count;
     
         DISP_MSG("disp_bls_update_gamma_lut!\n");
@@ -314,8 +315,6 @@ void disp_bls_init(unsigned int srcWidth, unsigned int srcHeight)
     DISP_REG_SET(DISP_REG_BLS_DITHER(17), 0x00000000);
 #endif
 
-    DISP_REG_SET(DISP_REG_BLS_EN, 0x00010001);          // enable BLS_EN
-
     disp_bls_config_full(srcWidth, srcHeight);
 
 #if 0
@@ -376,12 +375,12 @@ int disp_bls_config(void)
 
 void disp_bls_config_full(unsigned int width, unsigned int height)
 {
+    unsigned int regVal;
     unsigned int dither_bpp = DISP_GetOutputBPPforDithering(); 
 
-    DDP_DRV_DBG("dispsys_bypass_bls, width=%d, height=%d, reg=0x%x \n", 
+    DDP_DRV_DBG("disp_bls_config_full, width=%d, height=%d, reg=0x%x \n", 
         width, height, ((height<<16) + width));
 
-    DISP_REG_SET(DISP_REG_BLS_DEBUG             ,0x00000003);
 //    DISP_REG_SET(DISP_REG_BLS_PWM_DUTY          ,0x000003ff);
 
 #if defined(DDP_GAMMA_SUPPORT)
@@ -456,7 +455,8 @@ void disp_bls_config_full(unsigned int width, unsigned int height)
     
 /* Dither */
     DISP_REG_SET(DISP_REG_BLS_DITHER(5)         ,0x00000000);
-    DISP_REG_SET(DISP_REG_BLS_DITHER(6)         ,0x00003004);
+    /*DISP_REG_SET(DISP_REG_BLS_DITHER(6)         ,0x00003004);*/
+	DISP_REG_SET(DISP_REG_BLS_DITHER(6)         ,0x00002004);
     DISP_REG_SET(DISP_REG_BLS_DITHER(7)         ,0x00000000);
     DISP_REG_SET(DISP_REG_BLS_DITHER(8)         ,0x00000000);
     DISP_REG_SET(DISP_REG_BLS_DITHER(9)         ,0x00000000);
@@ -493,11 +493,8 @@ void disp_bls_config_full(unsigned int width, unsigned int height)
 
     DISP_REG_SET(DISP_REG_BLS_INTEN             ,0x0000000f); // no scene change
 
-    DISP_REG_SET(DISP_REG_BLS_EN                ,0x00010001);
-
-    DISP_REG_SET(DISP_REG_BLS_DEBUG             ,0x00000000);
-
-
+    regVal = DISP_REG_GET(DISP_REG_BLS_EN);
+    DISP_REG_SET(DISP_REG_BLS_EN                ,regVal | 0x1);
 }
 
 
@@ -519,10 +516,10 @@ int disp_bls_set_backlight(unsigned int level)
     DISP_MSG("disp_bls_set_backlight: %d, gBLSPowerOn = %d\n", level, gBLSPowerOn);
 
     mutex_lock(&backlight_mutex);
-
+/*ADD by xiaopu.zhu for charging power consume*/
     if(level && !clock_is_on(MT_CG_PWM_MM_SW_CG))
         enable_clock(MT_CG_PWM_MM_SW_CG, "DDP");
-
+/*ADD by xiaopu.zhu for charging power consume*/	
     if (level && !clock_is_on(MT_CG_MDP_BLS_26M_SW_CG)) 
     {   
         // remove CG control to DDP path
@@ -544,6 +541,10 @@ int disp_bls_set_backlight(unsigned int level)
     mapped_level = brightness_mapping(level);
     DISP_MSG("after mapping, mapped_level: %d\n", mapped_level);
     DISP_REG_SET(DISP_REG_BLS_PWM_DUTY, mapped_level);
+    if (mapped_level)	// enable PWM generator
+        DISP_REG_SET(DISP_REG_BLS_EN, DISP_REG_GET(DISP_REG_BLS_EN) | 0x10000);
+    else		// disable PWM generator
+        DISP_REG_SET(DISP_REG_BLS_EN, DISP_REG_GET(DISP_REG_BLS_EN) & 0xFFFEFFFF);
     DISP_MSG("after SET, PWM_DUTY: %d\n", DISP_REG_GET(DISP_REG_BLS_PWM_DUTY));
 
 #ifdef USE_DISP_BLS_MUTEX 
@@ -551,11 +552,10 @@ int disp_bls_set_backlight(unsigned int level)
 #else
     DISP_REG_SET(DISP_REG_BLS_DEBUG, 0x0);
 #endif
-
-    if(!level && clock_is_on(MT_CG_PWM_MM_SW_CG))
+/*ADD by xiaopu.zhu for charging power consume*/
+ if(!level && clock_is_on(MT_CG_PWM_MM_SW_CG))
         disable_clock(MT_CG_PWM_MM_SW_CG, "DDP");
-
-
+ /*ADD by xiaopu.zhu for charging power consume*/
     if (!level && gBLSPowerOn) 
     {
         DISP_MSG("disp_bls_set_backlight: disable clock\n");

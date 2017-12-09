@@ -1,4 +1,4 @@
-obj-$(CONFIG_NFC_MT6605)   += mt6605.o
-obj-$(CONFIG_NFC_MSR3110)  += msr3110.o
-
-# EOF
+ifeq ($(PROJECT),soul4)
+EXTRA_CFLAGS += -DNXP_NFC_SUPPORT_SOUL4
+endif
+obj-y = pn547.o
