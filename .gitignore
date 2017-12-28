@@ -17,7 +17,6 @@
 *.so
 *.so.dbg
 *.mod.c
-*.i
 *.lst
 *.symtypes
 *.order
