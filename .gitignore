@@ -1,4 +1,3 @@
-#
 # NOTE! Don't add files that are generated in specific
 # subdirectories here. Add them in the ".gitignore" file
 # in that subdirectory instead.
@@ -36,14 +35,14 @@ modules.builtin
 #
 # Top-level generic files
 #
-kernel/tags
-kernel/TAGS
-kernel/linux
-kernel/vmlinux
-kernel/vmlinuz
-kernel/System.map
-kernel/Module.markers
-kernel/Module.symvers
+/tags
+/TAGS
+/linux
+/vmlinux
+/vmlinuz
+/System.map
+/Module.markers
+/Module.symvers
 
 #
 # Debian directory (make deb-pkg)
@@ -59,74 +58,84 @@ kernel/Module.symvers
 #
 # Generated include files
 #
-kernel/include/config
-kernel/include/linux/version.h
-kernel/include/linux/autoconf.h
-kernel/include/generated
-kernel/arch/*/include/generated
-kernel/arch/arm/mach-msm/smd_rpc_sym.c
-kernel/arch/arm/boot/Image
-kernel/arch/arm/boot/zImage
-kernel/arch/arm/boot/compressed/ashldi3.S
-kernel/arch/arm/boot/compressed/hyp-stub.S
-kernel/arch/arm/boot/compressed/lib1funcs.S
-kernel/arch/arm/boot/compressed/piggy.*
-kernel/arch/arm/boot/compressed/vmlinux
-kernel/arch/arm/boot/compressed/vmlinux.lds
-kernel/arch/arm/kernel/vmlinux.lds
-kernel/arch/arm/mach-mt6582/muse6582_b2l_l/dct/dct/inc/
-kernel/drivers/misc/mediatek/gpu/mt6582/mali/mali/__malidrv_build_info.c
-kernel/kernel/hz.bc
-kernel/kernel/timeconst.h
-kernel/lib/crc32table.h
-kernel/lib/gen_crc32table
-kernel/net/wireless/regdb.c
-kernel/scripts/basic/fixdep
-kernel/scripts/kallsyms
-kernel/scripts/kconfig/conf
-kernel/scripts/kconfig/zconf.hash.c
-kernel/scripts/kconfig/zconf.lex.c
-kernel/scripts/kconfig/zconf.tab.c
-kernel/scripts/mod/devicetable-offsets.h
-kernel/scripts/mod/elfconfig.h
-kernel/scripts/mod/mk_elfconfig
-kernel/scripts/mod/modpost
-kernel/scripts/recordmcount
-kernel/scripts/selinux/genheaders/genheaders
-kernel/scripts/selinux/mdp/mdp
-kernel/scripts/sortextable
-kernel/scripts/bin2c
-kernel/scripts/pnmtologo
-kernel/security/selinux/av_permissions.h
-kernel/security/selinux/flask.h
-kernel/usr/gen_init_cpio
-kernel/usr/initramfs_data.cpio
-mediatek/custom/out/*
-mediatek/config/out/*/autoconfig/
-kernel/kernel/config_data.h
-kernel/kernel/debug/kdb/gen-kdb_cmds.c
+include/config
+include/generated
+arch/*/include/generated
+include/config/auto.conf
+include/config/kernel.release
+include/config/tristate.conf
+include/generated/asm-offsets.h
+include/generated/autoconf.h
+include/generated/bounds.h
+include/generated/compile.h
+include/config/auto.conf
+include/config/kernel.release
+include/config/tristate.conf
+include/generated/autoconf.h
+include/generated/utsrelease.h
+include/config/mtk/emmc/support/
 
-# logo images
-kernel/drivers/video/logo/clut_vga16.c
-kernel/drivers/video/logo/logo_blackfin_clut224.c
-kernel/drivers/video/logo/logo_blackfin_vga16.c
-kernel/drivers/video/logo/logo_dec_clut224.c
-kernel/drivers/video/logo/logo_linux_clut224.c
-kernel/drivers/video/logo/logo_linux_mono.c
-kernel/drivers/video/logo/logo_linux_vga16.c
-kernel/drivers/video/logo/logo_m32r_clut224.c
-kernel/drivers/video/logo/logo_mac_clut224.c
-kernel/drivers/video/logo/logo_parisc_clut224.c
-kernel/drivers/video/logo/logo_sgi_clut224.c
-kernel/drivers/video/logo/logo_spe_clut224.c
-kernel/drivers/video/logo/logo_sun_clut224.c
-kernel/drivers/video/logo/logo_superh_clut224.c
-kernel/drivers/video/logo/logo_superh_mono.c
-kernel/drivers/video/logo/logo_superh_vga16.c
-
+scripts/basic/bin2c
+scripts/basic/fixdep
+scripts/dtc/dtc
+scripts/kallsyms
+scripts/kconfig/conf
+scripts/kconfig/mconf
+scripts/mod/elfconfig.h
+scripts/mod/mk_elfconfig
+scripts/mod/modpost
+scripts/pnmtologo
+scripts/selinux/genheaders/genheaders
+scripts/selinux/mdp/mdp
+scripts/sortextable
+tools/dct/old_dct/DCT.log
+arch/arm/boot/Image
+arch/arm/boot/compressed/ashldi3.S
+arch/arm/boot/compressed/bswapsdi2.S
+arch/arm/boot/compressed/hyp-stub.S
+arch/arm/boot/compressed/lib1funcs.S
+arch/arm/boot/compressed/piggy.gzip
+arch/arm/boot/compressed/vmlinux
+arch/arm/boot/compressed/vmlinux.lds
+arch/arm/boot/dts/pixi4_4_8g1g.dtb
+arch/arm/boot/dts/cust.dtsi
+arch/arm/boot/zImage
+arch/arm/boot/zImage-dtb
+arch/arm/kernel/vmlinux.lds
+drivers/video/logo/clut_vga16.c
+drivers/video/logo/logo_blackfin_clut224.c
+drivers/video/logo/logo_blackfin_vga16.c
+drivers/video/logo/logo_dec_clut224.c
+drivers/video/logo/logo_linux_clut224.c
+drivers/video/logo/logo_linux_mono.c
+drivers/video/logo/logo_linux_vga16.c
+drivers/video/logo/logo_m32r_clut224.c
+drivers/video/logo/logo_mac_clut224.c
+drivers/video/logo/logo_parisc_clut224.c
+drivers/video/logo/logo_sgi_clut224.c
+drivers/video/logo/logo_spe_clut224.c
+drivers/video/logo/logo_sun_clut224.c
+drivers/video/logo/logo_superh_clut224.c
+drivers/video/logo/logo_superh_mono.c
+drivers/video/logo/logo_superh_vga16.c
+kernel/time/hz.bc
+kernel/time/timeconst.h
+lib/crc32table.h
+lib/gen_crc32table
+net/wireless/regdb.c
+security/selinux/av_permissions.h
+security/selinux/flask.h
+usr/gen_init_cpio
 
 # stgit generated dirs
 patches-*
+
+# AnyKernel2 dirs
+BT-releases/
+Blackthunder-AK2-yaris_m_gsm/
+
+# Toolchain dir
+arm-eabi/
 
 # quilt's files
 patches
@@ -143,6 +152,5 @@ GSYMS
 GTAGS
 
 *.orig
-*.rej
 *~
 \#*#
