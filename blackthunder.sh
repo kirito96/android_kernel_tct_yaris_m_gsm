@@ -49,7 +49,7 @@ fi
 
 # Functions
 function clean_all {
-		rm -rf $REPACK_DIR/zImage-dtb
+		rm -rf $REPACK_DIR/zImage
 		rm -rf $ZIMAGE_DIR/$KERNEL
 		make clean && make mrproper
 }
