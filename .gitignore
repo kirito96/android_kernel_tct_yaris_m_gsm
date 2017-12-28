@@ -131,6 +131,7 @@ patches-*
 
 # AnyKernel2 dirs
 BT-releases/
+Blackthunder-AK2-yaris_m_gsm/
 
 # Toolchain dir
 arm-eabi/
