@@ -152,5 +152,6 @@ GSYMS
 GTAGS
 
 *.orig
+*.rej
 *~
 \#*#
