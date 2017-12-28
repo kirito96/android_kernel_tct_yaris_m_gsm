@@ -1,5 +1,6 @@
 #!/bin/bash
-#Original script by hellsgod and modified with function from MSF Jarvis
+#Original script by hellsgod and modified with parts from MSF-Jarvis and The Flash.
+
 
 # Bash colors
 green='\033[01;32m'
@@ -11,37 +12,44 @@ restore='\033[0m'
 
 clear
 
+# Paths
+KERNEL_DIR=$(pwd)
+RESOURCE_DIR="${KERNEL_DIR}"
+ANYKERNEL_DIR="$KERNEL_DIR/Blackthunder-AK2-yaris_m_gsm"
+REPACK_DIR="$ANYKERNEL_DIR"
+ZIMAGE_DIR="$KERNEL_DIR/arch/arm/boot"
+ZIP_MOVE="$RESOURCE_DIR/BT-releases/yaris_m_gsm/"
+OLD_DIR="$ZIP_MOVE/old"
+
 # Resources
 THREAD="-j4"
 KERNEL="zImage"
 DEFCONFIG="4033_defconfig"
+TOOLCHAIN_PREFIX=arm-eabi
+TOOLCHAIN_DIR=${TOOLCHAIN_PREFIX}
 
 # BlackThunder Kernel Details
 KERNEL_NAME="BlackThunder"
 VER="v1.0"
-BASE_VER="BT"
-DEVICE="4033"
-BT_VER=$BASE_VER$VER-${DEVICE}-$( TZ=MST date +%Y%m%d-%H%M )
+LOCALVERSION="-$( date +%Y%m%d )"
+BASE_BT_VER="BT"
+BT_VER="$BASE_BT_VER$VER${LOCALVERSION}-$( date +%H%M )"
 
-
-# Vars
+# Configure build
 export ARCH=arm
 export KBUILD_BUILD_USER=kirito9
 export KBUILD_BUILD_HOST=aincrad
-export CROSS_COMPILE=~/android/toolchain/arm-eabi-5.3/bin/arm-eabi-
+export CROSS_COMPILE="${TOOLCHAIN_DIR}/bin/${TOOLCHAIN_PREFIX}-"
 
-# Paths
-KERNEL_DIR=`pwd`
-RESOURCE_DIR="/home/kirito9/android/kernel/4034"
-ANYKERNEL_DIR="$RESOURCE_DIR/BT-4033-AnyKernel2"
-REPACK_DIR="$ANYKERNEL_DIR"
-ZIP_MOVE="$RESOURCE_DIR/BT-releases/4033/"
-ZIMAGE_DIR="$KERNEL_DIR/arch/arm/boot"
-OLD_DIR="$ZIP_MOVE/old"
+# If the toolchain directory doesn't exist, clone it
+if [[ ! -d ${TOOLCHAIN_DIR} ]]; then
+    cd ${KERNEL_DIR}
+    git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-eabi-4.8 ${TOOLCHAIN_PREFIX}
+fi
 
 # Functions
 function clean_all {
-		rm -rf $REPACK_DIR/zImage
+		rm -rf $REPACK_DIR/zImage-dtb
 		rm -rf $ZIMAGE_DIR/$KERNEL
 		make clean && make mrproper
 }
@@ -50,7 +58,6 @@ function make_kernel {
 		make $DEFCONFIG
 		make $THREAD
 		cp -vr $ZIMAGE_DIR/$KERNEL $REPACK_DIR
-		mv $REPACK_DIR/$KERNEL $REPACK_DIR/zImage
 }
 
 function make_zip {
@@ -65,8 +72,9 @@ function make_zip {
 		cd $KERNEL_DIR
 }
 
+
 function push_and_flash {
-  adb push "$ZIP_MOVE"/${BT_VER}.zip /sdcard/
+  adb push "$REPACK_DIR"/${BT_VER}.zip /sdcard/
   adb shell twrp install "/sdcard/${BT_VER}.zip"
 }
 
@@ -182,6 +190,9 @@ case "$cchoice" in
 		break
 		;;		
 	6 )
+		echo 
+		echo
+		cd ${HOME}
 		break
 		;;
 	* )
@@ -207,5 +218,7 @@ fi
 
 DATE_END=$(date +"%s")
 DIFF=$(($DATE_END - $DATE_START))
-echo "Time: $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) seconds."
+
+echo -e "SCRIPT DURATION: $((${DIFF} / 60)) MINUTES AND $((${DIFF} % 60)) SECONDS"
+echo -e ${RESTORE}
 echo
