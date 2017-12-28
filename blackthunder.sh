@@ -24,7 +24,7 @@ OLD_DIR="$ZIP_MOVE/old"
 # Resources
 THREAD="-j4"
 KERNEL="zImage"
-DEFCONFIG="4033_defconfig"
+DEFCONFIG="yaris_m_gsm_defconfig"
 TOOLCHAIN_PREFIX=arm-eabi
 TOOLCHAIN_DIR=${TOOLCHAIN_PREFIX}
 
