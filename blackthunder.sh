@@ -30,10 +30,11 @@ TOOLCHAIN_DIR=${TOOLCHAIN_PREFIX}
 
 # BlackThunder Kernel Details
 KERNEL_NAME="BlackThunder"
-VER="v1.0"
+VER="v1.0.1"
 LOCALVERSION="-$( date +%Y%m%d )"
 BASE_BT_VER="BT"
-BT_VER="$BASE_BT_VER$VER${LOCALVERSION}-$( date +%H%M )"
+DEVICE="Yaris_M_GSM"
+BT_VER="$BASE_BT_VER$VER-$DEVICE${LOCALVERSION}-$( date +%H%M )"
 
 # Configure build
 export ARCH=arm
